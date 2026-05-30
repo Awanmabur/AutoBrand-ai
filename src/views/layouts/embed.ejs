@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= typeof title !== 'undefined' && title ? `${title} | ${appName}` : appName %></title>
+    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/dashboard-experience.css">
+    <style>
+      body { background: transparent; min-height: auto; overflow-x: hidden; }
+      .embed-composer-page { display: grid; gap: 18px; padding: 4px; }
+      .embed-composer-page .composer-hero,
+      .embed-composer-page .panel { margin: 0; }
+      .embed-composer-page .panel { box-shadow: none; }
+    </style>
+  </head>
+  <body>
+    <main class="embed-composer-page">
+      <%- body %>
+    </main>
+  </body>
+</html>

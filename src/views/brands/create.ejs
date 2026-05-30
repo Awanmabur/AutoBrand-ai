@@ -1,0 +1,11 @@
+<section class="panel narrow">
+  <h2>Create Brand Brain</h2>
+  <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+  <form action="/brands" method="post" class="form-stack">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <% const brand = form; %>
+    <%- include('_form', { brand }) %>
+    <button class="button" type="submit">Save brand</button>
+  </form>
+</section>
+<script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>

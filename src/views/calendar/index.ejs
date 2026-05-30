@@ -1,0 +1,194 @@
+<section class="panel calendar-toolbar-panel">
+  <div class="calendar-toolbar-title">
+    <p class="eyebrow">content calendar</p>
+    <h2><%= monthLabel %></h2>
+    <p>Scheduled posts appear inside each day with status dots. Page/account performance for the month is shown below the calendar.</p>
+  </div>
+  <div class="calendar-nav-actions">
+    <a class="button ghost" href="/calendar?month=<%= previousMonth %>&brand=<%= filters.brand %>&platform=<%= filters.platform %>&status=<%= filters.status %>">Previous</a>
+    <a class="button ghost" href="/calendar">This month</a>
+    <a class="button ghost" href="/calendar?month=<%= nextMonth %>&brand=<%= filters.brand %>&platform=<%= filters.platform %>&status=<%= filters.status %>">Next</a>
+    <a class="button" href="/posts/new">Create post</a>
+  </div>
+  <form action="/calendar" method="get" class="form-grid calendar-filter-form">
+    <label>Month <input type="month" name="month" value="<%= monthValue %>"></label>
+    <label>Brand
+      <select name="brand">
+        <option value="">All brands</option>
+        <% brands.forEach((brand) => { %>
+          <option value="<%= brand._id %>" <%= filters.brand === brand._id.toString() ? 'selected' : '' %>><%= brand.name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Platform
+      <select name="platform">
+        <option value="">All platforms</option>
+        <% ['facebook', 'instagram', 'tiktok', 'youtube', 'whatsapp', 'linkedin', 'x', 'pinterest'].forEach((platform) => { %>
+          <option value="<%= platform %>" <%= filters.platform === platform ? 'selected' : '' %>><%= platform %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="">All statuses</option>
+        <% ['scheduled', 'publishing', 'published', 'failed', 'cancelled'].forEach((status) => { %>
+          <option value="<%= status %>" <%= filters.status === status ? 'selected' : '' %>><%= status %></option>
+        <% }) %>
+      </select>
+    </label>
+    <button class="button" type="submit">Filter</button>
+  </form>
+</section>
+
+<section class="stats-grid">
+  <article class="stat-card"><span>Scheduled</span><strong><%= stats.scheduled %></strong></article>
+  <article class="stat-card"><span>Publishing</span><strong><%= stats.publishing %></strong></article>
+  <article class="stat-card"><span>Published</span><strong><%= stats.published %></strong></article>
+  <article class="stat-card"><span>Failed</span><strong><%= stats.failed %></strong></article>
+</section>
+
+<section class="calendar-month-shell">
+  <div class="calendar-weekdays">
+    <% ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach((day) => { %><span><%= day %></span><% }) %>
+  </div>
+  <div class="calendar-month-grid">
+    <% calendarDays.forEach((day) => { %>
+      <article class="calendar-day <%= day.inMonth ? '' : 'is-muted' %> <%= day.isToday ? 'is-today' : '' %>">
+        <div class="calendar-day-top">
+          <strong><%= day.dayNumber %></strong>
+          <% if (day.posts.length) { %><span><%= day.posts.length %></span><% } %>
+        </div>
+        <div class="calendar-dots" title="<%= day.posts.length %> posts">
+          <% day.posts.slice(0, 6).forEach((post) => { %>
+            <i class="status-dot dot-<%= post.status %>" title="<%= post.status %>: <%= post.title || post.caption.slice(0, 40) %>"></i>
+          <% }) %>
+        </div>
+        <div class="calendar-day-posts">
+          <% day.posts.slice(0, 3).forEach((post) => { %>
+            <a class="mini-calendar-post" href="/posts/<%= post._id %>/edit">
+              <span class="status-dot dot-<%= post.status %>"></span>
+              <span><%= post.scheduledAt ? post.scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Any time' %></span>
+              <strong><%= post.title || post.caption.slice(0, 28) %></strong>
+            </a>
+          <% }) %>
+          <% if (day.posts.length > 3) { %><small class="muted">+<%= day.posts.length - 3 %> more</small><% } %>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+  <div class="calendar-legend">
+    <% ['scheduled', 'publishing', 'published', 'failed', 'cancelled'].forEach((status) => { %>
+      <span><i class="status-dot dot-<%= status %>"></i><%= status %></span>
+    <% }) %>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="calendar-toolbar-title">
+    <p class="eyebrow">pages this month</p>
+    <h2>Page/account schedule status</h2>
+    <p>Each connected Page shows how many posts are scheduled, publishing, published, or failed in the selected month.</p>
+  </div>
+  <% if (!pageSummary.length) { %>
+    <article class="empty-state"><h2>No page activity yet</h2><p>Create and schedule posts to see Page-level status here.</p></article>
+  <% } %>
+  <div class="page-status-grid">
+    <% pageSummary.forEach((page, pageIndex) => { %>
+      <article class="page-status-card">
+        <p class="eyebrow"><%= page.platform %></p>
+        <h3><%= page.name %></h3>
+        <div class="page-status-counts">
+          <span><i class="status-dot dot-scheduled"></i><strong><%= page.scheduled || 0 %></strong> scheduled</span>
+          <span><i class="status-dot dot-published"></i><strong><%= page.published || 0 %></strong> published</span>
+          <span><i class="status-dot dot-failed"></i><strong><%= page.failed || 0 %></strong> failed</span>
+        </div>
+        <div class="page-post-list">
+          <% page.posts.slice(0, 5).forEach((post) => { %>
+            <a href="/posts/<%= post._id %>/edit"><span class="status-dot dot-<%= post.status %>"></span><%= post.title || post.caption.slice(0, 50) %></a>
+          <% }) %>
+        </div>
+        <div class="calendar-actions">
+          <button class="button ghost" type="button" data-detail-modal="#page-detail-<%= pageIndex %>" data-detail-title="<%= page.name %>" data-detail-kicker="<%= page.platform %>">Details</button>
+        </div>
+        <template id="page-detail-<%= pageIndex %>" data-detail-title="<%= page.name %>" data-detail-kicker="<%= page.platform %>">
+          <div class="modal-detail-grid">
+            <div class="modal-detail-row"><span>Scheduled</span><strong><%= page.scheduled || 0 %></strong></div>
+            <div class="modal-detail-row"><span>Published</span><strong><%= page.published || 0 %></strong></div>
+            <div class="modal-detail-row"><span>Failed</span><strong><%= page.failed || 0 %></strong></div>
+            <div class="modal-detail-row"><span>Posts</span><p><%= page.posts.length ? page.posts.map((post) => post.title || post.caption.slice(0, 60)).join(' | ') : 'No posts in this month.' %></p></div>
+          </div>
+        </template>
+      </article>
+    <% }) %>
+  </div>
+</section>
+
+<section class="calendar-list">
+  <% if (!posts.length) { %>
+    <article class="empty-state">
+      <h2>No posts this month</h2>
+      <p>Create your first scheduled post from the new post studio.</p>
+      <a class="button" href="/posts/new">Create post</a>
+    </article>
+  <% } %>
+  <% posts.forEach((post, postIndex) => { %>
+    <article class="calendar-row">
+      <time>
+        <strong><%= post.scheduledAt ? post.scheduledAt.toLocaleDateString() : 'No date' %></strong>
+        <span><%= post.scheduledAt ? post.scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' %></span>
+      </time>
+      <div>
+        <p class="eyebrow"><%= post.brand.name %> - <%= post.platform %></p>
+        <h2><%= post.title || 'Scheduled post' %></h2>
+        <p><%= post.caption %></p>
+        <% if (post.targetAccounts?.length) { %>
+          <p class="muted"><strong>Pages:</strong> <%= post.targetAccounts.map((account) => account.accountName).join(', ') %></p>
+        <% } %>
+        <% if (post.publishResults?.length) { %>
+          <div class="publish-result-list">
+            <% post.publishResults.forEach((result) => { %>
+              <span><i class="status-dot dot-<%= result.status %>"></i><%= result.accountName %> - <%= result.status %></span>
+            <% }) %>
+          </div>
+        <% } %>
+        <div class="calendar-actions">
+          <button class="button ghost" type="button" data-detail-modal="#post-detail-<%= postIndex %>" data-detail-title="<%= post.title || 'Scheduled post' %>" data-detail-kicker="<%= post.platform %>">Details</button>
+          <a class="button ghost" href="/posts/<%= post._id %>/edit">Edit</a>
+          <form action="/posts/<%= post._id %>/schedule" method="post" class="inline-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input name="scheduledAt" type="datetime-local" required>
+            <button class="button ghost" type="submit">Reschedule</button>
+          </form>
+          <form action="/posts/<%= post._id %>/duplicate" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="button ghost" type="submit">Duplicate</button>
+          </form>
+          <form action="/posts/<%= post._id %>/publish-now" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="button ghost" type="submit">Publish now</button>
+          </form>
+          <form action="/posts/<%= post._id %>/cancel" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="button ghost" type="submit">Cancel</button>
+          </form>
+        </div>
+        <template id="post-detail-<%= postIndex %>" data-detail-title="<%= post.title || 'Scheduled post' %>" data-detail-kicker="<%= post.platform %>">
+          <div class="modal-detail-grid">
+            <div class="modal-detail-row"><span>Brand</span><strong><%= post.brand.name %></strong></div>
+            <div class="modal-detail-row"><span>Status</span><strong><%= post.status %></strong></div>
+            <div class="modal-detail-row"><span>Scheduled</span><strong><%= post.scheduledAt ? post.scheduledAt.toLocaleString() : 'No date' %></strong></div>
+            <div class="modal-detail-row"><span>Caption</span><p><%= post.caption || 'No caption.' %></p></div>
+            <div class="modal-detail-row"><span>Pages</span><p><%= post.targetAccounts?.length ? post.targetAccounts.map((account) => account.accountName).join(', ') : 'No target pages selected.' %></p></div>
+            <% if (post.publishResults?.length) { %>
+              <div class="modal-detail-row"><span>Publish results</span><p><%= post.publishResults.map((result) => `${result.accountName}: ${result.status}`).join(' | ') %></p></div>
+            <% } %>
+            <div class="calendar-actions">
+              <a class="button" href="/posts/<%= post._id %>/edit">Open editor</a>
+            </div>
+          </div>
+        </template>
+      </div>
+      <span class="status-pill"><%= post.status %></span>
+    </article>
+  <% }) %>
+</section>

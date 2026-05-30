@@ -1,0 +1,67 @@
+<section class="panel">
+  <h2>Invite team member</h2>
+  <% if (accepted) { %><p class="success-note">Invite accepted and linked to this account.</p><% } %>
+  <% if (inviteUrl) { %>
+    <p class="success-note">Development invite link: <a href="<%= inviteUrl %>"><%= inviteUrl %></a></p>
+  <% } %>
+  <% if (!brands.length) { %>
+    <p class="form-error">Create a Brand Brain first.</p>
+  <% } else { %>
+    <form action="/team/invite" method="post" class="form-grid">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label>Brand
+        <select name="brand" required>
+          <% brands.forEach((brand) => { %><option value="<%= brand._id %>"><%= brand.name %></option><% }) %>
+        </select>
+      </label>
+      <label>Name <input name="name"></label>
+      <label>Email <input name="email" type="email" required></label>
+      <label>Role
+        <select name="role">
+          <option value="manager">Manager</option>
+          <option value="content_creator">Content creator</option>
+          <option value="editor">Editor</option>
+          <option value="reviewer">Reviewer</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </label>
+      <fieldset class="span-2 fieldset">
+        <legend>Permissions</legend>
+        <% ['brand_read', 'content_create', 'content_edit', 'schedule_posts', 'approve_posts', 'analytics_read'].forEach((permission) => { %>
+          <label class="checkbox-row"><input name="permissions" type="checkbox" value="<%= permission %>"> <%= permission.replace(/_/g, ' ') %></label>
+        <% }) %>
+      </fieldset>
+      <button class="button" type="submit">Invite</button>
+    </form>
+  <% } %>
+</section>
+
+<section class="post-list">
+  <% if (!members.length) { %><article class="empty-state"><h2>No team members</h2><p>Invite creators, editors, and reviewers.</p></article><% } %>
+  <% members.forEach((member) => { %>
+    <article class="post-row">
+      <div>
+        <p class="eyebrow"><%= member.brand.name %></p>
+        <h2><%= member.name || member.email %></h2>
+        <p><%= member.email %></p>
+        <p class="muted">Permissions: <%= member.permissions.join(', ') || 'none' %></p>
+      </div>
+      <div class="stack-actions">
+        <span class="status-pill"><%= member.role %> / <%= member.status %></span>
+        <form action="/team/<%= member._id %>" method="post" class="inline-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <select name="role">
+            <% ['admin', 'manager', 'content_creator', 'editor', 'reviewer', 'viewer'].forEach((role) => { %>
+              <option value="<%= role %>" <%= member.role === role ? 'selected' : '' %>><%= role %></option>
+            <% }) %>
+          </select>
+          <button class="button ghost" type="submit">Update</button>
+        </form>
+        <form action="/team/<%= member._id %>/remove" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="button ghost" type="submit">Remove</button>
+        </form>
+      </div>
+    </article>
+  <% }) %>
+</section>

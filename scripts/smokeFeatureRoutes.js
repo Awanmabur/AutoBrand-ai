@@ -1,0 +1,451 @@
+const mongoose = require('mongoose');
+const app = require('../src/app');
+const env = require('../src/config/env');
+const User = require('../src/models/User');
+const Brand = require('../src/models/Brand');
+const Post = require('../src/models/Post');
+const Media = require('../src/models/Media');
+const AiVideoJob = require('../src/models/AiVideoJob');
+const Campaign = require('../src/models/Campaign');
+const VideoRender = require('../src/models/VideoRender');
+const SocialAccount = require('../src/models/SocialAccount');
+const TeamMember = require('../src/models/TeamMember');
+const Approval = require('../src/models/Approval');
+const AvatarProfile = require('../src/models/AvatarProfile');
+const AvatarConsent = require('../src/models/AvatarConsent');
+const Subscription = require('../src/models/Subscription');
+const GrowthAsset = require('../src/models/GrowthAsset');
+const Payment = require('../src/models/Payment');
+const WebhookEvent = require('../src/models/WebhookEvent');
+const CreditLedger = require('../src/models/CreditLedger');
+const UsageLog = require('../src/models/UsageLog');
+const ApiLog = require('../src/models/ApiLog');
+const Notification = require('../src/models/Notification');
+const RefreshToken = require('../src/models/RefreshToken');
+
+function csrfFrom(html) {
+  const match = String(html).match(/name="_csrf" value="([^"]+)"/);
+  if (!match) throw new Error('Missing CSRF token');
+  return match[1];
+}
+
+function optionValueFrom(html) {
+  const match = String(html).match(/<option value="([^"]+)"/);
+  if (!match) throw new Error('Missing option value');
+  return match[1];
+}
+
+function optionValueForSelect(html, name) {
+  const match = String(html).match(new RegExp(`<select name="${name}"[\\s\\S]*?<option value="([^"]+)"`));
+  if (!match) throw new Error(`Missing option value for ${name}`);
+  return match[1];
+}
+
+function postIdFrom(html) {
+  const match = String(html).match(/\/posts\/([a-f0-9]{24})\/edit/);
+  if (!match) throw new Error('Missing post edit link');
+  return match[1];
+}
+
+function hrefTokenFrom(html, path) {
+  const match = String(html).match(new RegExp(`${path}\\?token=([a-f0-9]+)`));
+  if (!match) throw new Error(`Missing token link for ${path}`);
+  return match[1];
+}
+
+function makeClient(baseUrl) {
+  const jar = new Map();
+
+  function cookieHeader() {
+    return Array.from(jar.entries())
+      .map(([key, value]) => `${key}=${value}`)
+      .join('; ');
+  }
+
+  function storeCookies(response) {
+    const cookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+    cookies.forEach((cookie) => {
+      const [pair] = cookie.split(';');
+      const [key, value] = pair.split('=');
+      jar.set(key, value);
+    });
+  }
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      redirect: 'manual',
+      ...options,
+      headers: {
+        Cookie: cookieHeader(),
+        ...(options.headers || {})
+      }
+    });
+    storeCookies(response);
+    const text = await response.text();
+    return { response, text };
+  }
+
+  async function form(path, fields) {
+    const body = new URLSearchParams(fields);
+    return request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+  }
+
+  return { request, form };
+}
+
+async function cleanup(email) {
+  const users = await User.find({ email }).select('_id');
+  const ids = users.map((user) => user._id);
+  await Promise.all([
+    Post.deleteMany({ createdBy: { $in: ids } }),
+    Media.deleteMany({ uploadedBy: { $in: ids } }),
+    AiVideoJob.deleteMany({ createdBy: { $in: ids } }),
+    Campaign.deleteMany({ createdBy: { $in: ids } }),
+    VideoRender.deleteMany({ createdBy: { $in: ids } }),
+    SocialAccount.deleteMany({ owner: { $in: ids } }),
+    TeamMember.deleteMany({ invitedBy: { $in: ids } }),
+    Approval.deleteMany({ requestedBy: { $in: ids } }),
+    AvatarConsent.deleteMany({ user: { $in: ids } }),
+    AvatarProfile.deleteMany({ owner: { $in: ids } }),
+    Subscription.deleteMany({ user: { $in: ids } }),
+    GrowthAsset.deleteMany({ owner: { $in: ids } }),
+    Payment.deleteMany({ user: { $in: ids } }),
+    CreditLedger.deleteMany({ user: { $in: ids } }),
+    UsageLog.deleteMany({ user: { $in: ids } }),
+    ApiLog.deleteMany({ user: { $in: ids } }),
+    Notification.deleteMany({ user: { $in: ids } }),
+    RefreshToken.deleteMany({ user: { $in: ids } }),
+    Brand.deleteMany({ owner: { $in: ids } }),
+    User.deleteMany({ _id: { $in: ids } })
+  ]);
+}
+
+async function run() {
+  await mongoose.connect(env.mongoUri);
+  const server = app.listen(0);
+  const port = server.address().port;
+  const client = makeClient(`http://127.0.0.1:${port}`);
+  const stamp = Date.now();
+  const email = `feature${stamp}@example.com`;
+
+  try {
+    const googleMissing = await client.request('/auth/google');
+    if (![302, 503].includes(googleMissing.response.status)) throw new Error(`Google start failed ${googleMissing.response.status}`);
+
+    let page = await client.request('/auth/register');
+    let csrf = csrfFrom(page.text);
+    let result = await client.form('/auth/register', {
+      _csrf: csrf,
+      name: 'Feature Smoke',
+      email,
+      password: 'password123'
+    });
+    if (result.response.status !== 200) throw new Error(`Register failed ${result.response.status}`);
+
+    const verifyToken = hrefTokenFrom(result.text, '/auth/verify-email');
+    result = await client.request(`/auth/verify-email?token=${verifyToken}`);
+    if (![302, 303].includes(result.response.status)) throw new Error(`Verify failed ${result.response.status}`);
+
+    page = await client.request('/auth/login');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/auth/login', {
+      _csrf: csrf,
+      email,
+      password: 'password123'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Login failed ${result.response.status}`);
+
+    await User.updateOne({ email }, { plan: 'pro' });
+
+    result = await client.form('/auth/refresh', {
+      _csrf: csrf
+    });
+    if (result.response.status !== 200) throw new Error(`Refresh failed ${result.response.status}`);
+
+    page = await client.request('/brands/create');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/brands', {
+      _csrf: csrf,
+      name: `Feature Brand ${stamp}`,
+      businessType: 'Internet vouchers',
+      description: 'Affordable local internet',
+      location: 'Kampala',
+      targetAudience: 'Students and shops',
+      tone: 'clean and friendly',
+      preferredCta: 'Buy voucher now',
+      products: 'Daily voucher | UGX 1000 | Fast local internet',
+      offers: 'Weekend bundle | Extra data for students',
+      socialLinks: 'facebook | https://facebook.com/example',
+      postingFrequency: '2 posts per day',
+      customerPainPoints: 'Slow internet\nExpensive bundles',
+      commonObjections: 'Is it reliable?',
+      testimonials: 'Amina | Fast and affordable',
+      brandRules: 'Keep it simple'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Brand create failed ${result.response.status}`);
+
+    page = await client.request('/ai/generator');
+    csrf = csrfFrom(page.text);
+    const brandId = optionValueFrom(page.text);
+    result = await client.form('/ai/generate-post', {
+      _csrf: csrf,
+      brand: brandId,
+      platform: 'facebook',
+      contentType: 'promo',
+      goal: 'Sell weekend vouchers'
+    });
+    if (result.response.status !== 200) throw new Error(`AI generate failed ${result.response.status}`);
+
+    page = await client.request('/posts/drafts');
+    const postId = postIdFrom(page.text);
+    page = await client.request(`/posts/${postId}/edit`);
+    csrf = csrfFrom(page.text);
+    result = await client.form(`/posts/${postId}/schedule`, {
+      _csrf: csrf,
+      scheduledAt: '2026-05-20T09:00'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Schedule failed ${result.response.status}`);
+
+    const checks = [
+      '/dashboard',
+      '/campaigns',
+      '/growth-studio',
+      '/calendar',
+      '/media',
+      `/media/signature?brand=${brandId}`,
+      '/videos',
+      '/templates',
+      '/avatars',
+      '/social',
+      `/social/facebook/connect?brand=${brandId}`,
+      '/analytics',
+      '/approvals',
+      '/team',
+      '/billing',
+      '/notifications',
+      '/settings'
+    ];
+
+    for (const path of checks) {
+      const checked = await client.request(path);
+      const okStatuses = path.startsWith('/social/facebook/connect') ? [200, 302, 303] : [200];
+      if (!okStatuses.includes(checked.response.status)) throw new Error(`${path} returned ${checked.response.status}`);
+    }
+
+    page = await client.request('/growth-studio');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/growth-studio/run', {
+      _csrf: csrf,
+      brand: brandId,
+      actionType: 'draft_batch',
+      platforms: 'facebook, instagram',
+      campaignGoal: 'Sell weekend vouchers'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Growth Studio drafts failed ${result.response.status}`);
+
+    page = await client.request('/growth-studio');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/growth-studio/run', {
+      _csrf: csrf,
+      brand: brandId,
+      actionType: 'brand_audit',
+      campaignGoal: 'Improve brand readiness'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Growth Studio audit failed ${result.response.status}`);
+
+    page = await client.request('/ai/generator');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/ai/generate-hashtags', {
+      _csrf: csrf,
+      brand: brandId,
+      goal: 'Sell weekend vouchers'
+    });
+    if (result.response.status !== 200) throw new Error(`Hashtag generation failed ${result.response.status}`);
+
+    csrf = csrfFrom(result.text);
+    result = await client.form('/ai/generate-video-script', {
+      _csrf: csrf,
+      brand: brandId,
+      platform: 'Instagram Reels',
+      goal: 'Sell weekend vouchers',
+      offer: 'Weekend bundle',
+      style: 'clean local'
+    });
+    if (result.response.status !== 200) throw new Error(`Video script generation failed ${result.response.status}`);
+
+    csrf = csrfFrom(result.text);
+    result = await client.form('/ai/generate-campaign', {
+      _csrf: csrf,
+      brand: brandId,
+      name: 'Smoke Campaign',
+      platforms: 'facebook, instagram',
+      durationDays: '3',
+      goal: 'Sell weekend vouchers'
+    });
+    if (result.response.status !== 200) throw new Error(`AI campaign failed ${result.response.status}`);
+
+    page = await client.request('/campaigns');
+    csrf = csrfFrom(page.text);
+    const campaignDraftPath = String(page.text).match(/\/campaigns\/([a-f0-9]{24})\/create-drafts/);
+    if (!campaignDraftPath) throw new Error('Missing campaign create-drafts action');
+    result = await client.form(`/campaigns/${campaignDraftPath[1]}/create-drafts`, { _csrf: csrf });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Campaign draft creation failed ${result.response.status}`);
+
+    page = await client.request('/media');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/media/upload', {
+      _csrf: csrf,
+      brand: brandId,
+      fileName: 'Smoke product photo',
+      tags: 'product, smoke',
+      fileType: 'image',
+      mimeType: 'image/jpeg',
+      fileUrl: 'https://example.com/product.jpg',
+      consentRequired: 'on'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Media upload failed ${result.response.status}`);
+
+    page = await client.request('/media');
+    csrf = csrfFrom(page.text);
+    const mediaMatch = String(page.text).match(/\/media\/([a-f0-9]{24})\/creative/);
+    if (!mediaMatch) throw new Error('Missing media creative action');
+    result = await client.form(`/media/${mediaMatch[1]}/creative`, {
+      _csrf: csrf,
+      actionType: 'prompt'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Media creative action failed ${result.response.status}`);
+
+    result = await client.form(`/media/${mediaMatch[1]}/creative`, {
+      _csrf: csrf,
+      actionType: 'accept_consent'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Media consent action failed ${result.response.status}`);
+
+    result = await client.form(`/media/${mediaMatch[1]}/create-draft`, {
+      _csrf: csrf,
+      platform: 'instagram'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Media draft creation failed ${result.response.status}`);
+
+    page = await client.request('/ai/generator');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/ai/generate-post', {
+      _csrf: csrf,
+      brand: brandId,
+      platform: 'instagram',
+      contentType: 'offer',
+      goal: 'Reuse uploaded product image',
+      sourceMedia: mediaMatch[1]
+    });
+    if (result.response.status !== 200) throw new Error(`Media-powered AI generate failed ${result.response.status}`);
+
+    page = await client.request('/growth-studio');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/growth-studio/run', {
+      _csrf: csrf,
+      brand: brandId,
+      actionType: 'video_storyboard',
+      platforms: 'instagram',
+      campaignGoal: 'Use uploaded media in a video',
+      sourceMedia: mediaMatch[1]
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Media-powered Growth Studio video failed ${result.response.status}`);
+
+    page = await client.request('/templates');
+    csrf = csrfFrom(page.text);
+    const templateId = optionValueForSelect(page.text, 'template');
+    result = await client.form('/templates/render', {
+      _csrf: csrf,
+      brand: brandId,
+      template: templateId,
+      headline: 'Weekend vouchers',
+      offer: 'Extra data for students',
+      cta: 'Buy now'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Template render failed ${result.response.status}`);
+
+    page = await client.request('/videos');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/videos/clean-generate', {
+      _csrf: csrf,
+      brand: brandId,
+      provider: 'pending_video_provider',
+      platform: 'Instagram Reels',
+      aspectRatio: '9:16',
+      durationSeconds: '20',
+      offer: 'Weekend bundle',
+      prompt: 'Create a clean vertical promo video for weekend internet vouchers.',
+      style: 'clean local',
+      sourceMedia: mediaMatch[1]
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Clean video failed ${result.response.status}`);
+
+    page = await client.request('/avatars');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/avatars', {
+      _csrf: csrf,
+      brand: brandId,
+      name: 'Smoke avatar',
+      sourceMedia: mediaMatch[1],
+      allowedUse: 'brand_content',
+      ownershipConfirmed: 'on'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Avatar create failed ${result.response.status}`);
+
+    page = await client.request('/avatars');
+    csrf = csrfFrom(page.text);
+    const avatarMatch = String(page.text).match(/\/avatars\/([a-f0-9]{24})\/generate-video/);
+    if (!avatarMatch) throw new Error('Missing avatar video action');
+    result = await client.form(`/avatars/${avatarMatch[1]}/generate-video`, {
+      _csrf: csrf,
+      script: 'Hello, this is a short AI-generated brand announcement.',
+      aspectRatio: '9:16',
+      durationSeconds: '30'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Avatar video failed ${result.response.status}`);
+
+    page = await client.request('/billing');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/billing/checkout', {
+      _csrf: csrf,
+      plan: 'starter',
+      provider: 'manual'
+    });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Checkout failed ${result.response.status}`);
+
+    page = await client.request('/billing');
+    csrf = csrfFrom(page.text);
+    const paymentMatch = String(page.text).match(/\/billing\/payments\/([a-f0-9]{24})\/mark-paid/);
+    if (!paymentMatch) throw new Error('Missing payment mark-paid action');
+    result = await client.form(`/billing/payments/${paymentMatch[1]}/mark-paid`, { _csrf: csrf });
+    if (![302, 303].includes(result.response.status)) throw new Error(`Mark paid failed ${result.response.status}`);
+
+    result = await client.request('/webhooks/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: `smoke_${stamp}`, type: 'payment_succeeded', status: 'paid', reference: `none_${stamp}` })
+    });
+    if (result.response.status !== 200) throw new Error(`Webhook failed ${result.response.status}`);
+    await WebhookEvent.deleteMany({ eventId: `smoke_${stamp}` });
+
+    page = await client.request('/settings');
+    csrf = csrfFrom(page.text);
+    result = await client.form('/settings/diagnostics', { _csrf: csrf });
+    if (result.response.status !== 200) throw new Error(`Diagnostics failed ${result.response.status}`);
+
+    console.log('FEATURE_SMOKE_OK');
+  } finally {
+    await cleanup(email);
+    await new Promise((resolve) => server.close(resolve));
+    await mongoose.disconnect();
+  }
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -1,0 +1,152 @@
+<section class="panel">
+  <h2>Upload media</h2>
+  <p>Upload brand assets, product images, videos, audio, and documents. If Cloudinary keys are missing, save an existing asset URL.</p>
+  <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+  <% if (!brands.length) { %>
+    <p class="form-error">Create a brand first before uploading media.</p>
+  <% } else { %>
+    <% if (cloudinaryReady) { %>
+      <form id="cloudinary-upload-form" class="form-grid">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label>Brand
+          <select name="brand" required>
+            <% brands.forEach((brand) => { %>
+              <option value="<%= brand._id %>"><%= brand.name %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label>Tags <input name="tags" placeholder="logo, product, offer"></label>
+        <label class="span-2">File <input name="asset" type="file" accept="image/*,video/*,audio/*,.pdf" required></label>
+        <label class="checkbox-row"><input name="consentRequired" type="checkbox"> This contains a real person and needs consent before clone/avatar use</label>
+        <button class="button" type="submit">Upload to Cloudinary</button>
+      </form>
+      <p id="upload-status" class="muted"></p>
+    <% } %>
+
+    <h3 class="section-subtitle">Save asset URL</h3>
+    <form action="/media/upload" method="post" class="form-grid">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label>Brand
+        <select name="brand" required>
+          <% brands.forEach((brand) => { %>
+            <option value="<%= brand._id %>"><%= brand.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>File name <input name="fileName" placeholder="Logo or product photo"></label>
+      <label>Tags <input name="tags" placeholder="logo, product, offer"></label>
+      <label>Type
+        <select name="fileType">
+          <option value="image">Image</option>
+          <option value="video">Video</option>
+          <option value="audio">Audio</option>
+          <option value="document">Document</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <label>MIME type <input name="mimeType" placeholder="image/png"></label>
+      <label class="span-2">Media URL <input name="fileUrl" type="url" placeholder="https://..." required></label>
+      <input name="publicId" type="hidden">
+      <input name="size" type="hidden">
+      <input name="folder" type="hidden" value="external">
+      <label class="checkbox-row"><input name="consentRequired" type="checkbox"> This contains a real person and needs consent before clone/avatar use</label>
+      <button class="button" type="submit">Save asset</button>
+    </form>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>Find media</h2>
+  <form action="/media" method="get" class="form-grid">
+    <label>Search <input name="q" value="<%= filters.q || '' %>" placeholder="logo, product, offer"></label>
+    <label>Brand
+      <select name="brand">
+        <option value="">All brands</option>
+        <% brands.forEach((brand) => { %>
+          <option value="<%= brand._id %>" <%= filters.brand === brand._id.toString() ? 'selected' : '' %>><%= brand.name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Type
+      <select name="type">
+        <option value="">All types</option>
+        <% ['image', 'video', 'audio', 'document', 'other'].forEach((type) => { %>
+          <option value="<%= type %>" <%= filters.type === type ? 'selected' : '' %>><%= type %></option>
+        <% }) %>
+      </select>
+    </label>
+    <button class="button ghost" type="submit">Filter</button>
+  </form>
+</section>
+
+<section class="media-grid">
+  <% if (!media.length) { %>
+    <article class="empty-state">
+      <h2>No media yet</h2>
+      <p>Upload logos, product photos, videos, and voice files for brand content.</p>
+    </article>
+  <% } %>
+  <% media.forEach((item) => { %>
+    <article class="media-card">
+      <% if (item.fileType === 'image') { %>
+        <img src="<%= item.fileUrl %>" alt="<%= item.fileName %>">
+      <% } else if (item.fileType === 'video') { %>
+        <video src="<%= item.fileUrl %>" controls preload="metadata" playsinline></video>
+      <% } else { %>
+        <div class="media-placeholder"><%= item.fileType %></div>
+      <% } %>
+      <div>
+        <h3><%= item.fileName %></h3>
+        <p><%= item.brand.name %> - <%= Math.round(item.size / 1024) %> KB</p>
+        <% if (item.aiInsights && item.aiInsights.summary) { %><p><strong>Insight:</strong> <%= item.aiInsights.summary %></p><% } %>
+        <% if (item.aiPrompt) { %><p><strong>AI prompt:</strong> <%= item.aiPrompt %></p><% } %>
+        <% if (item.variants && item.variants.length) { %>
+          <p class="muted">Creative tasks: <%= item.variants.length %></p>
+        <% } %>
+        <div class="stack-actions">
+          <form action="/media/<%= item._id %>/creative" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="button ghost" name="actionType" value="analyze" type="submit">Analyze</button>
+            <button class="button ghost" name="actionType" value="prompt" type="submit">Prompt</button>
+            <button class="button ghost" name="actionType" value="resize" type="submit">Resize set</button>
+            <button class="button ghost" name="actionType" value="background" type="submit">Remove BG</button>
+          </form>
+          <form action="/media/<%= item._id %>/create-draft" method="post" class="inline-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <select name="platform">
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube Shorts</option>
+              <option value="linkedin">LinkedIn</option>
+            </select>
+            <button class="button ghost" type="submit">Create draft</button>
+          </form>
+          <form action="/media/<%= item._id %>/creative" method="post" class="inline-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="actionType" value="variant">
+            <input name="prompt" placeholder="Variant prompt">
+            <button class="button ghost" type="submit">Variant</button>
+          </form>
+          <% if (item.consentRequired) { %>
+            <form action="/media/<%= item._id %>/creative" method="post" class="inline-form">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <span class="status-pill"><%= item.consentStatus %></span>
+              <button class="button ghost" name="actionType" value="accept_consent" type="submit">Accept consent</button>
+              <button class="button ghost" name="actionType" value="revoke_consent" type="submit">Revoke</button>
+            </form>
+          <% } %>
+        </div>
+        <form action="/media/<%= item._id %>?_method=DELETE" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="button ghost" type="submit">Delete</button>
+        </form>
+      </div>
+    </article>
+  <% }) %>
+</section>
+
+<% if (cloudinaryReady) { %>
+  <script src="/js/media-upload.js"></script>
+<% } %>

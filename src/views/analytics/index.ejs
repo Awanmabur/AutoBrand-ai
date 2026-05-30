@@ -1,0 +1,32 @@
+<section class="stats-grid">
+  <article class="stat-card"><span>Views</span><strong><%= totals.views %></strong></article>
+  <article class="stat-card"><span>Likes</span><strong><%= totals.likes %></strong></article>
+  <article class="stat-card"><span>Clicks</span><strong><%= totals.clicks %></strong></article>
+  <article class="stat-card"><span>Scheduled</span><strong><%= totals.scheduledCount %></strong></article>
+</section>
+
+<section class="panel">
+  <h2>AI insight</h2>
+  <p>Best platform signal: <strong><%= insights.bestPlatform %></strong></p>
+  <div class="detail-list">
+    <div><strong>Failed posts</strong><p class="muted"><%= insights.failedPosts %></p></div>
+    <div><strong>Video posts</strong><p class="muted"><%= insights.videoPosts %></p></div>
+  </div>
+  <ul class="clean-list">
+    <% insights.recommendations.forEach((recommendation) => { %><li><%= recommendation %></li><% }) %>
+  </ul>
+</section>
+
+<section class="post-list">
+  <% if (!analytics.length) { %><article class="empty-state"><h2>No analytics yet</h2><p>Connect social accounts and sync performance data.</p></article><% } %>
+  <% analytics.forEach((item) => { %>
+    <article class="post-row">
+      <div>
+        <p class="eyebrow"><%= item.brand.name %> / <%= item.platform %></p>
+        <h2><%= item.post ? item.post.title : 'Analytics record' %></h2>
+        <p><%= item.summary || 'No summary yet.' %></p>
+      </div>
+      <span class="status-pill"><%= item.engagementRate %>%</span>
+    </article>
+  <% }) %>
+</section>

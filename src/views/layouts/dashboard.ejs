@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= typeof title !== 'undefined' && title ? `${title} | ${appName}` : appName %></title>
+    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/dashboard-experience.css?v=20260522-logout-more3">
+  </head>
+  <body>
+    <%
+      const firstName = user && user.name ? user.name.split(' ')[0] : 'User';
+      const initials = user && user.name
+        ? user.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+        : 'AB';
+      const active = (matches) => matches.some((match) => currentPath === match || currentPath.startsWith(`${match}/`));
+      const userRole = user && user.role ? user.role : 'brand_owner';
+      const canSeeAdminTools = ['super_admin', 'platform_admin', 'billing_admin', 'ai_manager', 'integration_manager', 'support_agent', 'analyst'].includes(userRole);
+      const canSeePlans = ['super_admin', 'billing_admin', 'ai_manager', 'platform_admin'].includes(userRole) || (Array.isArray(user && user.permissions) && user.permissions.some((permission) => ['*', 'plans.view'].includes(permission)));
+      const navGroups = [
+        {
+          label: 'Overview',
+          links: [
+            { href: '/dashboard/overview', icon: 'home', label: 'Dashboard', badge: 'Home', active: currentPath === '/dashboard' || active(['/dashboard/overview']) },
+            { href: '/dashboard/quick-create', icon: 'plus', label: 'Full Composer', badge: 'AI', active: active(['/posts/new', '/dashboard/quick-create', '/ai']) },
+            { href: '/dashboard/brand-brain', icon: 'brain', label: 'Brand Brain', badge: 'Data', active: active(['/brands', '/dashboard/brand-brain']) },
+            { href: '/dashboard/content-library', icon: 'edit', label: 'Content Library', badge: 'Drafts', active: active(['/posts', '/dashboard/content-library']) && currentPath !== '/posts/new' }
+          ]
+        },
+        {
+          label: 'Planning & Creative',
+          links: [
+            { href: '/dashboard/campaigns', icon: 'grid', label: 'Campaigns & Growth', badge: 'Flow', active: active(['/campaigns', '/growth-studio', '/dashboard/campaigns']) },
+            { href: '/dashboard/media', icon: 'image', label: 'Media & Images', badge: 'Assets', active: active(['/media', '/dashboard/media']) },
+            { href: '/dashboard/video-system', icon: 'play', label: 'Video Studio', badge: 'Video', active: active(['/videos', '/templates', '/dashboard/video-system']) },
+            { href: '/dashboard/avatar-video', icon: 'avatar', label: 'Avatar Video', badge: 'Pro', active: active(['/avatars', '/dashboard/avatar-video']) }
+          ]
+        },
+        {
+          label: 'Publishing',
+          links: [
+            { href: '/dashboard/calendar', icon: 'calendar', label: 'Calendar & Schedule', badge: 'Plan', active: active(['/calendar', '/dashboard/calendar']) },
+            { href: '/dashboard/social', icon: 'plug', label: 'Social Channels', badge: 'API', active: active(['/social', '/integrations', '/whatsapp', '/dashboard/social']) },
+            { href: '/dashboard/approvals', icon: 'check', label: 'Approvals & Handoff', badge: 'Review', active: active(['/approvals', '/posts/handoff', '/dashboard/approvals']) },
+            { href: '/dashboard/analytics', icon: 'chart', label: 'Analytics', badge: 'Live', active: active(['/analytics', '/dashboard/analytics']) },
+            { href: '/dashboard/notifications', icon: 'message', label: 'Notifications', badge: 'Inbox', active: active(['/notifications', '/dashboard/notifications']) }
+          ]
+        },
+        {
+          label: 'Admin',
+          links: [
+            { href: '/dashboard/team', icon: 'users', label: 'Team & Roles', badge: 'RBAC', active: active(['/team', '/roles', '/users', '/dashboard/team']) },
+            { href: '/dashboard/billing', icon: 'card', label: 'Billing & Usage', badge: 'Plan', active: active(['/billing', '/dashboard/billing']) },
+            ...(canSeePlans ? [{ href: '/dashboard/plans', icon: 'card', label: 'Plan Management', badge: 'Plans', active: active(['/dashboard/plans', '/admin/plans']) }] : []),
+            { href: '/dashboard/settings', icon: 'settings', label: 'Settings & Security', badge: 'Config', active: active(['/settings', '/security', '/dashboard/settings']) },
+            ...(canSeeAdminTools ? [{ href: '/dashboard/admin', icon: 'shield', label: 'Admin', badge: 'Root', active: active(['/admin', '/dashboard/admin']) }] : [])
+          ]
+        }
+      ];
+    %>
+
+    <svg class="svg-sprite" aria-hidden="true">
+      <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5Z"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="icon-users" viewBox="0 0 24 24"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0ZM4 21a8 8 0 0 1 16 0M19 8a3 3 0 0 1 0 6M22 21a6 6 0 0 0-4-5.7"/></symbol>
+      <symbol id="icon-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3v.4A3.5 3.5 0 0 0 4 14a3 3 0 0 0 3 3h1v-4M15 4a3 3 0 0 1 3 3v.4A3.5 3.5 0 0 1 20 14a3 3 0 0 1-3 3h-1v-4M9 4v16M15 4v16M9 9h6M9 14h6"/></symbol>
+      <symbol id="icon-pen" viewBox="0 0 24 24"><path d="m4 20 4.8-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20ZM13.5 6.5l4 4"/></symbol>
+      <symbol id="icon-grid" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h16M5 16l10.5-10.5a2.1 2.1 0 0 1 3 3L8 19H5v-3Z"/></symbol>
+      <symbol id="icon-template" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 10h16M9 10v9"/></symbol>
+      <symbol id="icon-image" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM4 16l5-5 4 4 2-2 5 5"/></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7V5Z"/></symbol>
+      <symbol id="icon-avatar" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0"/></symbol>
+      <symbol id="icon-message" viewBox="0 0 24 24"><path d="M5 5h14v10H8l-4 4V6a1 1 0 0 1 1-1Z"/></symbol>
+      <symbol id="icon-calendar" viewBox="0 0 24 24"><path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/></symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-7-8-3ZM11 14l4-5"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+      <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 19h16M7 16V9M12 16V5M17 16v-7"/></symbol>
+      <symbol id="icon-card" viewBox="0 0 24 24"><path d="M3 7h18v10H3zM3 10h18"/></symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3.5 8 7 10 3.5-2 7-5 7-10V6l-7-3Z"/></symbol>
+      <symbol id="icon-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v5a5 5 0 0 1-10 0V7ZM12 17v4"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19 13v-2l-2.2-.7-.5-1.2 1-2-1.4-1.4-2 1-1.2-.5L12 4h-2l-.7 2.2-1.2.5-2-1L4.7 7.1l1 2-.5 1.2L3 11v2l2.2.7.5 1.2-1 2 1.4 1.4 2-1 1.2.5L10 20h2l.7-2.2 1.2-.5 2 1 1.4-1.4-1-2 .5-1.2 2.2-.7Z"/></symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></symbol>
+      <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+      <symbol id="icon-facebook" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#1877F2" stroke="none"/><path fill="#fff" stroke="none" d="m16.67 15.47.53-3.47h-3.33V9.75c0-.95.47-1.88 1.96-1.88h1.51V4.92s-1.37-.23-2.69-.23c-2.74 0-4.53 1.66-4.53 4.67V12H7.08v3.47h3.04v8.38a12.2 12.2 0 0 0 3.75 0v-8.38h2.8Z"/></symbol>
+      <symbol id="icon-instagram" viewBox="0 0 24 24"><defs><radialGradient id="igGradient" cx="30%" cy="107%" r="130%"><stop offset="0" stop-color="#fdf497"/><stop offset=".08" stop-color="#fdf497"/><stop offset=".38" stop-color="#fd5949"/><stop offset=".62" stop-color="#d6249f"/><stop offset="1" stop-color="#285AEB"/></radialGradient></defs><rect width="24" height="24" rx="6" fill="url(#igGradient)" stroke="none"/><path fill="#fff" fill-rule="evenodd" clip-rule="evenodd" stroke="none" d="M7.3 5.2h9.4a2.1 2.1 0 0 1 2.1 2.1v9.4a2.1 2.1 0 0 1-2.1 2.1H7.3a2.1 2.1 0 0 1-2.1-2.1V7.3a2.1 2.1 0 0 1 2.1-2.1Zm-.1 2.1v9.4c0 .33.27.6.6.6h8.4c.33 0 .6-.27.6-.6V7.3a.6.6 0 0 0-.6-.6H7.8a.6.6 0 0 0-.6.6ZM12 8.35a3.65 3.65 0 1 1 0 7.3 3.65 3.65 0 0 1 0-7.3Zm0 1.55a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Zm4.55-2.1a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7Z"/></symbol>
+      <symbol id="icon-linkedin" viewBox="0 0 24 24"><rect width="24" height="24" rx="3" fill="#0A66C2" stroke="none"/><path fill="#fff" stroke="none" d="M6.94 20.45H3.38V9h3.56v11.45ZM5.16 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12Zm15.29 13.02H16.9v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29Z"/></symbol>
+      <symbol id="icon-youtube" viewBox="0 0 24 24"><path fill="#FF0000" stroke="none" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8Z"/><path fill="#fff" stroke="none" d="m9.55 15.57 6.27-3.57-6.27-3.57v7.14Z"/></symbol>
+      <symbol id="icon-tiktok" viewBox="0 0 24 24"><path fill="#25F4EE" stroke="none" transform="translate(-.65 .55) scale(.98)" d="M12.53.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03a11.4 11.4 0 0 1-5.82-1.9c-.01 2.92.01 5.84-.02 8.75a7.1 7.1 0 0 1-1.35 3.94 7.06 7.06 0 0 1-5.91 3.21 7.1 7.1 0 0 1-4.08-1.03 7.22 7.22 0 0 1-3.65-5.71 8.8 8.8 0 0 1-.01-1.49 7.21 7.21 0 0 1 2.58-4.96 7.08 7.08 0 0 1 6.15-1.72c.02 1.48-.04 2.96-.04 4.44a3.54 3.54 0 0 0-3.02.37 3.35 3.35 0 0 0-1.36 1.75c-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87a3.4 3.4 0 0 0 2.77-1.61c.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07Z"/><path fill="#FE2C55" stroke="none" transform="translate(.65 -.35) scale(.98)" d="M12.53.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03a11.4 11.4 0 0 1-5.82-1.9c-.01 2.92.01 5.84-.02 8.75a7.1 7.1 0 0 1-1.35 3.94 7.06 7.06 0 0 1-5.91 3.21 7.1 7.1 0 0 1-4.08-1.03 7.22 7.22 0 0 1-3.65-5.71 8.8 8.8 0 0 1-.01-1.49 7.21 7.21 0 0 1 2.58-4.96 7.08 7.08 0 0 1 6.15-1.72c.02 1.48-.04 2.96-.04 4.44a3.54 3.54 0 0 0-3.02.37 3.35 3.35 0 0 0-1.36 1.75c-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87a3.4 3.4 0 0 0 2.77-1.61c.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07Z"/><path fill="#05070A" stroke="none" d="M12.53.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03a11.4 11.4 0 0 1-5.82-1.9c-.01 2.92.01 5.84-.02 8.75a7.1 7.1 0 0 1-1.35 3.94 7.06 7.06 0 0 1-5.91 3.21 7.1 7.1 0 0 1-4.08-1.03 7.22 7.22 0 0 1-3.65-5.71 8.8 8.8 0 0 1-.01-1.49 7.21 7.21 0 0 1 2.58-4.96 7.08 7.08 0 0 1 6.15-1.72c.02 1.48-.04 2.96-.04 4.44a3.54 3.54 0 0 0-3.02.37 3.35 3.35 0 0 0-1.36 1.75c-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87a3.4 3.4 0 0 0 2.77-1.61c.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07Z"/></symbol>
+      <symbol id="icon-whatsapp" viewBox="0 0 24 24"><path fill="#25D366" stroke="none" d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35ZM12.05 21.79h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.45 4.44-9.89 9.89-9.89a9.83 9.83 0 0 1 9.88 9.89c0 5.45-4.44 9.89-9.88 9.89ZM20.52 3.45A11.82 11.82 0 0 0 12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.3-1.65a11.88 11.88 0 0 0 5.69 1.45h.01c6.55 0 11.89-5.34 11.89-11.89a11.82 11.82 0 0 0-3.43-8.46Z"/></symbol>
+      <symbol id="icon-google_business" viewBox="0 0 24 24"><path fill="#4285F4" stroke="none" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47a5.54 5.54 0 0 1-2.42 3.57v2.96h3.91c2.29-2.11 3.53-5.22 3.53-8.77Z"/><path fill="#34A853" stroke="none" d="M12 24c3.24 0 5.96-1.08 7.95-2.96l-3.91-2.96c-1.08.72-2.45 1.15-4.04 1.15-3.1 0-5.73-2.09-6.67-4.9H1.3v3.05A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" stroke="none" d="M5.33 14.33A7.2 7.2 0 0 1 4.95 12c0-.81.14-1.6.38-2.33V6.62H1.3A12 12 0 0 0 0 12c0 1.94.46 3.77 1.3 5.38l4.03-3.05Z"/><path fill="#EA4335" stroke="none" d="M12 4.77c1.76 0 3.34.6 4.59 1.79l3.44-3.44C17.95 1.18 15.24 0 12 0A12 12 0 0 0 1.3 6.62l4.03 3.05C6.27 6.86 8.9 4.77 12 4.77Z"/></symbol>
+      <symbol id="icon-pinterest" viewBox="0 0 24 24"><path fill="#E60023" stroke="none" d="M12.02 0C5.4 0 .03 5.37.03 11.99c0 5.08 3.16 9.42 7.62 11.17-.11-.95-.2-2.4.04-3.44.22-.94 1.41-5.96 1.41-5.96s-.36-.72-.36-1.78c0-1.67.97-2.91 2.17-2.91 1.02 0 1.52.77 1.52 1.69 0 1.03-.66 2.57-.99 4-.28 1.2.6 2.17 1.78 2.17 2.13 0 3.77-2.25 3.77-5.5 0-2.87-2.06-4.88-5.01-4.88-3.41 0-5.42 2.56-5.42 5.21 0 1.03.4 2.14.89 2.74.1.12.11.22.08.35l-.33 1.36c-.05.22-.17.27-.4.16-1.5-.7-2.44-2.89-2.44-4.65 0-3.79 2.75-7.26 7.93-7.26 4.16 0 7.4 2.97 7.4 6.93 0 4.14-2.61 7.46-6.23 7.46-1.22 0-2.36-.63-2.75-1.38l-.75 2.85c-.27 1.04-1 2.34-1.49 3.14A12 12 0 1 0 12.02 0Z"/></symbol>
+      <symbol id="icon-threads" viewBox="0 0 24 24"><path fill="#05070A" stroke="none" d="M12.19 24h-.01c-3.58-.02-6.33-1.2-8.18-3.51-1.65-2.05-2.5-4.9-2.53-8.48v-.02C1.5 8.41 2.35 5.56 4 3.51 5.85 1.2 8.6.02 12.18 0h.01c2.75.02 5.03.7 6.79 2.04 1.64 1.24 2.79 2.96 3.44 5.11l-2.29.69c-1.09-3.62-3.76-5.43-7.95-5.45-2.83.02-4.9.88-6.16 2.54C4.75 6.62 4.1 9 4.08 12c.02 3 .67 5.38 1.94 7.07 1.26 1.67 3.33 2.52 6.16 2.54 2.55-.02 4.51-.65 5.83-1.89 1.49-1.4 1.46-3.09.97-4.11-.29-.6-.8-1.1-1.48-1.45-.17 1.24-.55 2.25-1.12 2.99-.78 1.01-1.89 1.54-3.32 1.57-1.08.03-2.12-.24-2.92-.75-.94-.6-1.5-1.51-1.55-2.55-.06-1.06.4-2.03 1.3-2.73.86-.67 2.06-1.02 3.46-1.01 1 .01 1.94.05 2.79.14-.11-.67-.34-1.2-.68-1.58-.47-.52-1.18-.78-2.12-.79h-.03c-.76 0-1.79.21-2.46 1.21l-1.98-1.32c.93-1.4 2.54-2.17 4.52-2.17h.05c3.18.02 5.09 2.08 5.31 5.68l.26.12c1.24.57 2.22 1.48 2.81 2.63.83 1.6.91 4.06-1.09 5.94-1.75 1.65-4.24 2.49-7.42 2.51Zm1.1-9.88c-1.39 0-2.15.64-2.11 1.22.04.58.73.99 1.7.99h.08c1.19-.03 1.87-.61 2.15-2.1a14.4 14.4 0 0 0-1.82-.11Z"/></symbol>
+      <symbol id="icon-x_platform" viewBox="0 0 24 24"><path fill="#05070A" stroke="none" d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.59l5.24 6.93 6.07-6.93Zm-1.29 19.49h2.04L6.49 3.24H4.3l13.31 17.4Z"/></symbol>
+    </svg>
+
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+    <aside class="sidebar" id="sidebar" aria-label="Dashboard sidebar">
+      <div class="sidebar-top">
+        <a class="brand" href="/dashboard">
+          <span class="brand-logo">AB</span>
+          <span><strong>AutoBrand AI</strong><small>Social SaaS</small></span>
+        </a>
+        <button class="icon-btn close-drawer" id="closeDrawer" type="button" aria-label="Close menu"><svg class="icon"><use href="#icon-x"></use></svg></button>
+      </div>
+
+      <div class="workspace-card">
+        <span>Workspace</span>
+        <strong><%= appName %></strong>
+        <small>AI content, media, calendar and social APIs</small>
+      </div>
+
+      <div class="sidebar-scroll">
+        <% navGroups.forEach((group) => { %>
+          <p class="nav-label"><%= group.label %></p>
+          <nav class="side-nav">
+            <% group.links.forEach((link) => { %>
+              <a class="<%= link.active ? 'active' : '' %>" href="<%= link.href %>">
+                <span><svg class="icon"><use href="#icon-<%= link.icon %>"></use></svg><%= link.label %></span>
+                <b><%= link.badge %></b>
+              </a>
+              <% if (group.label === 'Admin' && link.label === 'Settings') { %>
+                <form class="side-nav-logout" action="/auth/logout" method="post">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <button class="side-nav-button" type="submit"><span><svg class="icon"><use href="#icon-x"></use></svg>Logout</span><b>Exit</b></button>
+                </form>
+              <% } %>
+            <% }) %>
+          </nav>
+        <% }) %>
+
+        <div class="mobile-menu-actions" aria-label="Mobile account and theme controls">
+          <button class="mobile-theme-toggle" id="themeToggleMenu" type="button" aria-label="Toggle theme">
+            <svg class="icon mobile-theme-icon"><use href="#icon-moon"></use></svg>
+            <strong>Dark mode</strong>
+          </button>
+          <div class="mobile-profile" aria-label="Current user">
+            <span><%= initials %></span>
+            <strong><%= firstName %></strong>
+          </div>
+        </div>
+
+        <div class="upgrade-card">
+          <strong>Upgrade to Studio</strong>
+          <p>Unlock client approvals, AI video, avatar video, larger workspaces and premium exports.</p>
+          <a class="btn btn-light" href="/dashboard/billing">View plan</a>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="openDrawer" type="button" aria-label="Open menu"><svg class="icon"><use href="#icon-menu"></use></svg></button>
+        <div class="top-title">
+          <h1 id="pageTitle"><%= typeof title !== 'undefined' && title ? title : 'Dashboard' %></h1>
+        </div>
+        <div class="top-actions">
+          <input class="search" type="search" placeholder="Search campaigns, brands, posts..." aria-label="Search">
+          <button class="icon-btn" id="themeToggle" type="button" aria-label="Toggle theme"><svg class="icon"><use href="#icon-moon"></use></svg></button>
+          <a class="btn btn-primary" href="/dashboard/quick-create"><svg class="icon"><use href="#icon-plus"></use></svg>Create</a>
+          <div class="profile"><span><%= initials %></span><strong><%= firstName %></strong></div>
+          <form action="/auth/logout" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="icon-btn" type="submit" aria-label="Logout"><svg class="icon"><use href="#icon-x"></use></svg></button>
+          </form>
+        </div>
+      </header>
+
+      <section class="page active">
+        <%- body %>
+      </section>
+    </main>
+
+    <div class="modal-backdrop detail-modal-backdrop" id="detailModalBackdrop" aria-hidden="true">
+      <section class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle">
+        <div class="modal-head">
+          <div>
+            <span class="modal-kicker" id="detailModalKicker">Details</span>
+            <h2 id="detailModalTitle">Details</h2>
+          </div>
+          <button class="icon-btn" id="detailModalClose" type="button" aria-label="Close details"><svg class="icon"><use href="#icon-x"></use></svg></button>
+        </div>
+        <div class="modal-body" id="detailModalBody"></div>
+      </section>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script>
+      (() => {
+        const body = document.body;
+        const sidebar = document.getElementById('sidebar');
+        const drawerBackdrop = document.getElementById('drawerBackdrop');
+        const openDrawer = document.getElementById('openDrawer');
+        const closeDrawer = document.getElementById('closeDrawer');
+        const themeToggle = document.getElementById('themeToggle');
+        const themeToggleMenu = document.getElementById('themeToggleMenu');
+        const savedTheme = localStorage.getItem('autoBrandDashboardTheme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          body.classList.add('dark-mode');
+        }
+        const syncTheme = () => {
+          const isDark = body.classList.contains('dark-mode');
+          if (themeToggle) themeToggle.setAttribute('aria-label', isDark ? 'Use light mode' : 'Use dark mode');
+          if (themeToggleMenu) {
+            const label = themeToggleMenu.querySelector('strong');
+            if (label) label.textContent = isDark ? 'Light mode' : 'Dark mode';
+          }
+        };
+        const toggleTheme = () => {
+          body.classList.toggle('dark-mode');
+          localStorage.setItem('autoBrandDashboardTheme', body.classList.contains('dark-mode') ? 'dark' : 'light');
+          syncTheme();
+        };
+        const showDrawer = () => {
+          sidebar.classList.add('open');
+          drawerBackdrop.classList.add('show');
+        };
+        const hideDrawer = () => {
+          sidebar.classList.remove('open');
+          drawerBackdrop.classList.remove('show');
+        };
+        if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+        if (themeToggleMenu) themeToggleMenu.addEventListener('click', toggleTheme);
+        if (openDrawer) openDrawer.addEventListener('click', showDrawer);
+        if (closeDrawer) closeDrawer.addEventListener('click', hideDrawer);
+        if (drawerBackdrop) drawerBackdrop.addEventListener('click', hideDrawer);
+        syncTheme();
+
+        const detailBackdrop = document.getElementById('detailModalBackdrop');
+        const detailClose = document.getElementById('detailModalClose');
+        const detailTitle = document.getElementById('detailModalTitle');
+        const detailKicker = document.getElementById('detailModalKicker');
+        const detailBody = document.getElementById('detailModalBody');
+        const closeDetail = () => {
+          if (!detailBackdrop) return;
+          detailBackdrop.classList.remove('show');
+          detailBackdrop.setAttribute('aria-hidden', 'true');
+          detailBody.innerHTML = '';
+        };
+        document.addEventListener('click', (event) => {
+          const trigger = event.target.closest('[data-detail-modal]');
+          if (!trigger || !detailBackdrop) return;
+          const source = document.querySelector(trigger.dataset.detailModal);
+          if (!source) return;
+          detailTitle.textContent = trigger.dataset.detailTitle || source.dataset.detailTitle || 'Details';
+          detailKicker.textContent = trigger.dataset.detailKicker || source.dataset.detailKicker || 'Details';
+          detailBody.innerHTML = source.innerHTML;
+          detailBackdrop.classList.add('show');
+          detailBackdrop.setAttribute('aria-hidden', 'false');
+        });
+        if (detailClose) detailClose.addEventListener('click', closeDetail);
+        if (detailBackdrop) detailBackdrop.addEventListener('click', (event) => {
+          if (event.target === detailBackdrop) closeDetail();
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') closeDetail();
+        });
+      })();
+    </script>
+  </body>
+</html>

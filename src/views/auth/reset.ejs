@@ -1,0 +1,12 @@
+<div class="section-kicker">New password</div>
+<h1>Set password.</h1>
+<p>Choose a new password to return to your AutoBrand AI workspace.</p>
+
+<% if (error) { %><p class="form-error"><%= error %></p><% } %>
+
+<form action="/auth/reset-password" method="post" class="auth-form">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <input type="hidden" name="token" value="<%= token || '' %>">
+  <input name="password" type="password" minlength="8" placeholder="Create password" autocomplete="new-password" aria-label="Create password" required>
+  <button class="btn btn-primary" type="submit">Update password</button>
+</form>

@@ -1,0 +1,45 @@
+{
+  "name": "autobrand-ai-social-saas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI social media management SaaS platform",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "seed": "node scripts/seed.js",
+    "seed:plans": "node scripts/seedPlans.js",
+    "seed:superadmin": "node scripts/seedSuperadmin.js",
+    "seed:permissions": "node scripts/seedPermissions.js",
+    "seed:platform-rules": "node scripts/seedPlatformRules.js",
+    "seed:ai-providers": "node scripts/seedAiProviders.js",
+    "lint": "node --check server.js && find src scripts workers -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.0.0",
+    "cloudinary": "^2.0.0",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.0.0",
+    "ejs": "^3.1.10",
+    "express": "^4.18.0",
+    "express-ejs-layouts": "^2.5.1",
+    "express-rate-limit": "^7.0.0",
+    "ffmpeg-static": "^5.2.0",
+    "helmet": "^7.0.0",
+    "https-proxy-agent": "^7.0.0",
+    "ioredis": "^5.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "method-override": "^3.0.0",
+    "mongoose": "^8.0.0",
+    "morgan": "^1.10.0",
+    "openai": "^4.0.0",
+    "sharp": "^0.33.0",
+    "slugify": "^1.6.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}

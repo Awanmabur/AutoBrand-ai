@@ -1,0 +1,59 @@
+<section class="panel">
+  <h2>Create campaign</h2>
+  <% if (!brands.length) { %>
+    <p class="form-error">Create a Brand Brain first.</p>
+  <% } else { %>
+    <form action="/campaigns" method="post" class="form-grid">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label>Brand
+        <select name="brand" required>
+          <% brands.forEach((brand) => { %><option value="<%= brand._id %>"><%= brand.name %></option><% }) %>
+        </select>
+      </label>
+      <label>Name <input name="name" placeholder="Weekend voucher push" required></label>
+      <label>Goal <input name="goal" placeholder="Sell 100 daily vouchers"></label>
+      <label>Platforms <input name="platforms" value="facebook, instagram, whatsapp"></label>
+      <label>Duration days <input name="durationDays" type="number" min="1" max="30" value="7"></label>
+      <label>Posting frequency <input name="postingFrequency" placeholder="2 posts per day"></label>
+      <label>Start date <input name="startDate" type="date"></label>
+      <label>End date <input name="endDate" type="date"></label>
+      <label class="span-2">Description <textarea name="description" rows="3"></textarea></label>
+      <button class="button" type="submit">Create campaign plan</button>
+    </form>
+  <% } %>
+</section>
+
+<section class="post-list">
+  <% if (!campaigns.length) { %><article class="empty-state"><h2>No campaigns yet</h2><p>Create an AI campaign plan for a brand.</p></article><% } %>
+  <% campaigns.forEach((campaign) => { %>
+    <article class="post-row">
+      <div>
+        <p class="eyebrow"><%= campaign.brand.name %> / <%= campaign.status %></p>
+        <h2><%= campaign.name %></h2>
+        <p><%= campaign.goal || campaign.description || 'No goal set.' %></p>
+        <p class="muted"><%= campaign.platforms.join(', ') %></p>
+        <% if (campaign.aiPlan.postIdeas.length) { %>
+          <ul class="clean-list">
+            <% campaign.aiPlan.postIdeas.slice(0, 4).forEach((idea) => { %><li>Day <%= idea.day %>: <%= idea.title %></li><% }) %>
+          </ul>
+        <% } %>
+      </div>
+      <div class="stack-actions">
+        <span class="status-pill"><%= campaign.aiPlan.postIdeas.length %> ideas</span>
+        <form action="/campaigns/<%= campaign._id %>/create-drafts" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="button ghost" type="submit">Create drafts</button>
+        </form>
+        <form action="/campaigns/<%= campaign._id %>/status" method="post" class="inline-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <select name="status">
+            <% ['draft', 'active', 'paused', 'completed', 'archived'].forEach((status) => { %>
+              <option value="<%= status %>" <%= campaign.status === status ? 'selected' : '' %>><%= status %></option>
+            <% }) %>
+          </select>
+          <button class="button ghost" type="submit">Update</button>
+        </form>
+      </div>
+    </article>
+  <% }) %>
+</section>

@@ -1,0 +1,309 @@
+<section class="composer-hero">
+  <div>
+    <p class="eyebrow">post studio</p>
+    <h2>Create from Brand Brain</h2>
+    <p>Choose the brand, then save, schedule, or publish. AutoBrand uses the saved audience, offer, tone, CTA, hashtags, media mix, and posting rules automatically.</p>
+  </div>
+  <div class="composer-checklist">
+    <strong>Default output</strong>
+    <span>Caption</span>
+    <span>Image/slides</span>
+    <span>Video storyboard</span>
+    <span>Facebook Pages</span>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-heading-row"><div><p class="eyebrow">one-off post</p><h2>New post</h2></div><a class="button ghost" href="/dashboard/approvals">Auto schedule</a></div>
+  <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+  <% if (!brands.length) { %>
+    <p class="form-error">Create a brand first before creating posts.</p>
+  <% } %>
+  <form action="/posts" method="post" class="form-grid composer-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <label>Brand
+      <select name="brand" required>
+        <% brands.forEach((brand) => { %>
+          <option value="<%= brand._id %>" <%= String(form.brand || activeBrandId) === String(brand._id) ? 'selected' : '' %>><%= brand.name %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label>Creation mode
+      <select name="creationMode">
+        <option value="ai" <%= form.creationMode !== 'manual' ? 'selected' : '' %>>Use Brand Brain</option>
+        <option value="manual" <%= form.creationMode === 'manual' ? 'selected' : '' %>>Manual with Brand Brain defaults</option>
+      </select>
+    </label>
+
+    <label>Workflow
+      <select name="workflowMode">
+        <% ['manual', 'handoff', 'auto'].forEach((mode) => { %>
+          <option value="<%= mode %>" <%= (form.workflowMode || 'manual') === mode ? 'selected' : '' %>><%= mode.replace(/_/g, ' ') %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label>Content goal
+      <select name="contentGoal">
+        <% (contentGoals || []).forEach((goal) => { %>
+          <option value="<%= goal %>" <%= (form.contentGoal || 'awareness') === goal ? 'selected' : '' %>><%= goal.replace(/_/g, ' ') %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label class="checkbox-row"><input name="approvalRequired" type="checkbox" value="on" <%= form.approvalRequired === 'on' || form.approvalRequired === true ? 'checked' : '' %>> Require approval first</label>
+    <label class="checkbox-row"><input name="publishAfterApproval" type="checkbox" value="on" <%= form.publishAfterApproval === 'on' || form.publishAfterApproval === true ? 'checked' : '' %>> Publish after approval</label>
+
+    <label class="span-2">Caption override
+      <textarea name="caption" rows="6" placeholder="Leave empty to create from Brand Brain"><%= form.caption || generated?.caption || '' %></textarea>
+    </label>
+
+    <label>Schedule time <input name="scheduledAt" type="datetime-local" value="<%= form.scheduledAt || '' %>"></label>
+    <div class="composer-actions">
+      <button class="button ghost" type="submit" name="action" value="save">Save draft</button>
+      <button class="button ghost" type="submit" name="action" value="schedule">Schedule</button>
+      <button class="button" type="submit" name="action" value="publish">Publish now</button>
+    </div>
+
+    <details class="span-2 fieldset" open>
+      <summary>Platforms and connected accounts</summary>
+      <% const chosenAccounts = Array.isArray(form.targetAccounts) ? form.targetAccounts : form.targetAccounts ? [form.targetAccounts] : []; %>
+      <% const selectedPlatforms = Array.isArray(form.platforms) ? form.platforms : form.platforms ? [form.platforms] : form.platform ? [form.platform] : ['facebook']; %>
+      <div class="platform-multi-grid channel-spaced-grid">
+        <% platforms.forEach((platform) => { %>
+          <label class="checkbox-row platform-option">
+            <input name="platforms" type="checkbox" value="<%= platform %>" <%= selectedPlatforms.includes(platform) ? 'checked' : '' %>>
+            <span><strong><%= platform.replace(/_/g, ' ') %></strong></span>
+          </label>
+        <% }) %>
+      </div>
+      <% if (!socialAccounts.length) { %><p class="muted">No connected accounts yet. Connect accounts from Social first.</p><% } %>
+      <% const groupedAccounts = socialAccounts.reduce((map, account) => { (map[account.platform] = map[account.platform] || []).push(account); return map; }, {}); %>
+      <% Object.keys(groupedAccounts).sort().forEach((platform) => { %>
+        <div class="account-platform-group" data-account-platform-group="<%= platform %>">
+          <p class="eyebrow"><%= platform.replace(/_/g, ' ') %></p>
+          <% groupedAccounts[platform].forEach((account) => { %>
+            <label class="checkbox-row target-account-option" data-brand="<%= account.brand._id %>" data-platform="<%= account.platform %>">
+              <input name="targetAccounts" type="checkbox" value="<%= account._id %>" <%= chosenAccounts.includes(String(account._id)) ? 'checked' : '' %>>
+              <span><strong><%= account.accountName %></strong> <small><%= account.platform %> / <%= account.brand.name %></small></span>
+            </label>
+          <% }) %>
+        </div>
+      <% }) %>
+    </details>
+
+    <details class="span-2 fieldset">
+      <summary>Output override</summary>
+      <label>Post format
+        <select name="type" data-post-type-select>
+          <% postTypes.forEach((type) => { %>
+            <option value="<%= type %>" <%= (form.type || 'image') === type ? 'selected' : '' %>><%= type.replace(/_/g, ' ') %></option>
+          <% }) %>
+        </select>
+      </label>
+      <% const mediaPreset = form.mediaPreset || (form.type === 'carousel' ? `carousel-${Math.max(2, Math.min(5, Number(form.imageCount || 3)))}` : form.type === 'video' ? 'video' : form.type === 'text' ? 'text' : `image-${Math.max(1, Math.min(5, Number(form.imageCount || 1)))}`); %>
+      <label>Media output
+        <select name="mediaPreset" data-media-preset-select>
+          <option value="image-1" data-output-kind="image" <%= mediaPreset === 'image-1' ? 'selected' : '' %>>1 image</option>
+          <option value="image-2" data-output-kind="image" <%= mediaPreset === 'image-2' ? 'selected' : '' %>>2 images</option>
+          <option value="image-3" data-output-kind="image" <%= mediaPreset === 'image-3' ? 'selected' : '' %>>3 images</option>
+          <option value="image-4" data-output-kind="image" <%= mediaPreset === 'image-4' ? 'selected' : '' %>>4 images</option>
+          <option value="image-5" data-output-kind="image" <%= mediaPreset === 'image-5' ? 'selected' : '' %>>5 images</option>
+          <option value="carousel-2" data-output-kind="carousel" <%= mediaPreset === 'carousel-2' ? 'selected' : '' %>>2-image carousel</option>
+          <option value="carousel-3" data-output-kind="carousel" <%= mediaPreset === 'carousel-3' ? 'selected' : '' %>>3-image carousel</option>
+          <option value="carousel-4" data-output-kind="carousel" <%= mediaPreset === 'carousel-4' ? 'selected' : '' %>>4-image carousel</option>
+          <option value="carousel-5" data-output-kind="carousel" <%= mediaPreset === 'carousel-5' ? 'selected' : '' %>>5-image carousel</option>
+          <option value="video" data-output-kind="video" <%= mediaPreset === 'video' ? 'selected' : '' %>>Video</option>
+          <option value="text" data-output-kind="text" <%= mediaPreset === 'text' ? 'selected' : '' %>>Text only</option>
+        </select>
+        <small class="output-intent-note" data-output-guidance>Output follows the selected post format.</small>
+      </label>
+    </details>
+
+    <details class="span-2 fieldset">
+      <summary>Copy overrides</summary>
+      <label>Content angle
+        <select name="contentType">
+          <% contentTypes.forEach((type) => { %>
+            <option value="<%= type %>" <%= form.contentType === type ? 'selected' : '' %>><%= type.replace(/_/g, ' ') %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>Audience focus <input name="audience" value="<%= form.audience || '' %>"></label>
+      <label>Tone override <input name="toneOverride" value="<%= form.toneOverride || '' %>" placeholder="friendly, bold, premium..."></label>
+      <label>CTA style
+        <select name="ctaStyle">
+          <% ['brand_default', 'soft', 'direct', 'urgent', 'educational', 'lead_magnet', 'book_call', 'shop_now'].forEach((style) => { %>
+            <option value="<%= style %>" <%= (form.ctaStyle || 'brand_default') === style ? 'selected' : '' %>><%= style.replace(/_/g, ' ') %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label class="span-2">Goal override <input name="goal" value="<%= form.goal || '' %>"></label>
+      <label class="span-2">Offer override <input name="offer" value="<%= form.offer || '' %>"></label>
+      <label>Title <input name="title" value="<%= form.title || generated?.title || '' %>"></label>
+      <label>Link <input name="link" value="<%= form.link || '' %>" placeholder="https://..."></label>
+      <label data-intent-group="video">Video title <input name="videoTitle" value="<%= form.videoTitle || '' %>"></label>
+      <label data-intent-group="video">Thumbnail URL <input name="thumbnail" value="<%= form.thumbnail || '' %>" placeholder="https://..."></label>
+      <label class="span-2" data-intent-group="video">Short video hook <input name="shortVideoHook" value="<%= form.shortVideoHook || '' %>" placeholder="First 3 seconds..."></label>
+      <label class="span-2">Description / long copy
+        <textarea name="description" rows="4"><%= form.description || generated?.description || '' %></textarea>
+      </label>
+      <label class="span-2" data-intent-group="video">Video description
+        <textarea name="videoDescription" rows="3"><%= form.videoDescription || '' %></textarea>
+      </label>
+      <label class="span-2">First comment
+        <textarea name="firstComment" rows="3"><%= form.firstComment || '' %></textarea>
+      </label>
+      <label class="span-2" data-intent-group="image">Alt text
+        <textarea name="altText" rows="3"><%= form.altText || '' %></textarea>
+      </label>
+      <label class="span-2">Hashtags
+        <textarea name="hashtags" rows="3"><%= form.hashtags || generated?.hashtags?.join(' ') || '' %></textarea>
+      </label>
+      <label>Client reviewer email <input type="email" name="handoffReviewerEmail" value="<%= form.handoffReviewerEmail || '' %>" placeholder="client@example.com"></label>
+      <label>AI provider <input name="aiProvider" value="<%= form.aiProvider || '' %>" placeholder="Plan default"></label>
+      <label>AI model <input name="aiModel" value="<%= form.aiModel || '' %>" placeholder="Plan default"></label>
+      <label class="span-2">Handoff notes
+        <textarea name="handoffNotes" rows="3"><%= form.handoffNotes || '' %></textarea>
+      </label>
+    </details>
+
+    <details class="span-2 fieldset" data-intent-section="existing-media">
+      <summary>Use uploaded media or URLs</summary>
+      <% const chosenMedia = Array.isArray(form.media) ? form.media : form.media ? [form.media] : []; %>
+      <% if (!media.length) { %><p class="muted">No media yet. AutoBrand will generate media that matches the selected format.</p><% } %>
+      <p class="muted" data-media-intent-note>Media choices will filter automatically by post format.</p>
+      <div class="media-picker-grid" data-media-picker-grid>
+        <% media.forEach((item) => { %>
+          <% const inferredMediaType = (/video\//i.test(item.mimeType || '') || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(item.fileUrl || '')) ? 'video' : (/image\//i.test(item.mimeType || '') || /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(item.fileUrl || '') ? 'image' : (item.fileType || 'image')); %>
+          <label class="media-picker-card" data-brand="<%= item.brand._id %>" data-media-type="<%= inferredMediaType %>">
+            <input name="media" type="checkbox" value="<%= item._id %>" <%= chosenMedia.includes(String(item._id)) ? 'checked' : '' %>>
+            <% if (inferredMediaType === 'image') { %><img src="<%= item.fileUrl %>" alt=""><% } else if (inferredMediaType === 'video') { %><video src="<%= item.fileUrl %>" controls preload="metadata" playsinline></video><% } else { %><span class="media-placeholder"><%= item.fileType %></span><% } %>
+            <span><%= item.fileName %> <small><%= inferredMediaType %></small></span>
+          </label>
+        <% }) %>
+      </div>
+      <p class="muted intent-empty-note" data-intent-empty-note hidden>No matching uploaded media for this format. Use the URL field or generate matching media.</p>
+      <label class="span-2" data-external-media-url-label><span data-external-media-url-title>Image or video URL</span>
+        <textarea name="externalMediaUrl" rows="3" placeholder="One public image/video URL per line"><%= form.externalMediaUrl || '' %></textarea>
+      </label>
+      <label>Name <input name="externalMediaName" value="<%= form.externalMediaName || '' %>"></label>
+      <label data-external-media-type-label>Type
+        <select name="externalMediaType" data-common-external-type>
+          <option value="">Auto detect</option>
+          <option value="image">image</option>
+          <option value="video">video</option>
+        </select>
+      </label>
+    </details>
+
+    <details class="span-2 fieldset" data-intent-section="ai-media">
+      <summary>AI media overrides</summary>
+      <input type="hidden" name="generateImage" value="on">
+      <label data-intent-group="image">Image mode
+        <select name="imageMode">
+          <option value="openai_image" selected>Generate image/provider fallback</option>
+          <option value="ai_prompt">Prompt only</option>
+          <option value="manual_upload">Uploaded media only</option>
+        </select>
+      </label>
+      <label data-intent-group="video">Video mode
+        <select name="videoMode">
+          <option value="ai_script">Storyboard and render if configured</option>
+          <option value="image_to_video">Image-to-video if configured</option>
+          <option value="manual_upload">Uploaded video only</option>
+        </select>
+      </label>
+      <label data-intent-group="image">Image size
+        <select name="imageSize">
+          <option value="1024x1024">Square feed</option>
+          <option value="1024x1536">Portrait</option>
+          <option value="1536x1024">Landscape</option>
+        </select>
+      </label>
+      <label data-intent-group="image">Generated image count
+        <select name="imageCount">
+          <% for (let count = 1; count <= 5; count += 1) { %>
+            <option value="<%= count %>" <%= Number(form.imageCount || 1) === count ? 'selected' : '' %>><%= count %> <%= count === 1 ? 'image' : 'images' %></option>
+          <% } %>
+        </select>
+      </label>
+      <label class="span-2" data-intent-group="image">Image prompt
+        <textarea name="imagePrompt" rows="4"><%= form.imagePrompt || generated?.imagePrompt || '' %></textarea>
+      </label>
+      <label class="span-2" data-intent-group="video">Video script / prompt
+        <textarea name="videoScript" rows="5"><%= form.videoScript || generated?.videoScript || '' %></textarea>
+      </label>
+      <label class="checkbox-row span-2" data-intent-group="video"><input name="selectedOwnerMediaConsent" type="checkbox"> Selected personal/owner images can be used for owner/avatar or image-to-video planning.</label>
+    </details>
+  </form>
+</section>
+
+
+<section class="panel">
+  <div class="section-heading-row">
+    <div>
+      <p class="eyebrow">live preview</p>
+      <h2>Output preview</h2>
+    </div>
+    <span class="muted">Carousel preview shows swipe-style slides with 1.5 cards visible.</span>
+  </div>
+  <div class="output-preview" data-output-preview>
+    <div class="output-preview-meta">
+      <span class="preview-chip" data-preview-type>1 image</span>
+      <span class="preview-chip" data-preview-count>1 asset</span>
+    </div>
+    <div class="output-preview-stage" data-preview-stage></div>
+    <div class="output-preview-caption">
+      <strong>Caption preview</strong>
+      <p data-preview-caption><%= (form.caption || generated?.caption || 'Your Brand Brain caption preview will appear here.') %></p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .platform-multi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:.5rem; margin:.75rem 0 1rem; }
+  .account-platform-group { border:1px solid var(--border-color, #d7dce5); border-radius:.9rem; padding:.85rem; margin:.75rem 0; background:#fff; }
+  .output-preview { display:grid; gap:1rem; }
+  .output-preview-meta { display:flex; gap:.6rem; flex-wrap:wrap; }
+  .preview-chip { display:inline-flex; align-items:center; border:1px solid var(--border-color, #d7dce5); border-radius:999px; padding:.35rem .75rem; font-size:.85rem; background:#fff; }
+  .output-preview-stage { background:#f5f7fb; border:1px solid var(--border-color, #d7dce5); border-radius:1rem; padding:1rem; min-height:260px; overflow:hidden; }
+  .preview-image-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:1rem; }
+  .preview-card, .preview-slide { position:relative; border-radius:1rem; background:linear-gradient(160deg, #0f4c81, #1e6aa7 68%, #19a78e); min-height:220px; color:#fff; overflow:hidden; box-shadow:0 16px 34px rgba(15, 45, 86, .12); }
+  .preview-card::after, .preview-slide::after { content:''; position:absolute; inset:auto -30px -35px auto; width:140px; height:140px; background:rgba(255,255,255,.10); border-radius:50%; }
+  .preview-card-body, .preview-slide-body { position:relative; z-index:1; padding:1rem; display:flex; flex-direction:column; justify-content:space-between; height:100%; gap:.75rem; }
+  .preview-kicker { font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; opacity:.9; }
+  .preview-title { font-size:1.15rem; font-weight:700; line-height:1.2; }
+  .preview-text { font-size:.92rem; line-height:1.45; opacity:.95; }
+  .preview-footer { display:flex; justify-content:space-between; align-items:center; gap:.5rem; font-size:.8rem; }
+  .preview-thumb { width:100%; height:100%; object-fit:cover; display:block; }
+  .preview-card.has-thumb .preview-card-body,
+  .preview-slide.has-thumb .preview-slide-body { background:linear-gradient(180deg, rgba(8,18,35,.12), rgba(8,18,35,.78)); position:absolute; inset:0; }
+  .preview-carousel-track { display:flex; gap:1rem; overflow-x:auto; padding-bottom:.25rem; scroll-snap-type:x mandatory; }
+  .preview-carousel-track::-webkit-scrollbar { height:8px; }
+  .preview-carousel-track::-webkit-scrollbar-thumb { background:#c8d1df; border-radius:999px; }
+  .preview-slide { flex:0 0 72%; scroll-snap-align:start; min-height:280px; }
+  .preview-slide.peek { opacity:.92; }
+  .preview-video { position:relative; max-width:320px; min-height:420px; margin:auto; border-radius:1.25rem; overflow:hidden; background:linear-gradient(180deg, #0f4c81, #1e6aa7 62%, #19a78e); box-shadow:0 18px 38px rgba(15, 45, 86, .16); }
+  .preview-video.has-video { background:#050505; display:grid; gap:.75rem; min-height:0; padding:.75rem; }
+  .preview-video.has-video .preview-thumb { aspect-ratio:9 / 16; border-radius:.9rem; height:auto; min-height:0; }
+  .preview-video-copy { color:#fff; display:grid; gap:.35rem; padding:.25rem .35rem .35rem; }
+  .preview-video .play-badge { width:72px; height:72px; border-radius:50%; background:rgba(255,255,255,.9); color:#0f4c81; display:grid; place-items:center; font-size:2rem; margin:auto; }
+  .output-preview-caption p { margin:.45rem 0 0; color:#445066; }
+  @media (max-width: 720px) { .preview-slide { flex-basis:84%; } }
+</style>
+
+<section class="panel split-grid">
+  <div>
+    <p class="eyebrow">media fallback</p>
+    <h2>Never text-only by accident</h2>
+    <p class="muted">If hosted image generation fails, AutoBrand creates local branded PNG images from the Brand Brain and attaches them to the post.</p>
+  </div>
+  <div>
+    <p class="eyebrow">video</p>
+    <h2>Video needs a renderer</h2>
+    <p class="muted">Without a configured video renderer, video requests become storyboard slides so Facebook still receives media instead of plain text.</p>
+  </div>
+</section>

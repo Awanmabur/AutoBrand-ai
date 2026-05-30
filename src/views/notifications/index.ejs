@@ -1,0 +1,16 @@
+<section class="panel">
+  <h2>Notifications</h2>
+  <form action="/notifications/read-all" method="post">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button class="button ghost" type="submit">Mark all read</button>
+  </form>
+</section>
+<section class="post-list">
+  <% if (!notifications.length) { %><article class="empty-state"><h2>No notifications</h2><p>Publishing, approvals, billing, and usage alerts will appear here.</p></article><% } %>
+  <% notifications.forEach((notification) => { %>
+    <article class="post-row">
+      <div><p class="eyebrow"><%= notification.type %></p><h2><%= notification.title %></h2><p><%= notification.message || '' %></p></div>
+      <span class="status-pill"><%= notification.readAt ? 'read' : 'new' %></span>
+    </article>
+  <% }) %>
+</section>

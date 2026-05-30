@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title %> &middot; AutoBrand AI</title>
+  <link rel="stylesheet" href="/css/dashboard-experience.css?v=20260528-billing-payment-flow" />
+</head>
+<body>
+  <% const options = dashboardData.options || {}; %>
+  <% const brands = options.brands || []; %>
+  <% const visibleDashboardPages = dashboardData.roleAccess && Array.isArray(dashboardData.roleAccess.unlockedPages) ? dashboardData.roleAccess.unlockedPages : []; %>
+  <% const canSeePage = (page) => visibleDashboardPages.includes(page); %>
+  <% const canSeeDashboardPlans = visibleDashboardPages.includes('plans') || (dashboardData.user && /Admin/i.test(dashboardData.user.role || '')); %>
+  <% const socialAccounts = options.socialAccounts || []; %>
+  <% const mediaAssets = options.media || []; %>
+  <% const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp']; %>
+  <% const composerBrands = brands.map((brand) => ({ _id: brand.id, name: brand.name })); %>
+  <% const composerSocialAccounts = socialAccounts.map((account) => ({
+    _id: account.id,
+    platform: account.platform,
+    accountName: account.accountName,
+    brand: { _id: account.brandId || '', name: account.brandName || 'Workspace' }
+  })); %>
+  <% const composerMedia = mediaAssets.map((asset) => ({
+    _id: asset.id,
+    fileName: asset.fileName || 'Media asset',
+    fileType: asset.fileType || 'image',
+    mimeType: asset.mimeType || '',
+    fileUrl: asset.fileUrl || '',
+    brand: { _id: asset.brandId || '', name: asset.brandName || 'Brand asset' }
+  })); %>
+  <% const composerForm = {}; %>
+  <% const composerContentGoals = ['awareness', 'engagement', 'sales', 'traffic', 'lead_generation', 'community', 'customer_support', 'launch', 'event', 'other']; %>
+  <% const composerPostTypes = ['text', 'image', 'video', 'reel', 'story', 'carousel', 'article', 'campaign']; %>
+  <% const composerContentTypes = ['promo', 'educational', 'testimonial', 'offer', 'product', 'announcement', 'engagement', 'behind_the_scenes', 'proof', 'faq', 'launch']; %>
+
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5Z"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="icon-users" viewBox="0 0 24 24"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0ZM4 21a8 8 0 0 1 16 0M19 8a3 3 0 0 1 0 6M22 21a6 6 0 0 0-4-5.7"/></symbol>
+    <symbol id="icon-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3v.4A3.5 3.5 0 0 0 4 14a3 3 0 0 0 3 3h1v-4M15 4a3 3 0 0 1 3 3v.4A3.5 3.5 0 0 1 20 14a3 3 0 0 1-3 3h-1v-4M9 4v16M15 4v16M9 9h6M9 14h6"/></symbol>
+    <symbol id="icon-pen" viewBox="0 0 24 24"><path d="m4 20 4.8-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20ZM13.5 6.5l4 4"/></symbol>
+    <symbol id="icon-grid" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></symbol>
+    <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h16M5 16l10.5-10.5a2.1 2.1 0 0 1 3 3L8 19H5v-3Z"/></symbol>
+    <symbol id="icon-template" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 10h16M9 10v9"/></symbol>
+    <symbol id="icon-image" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM4 16l5-5 4 4 2-2 5 5"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7V5Z"/></symbol>
+    <symbol id="icon-avatar" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="icon-message" viewBox="0 0 24 24"><path d="M5 5h14v10H8l-4 4V6a1 1 0 0 1 1-1Z"/></symbol>
+    <symbol id="icon-calendar" viewBox="0 0 24 24"><path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z"/></symbol>
+    <symbol id="icon-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-7-8-3ZM11 14l4-5"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 19h16M7 16V9M12 16V5M17 16v-7"/></symbol>
+    <symbol id="icon-card" viewBox="0 0 24 24"><path d="M3 7h18v10H3zM3 10h18"/></symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3.5 8 7 10 3.5-2 7-5 7-10V6l-7-3Z"/></symbol>
+    <symbol id="icon-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v5a5 5 0 0 1-10 0V7ZM12 17v4"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19 13v-2l-2.2-.7-.5-1.2 1-2-1.4-1.4-2 1-1.2-.5L12 4h-2l-.7 2.2-1.2.5-2-1L4.7 7.1l1 2-.5 1.2L3 11v2l2.2.7.5 1.2-1 2 1.4 1.4 2-1 1.2.5L10 20h2l.7-2.2 1.2-.5 2 1 1.4-1.4-1-2 .5-1.2 2.2-.7Z"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-facebook" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#1877F2" stroke="none"/><path fill="#fff" stroke="none" d="m16.67 15.47.53-3.47h-3.33V9.75c0-.95.47-1.88 1.96-1.88h1.51V4.92s-1.37-.23-2.69-.23c-2.74 0-4.53 1.66-4.53 4.67V12H7.08v3.47h3.04v8.38a12.2 12.2 0 0 0 3.75 0v-8.38h2.8Z"/></symbol>
+    <symbol id="icon-instagram" viewBox="0 0 24 24"><defs><radialGradient id="igGradient" cx="30%" cy="107%" r="130%"><stop offset="0" stop-color="#fdf497"/><stop offset=".08" stop-color="#fdf497"/><stop offset=".38" stop-color="#fd5949"/><stop offset=".62" stop-color="#d6249f"/><stop offset="1" stop-color="#285AEB"/></radialGradient></defs><rect width="24" height="24" rx="6" fill="url(#igGradient)" stroke="none"/><path fill="#fff" fill-rule="evenodd" clip-rule="evenodd" stroke="none" d="M7.3 5.2h9.4a2.1 2.1 0 0 1 2.1 2.1v9.4a2.1 2.1 0 0 1-2.1 2.1H7.3a2.1 2.1 0 0 1-2.1-2.1V7.3a2.1 2.1 0 0 1 2.1-2.1Zm-.1 2.1v9.4c0 .33.27.6.6.6h8.4c.33 0 .6-.27.6-.6V7.3a.6.6 0 0 0-.6-.6H7.8a.6.6 0 0 0-.6.6ZM12 8.35a3.65 3.65 0 1 1 0 7.3 3.65 3.65 0 0 1 0-7.3Zm0 1.55a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2Zm4.55-2.1a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7Z"/></symbol>
+    <symbol id="icon-linkedin" viewBox="0 0 24 24"><rect width="24" height="24" rx="3" fill="#0A66C2" stroke="none"/><path fill="#fff" stroke="none" d="M6.94 20.45H3.38V9h3.56v11.45ZM5.16 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12Zm15.29 13.02H16.9v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29Z"/></symbol>
+    <symbol id="icon-youtube" viewBox="0 0 24 24"><path fill="#FF0000" stroke="none" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8Z"/><path fill="#fff" stroke="none" d="m9.55 15.57 6.27-3.57-6.27-3.57v7.14Z"/></symbol>
+    <symbol id="icon-tiktok" viewBox="0 0 24 24"><path fill="#25F4EE" stroke="none" transform="translate(-.65 .55) scale(.98)" d="M12.53.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03a11.4 11.4 0 0 1-5.82-1.9c-.01 2.92.01 5.84-.02 8.75a7.1 7.1 0 0 1-1.35 3.94 7.06 7.06 0 0 1-5.91 3.21 7.1 7.1 0 0 1-4.08-1.03 7.22 7.22 0 0 1-3.65-5.71 8.8 8.8 0 0 1-.01-1.49 7.21 7.21 0 0 1 2.58-4.96 7.08 7.08 0 0 1 6.15-1.72c.02 1.48-.04 2.96-.04 4.44a3.54 3.54 0 0 0-3.02.37 3.35 3.35 0 0 0-1.36 1.75c-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87a3.4 3.4 0 0 0 2.77-1.61c.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07Z"/><path fill="#FE2C55" stroke="none" transform="translate(.65 -.35) scale(.98)" d="M12.53.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03a11.4 11.4 0 0 1-5.82-1.9c-.01 2.92.01 5.84-.02 8.75a7.1 7.1 0 0 1-1.35 3.94 7.06 7.06 0 0 1-5.91 3.21 7.1 7.1 0 0 1-4.08-1.03 7.22 7.22 0 0 1-3.65-5.71 8.8 8.8 0 0 1-.01-1.49 7.21 7.21 0 0 1 2.58-4.96 7.08 7.08 0 0 1 6.15-1.72c.02 1.48-.04 2.96-.04 4.44a3.54 3.54 0 0 0-3.02.37 3.35 3.35 0 0 0-1.36 1.75c-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87a3.4 3.4 0 0 0 2.77-1.61c.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07Z"/><path fill="#05070A" stroke="none" d="M12.53.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03a11.4 11.4 0 0 1-5.82-1.9c-.01 2.92.01 5.84-.02 8.75a7.1 7.1 0 0 1-1.35 3.94 7.06 7.06 0 0 1-5.91 3.21 7.1 7.1 0 0 1-4.08-1.03 7.22 7.22 0 0 1-3.65-5.71 8.8 8.8 0 0 1-.01-1.49 7.21 7.21 0 0 1 2.58-4.96 7.08 7.08 0 0 1 6.15-1.72c.02 1.48-.04 2.96-.04 4.44a3.54 3.54 0 0 0-3.02.37 3.35 3.35 0 0 0-1.36 1.75c-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87a3.4 3.4 0 0 0 2.77-1.61c.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07Z"/></symbol>
+    <symbol id="icon-whatsapp" viewBox="0 0 24 24"><path fill="#25D366" stroke="none" d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35ZM12.05 21.79h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.45 4.44-9.89 9.89-9.89a9.83 9.83 0 0 1 9.88 9.89c0 5.45-4.44 9.89-9.88 9.89ZM20.52 3.45A11.82 11.82 0 0 0 12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.3-1.65a11.88 11.88 0 0 0 5.69 1.45h.01c6.55 0 11.89-5.34 11.89-11.89a11.82 11.82 0 0 0-3.43-8.46Z"/></symbol>
+    <symbol id="icon-google_business" viewBox="0 0 24 24"><path fill="#4285F4" stroke="none" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47a5.54 5.54 0 0 1-2.42 3.57v2.96h3.91c2.29-2.11 3.53-5.22 3.53-8.77Z"/><path fill="#34A853" stroke="none" d="M12 24c3.24 0 5.96-1.08 7.95-2.96l-3.91-2.96c-1.08.72-2.45 1.15-4.04 1.15-3.1 0-5.73-2.09-6.67-4.9H1.3v3.05A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" stroke="none" d="M5.33 14.33A7.2 7.2 0 0 1 4.95 12c0-.81.14-1.6.38-2.33V6.62H1.3A12 12 0 0 0 0 12c0 1.94.46 3.77 1.3 5.38l4.03-3.05Z"/><path fill="#EA4335" stroke="none" d="M12 4.77c1.76 0 3.34.6 4.59 1.79l3.44-3.44C17.95 1.18 15.24 0 12 0A12 12 0 0 0 1.3 6.62l4.03 3.05C6.27 6.86 8.9 4.77 12 4.77Z"/></symbol>
+    <symbol id="icon-pinterest" viewBox="0 0 24 24"><path fill="#E60023" stroke="none" d="M12.02 0C5.4 0 .03 5.37.03 11.99c0 5.08 3.16 9.42 7.62 11.17-.11-.95-.2-2.4.04-3.44.22-.94 1.41-5.96 1.41-5.96s-.36-.72-.36-1.78c0-1.67.97-2.91 2.17-2.91 1.02 0 1.52.77 1.52 1.69 0 1.03-.66 2.57-.99 4-.28 1.2.6 2.17 1.78 2.17 2.13 0 3.77-2.25 3.77-5.5 0-2.87-2.06-4.88-5.01-4.88-3.41 0-5.42 2.56-5.42 5.21 0 1.03.4 2.14.89 2.74.1.12.11.22.08.35l-.33 1.36c-.05.22-.17.27-.4.16-1.5-.7-2.44-2.89-2.44-4.65 0-3.79 2.75-7.26 7.93-7.26 4.16 0 7.4 2.97 7.4 6.93 0 4.14-2.61 7.46-6.23 7.46-1.22 0-2.36-.63-2.75-1.38l-.75 2.85c-.27 1.04-1 2.34-1.49 3.14A12 12 0 1 0 12.02 0Z"/></symbol>
+    <symbol id="icon-threads" viewBox="0 0 24 24"><path fill="#05070A" stroke="none" d="M12.19 24h-.01c-3.58-.02-6.33-1.2-8.18-3.51-1.65-2.05-2.5-4.9-2.53-8.48v-.02C1.5 8.41 2.35 5.56 4 3.51 5.85 1.2 8.6.02 12.18 0h.01c2.75.02 5.03.7 6.79 2.04 1.64 1.24 2.79 2.96 3.44 5.11l-2.29.69c-1.09-3.62-3.76-5.43-7.95-5.45-2.83.02-4.9.88-6.16 2.54C4.75 6.62 4.1 9 4.08 12c.02 3 .67 5.38 1.94 7.07 1.26 1.67 3.33 2.52 6.16 2.54 2.55-.02 4.51-.65 5.83-1.89 1.49-1.4 1.46-3.09.97-4.11-.29-.6-.8-1.1-1.48-1.45-.17 1.24-.55 2.25-1.12 2.99-.78 1.01-1.89 1.54-3.32 1.57-1.08.03-2.12-.24-2.92-.75-.94-.6-1.5-1.51-1.55-2.55-.06-1.06.4-2.03 1.3-2.73.86-.67 2.06-1.02 3.46-1.01 1 .01 1.94.05 2.79.14-.11-.67-.34-1.2-.68-1.58-.47-.52-1.18-.78-2.12-.79h-.03c-.76 0-1.79.21-2.46 1.21l-1.98-1.32c.93-1.4 2.54-2.17 4.52-2.17h.05c3.18.02 5.09 2.08 5.31 5.68l.26.12c1.24.57 2.22 1.48 2.81 2.63.83 1.6.91 4.06-1.09 5.94-1.75 1.65-4.24 2.49-7.42 2.51Zm1.1-9.88c-1.39 0-2.15.64-2.11 1.22.04.58.73.99 1.7.99h.08c1.19-.03 1.87-.61 2.15-2.1a14.4 14.4 0 0 0-1.82-.11Z"/></symbol>
+    <symbol id="icon-x_platform" viewBox="0 0 24 24"><path fill="#05070A" stroke="none" d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.59l5.24 6.93 6.07-6.93Zm-1.29 19.49h2.04L6.49 3.24H4.3l13.31 17.4Z"/></symbol>
+  </svg>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Dashboard sidebar">
+    <div class="sidebar-top">
+      <a class="brand" href="/dashboard/overview" data-page="overview">
+        <span class="brand-logo">AB</span>
+        <span><strong>AutoBrand AI</strong><small>Social SaaS</small></span>
+      </a>
+      <button class="icon-btn close-drawer" id="closeDrawer" type="button" aria-label="Close menu"><svg class="icon"><use href="#icon-x"></use></svg></button>
+    </div>
+
+    <div class="workspace-card">
+      <span>Workspace</span>
+      <strong><%= dashboardData.workspace.name %></strong>
+      <small><%= dashboardData.workspace.subtitle %></small>
+    </div>
+
+    <div class="sidebar-scroll" id="sidebarScroll">
+      <p class="nav-label">Overview</p>
+      <nav class="side-nav">
+        <a class="active" href="/dashboard/overview" data-page="overview"><span><svg class="icon"><use href="#icon-home"></use></svg>Dashboard</span><b>Home</b></a>
+        <% if (canSeePage('quick-create')) { %><a href="/dashboard/quick-create" data-page="quick-create"><span><svg class="icon"><use href="#icon-plus"></use></svg>Full Composer</span><b>AI</b></a><% } %>
+        <% if (canSeePage('brand-brain')) { %><a href="/dashboard/brand-brain" data-page="brand-brain"><span><svg class="icon"><use href="#icon-brain"></use></svg>Brand Brain</span><b><%= dashboardData.nav.brands %></b></a><% } %>
+        <% if (canSeePage('content-library')) { %><a href="/dashboard/content-library" data-page="content-library"><span><svg class="icon"><use href="#icon-grid"></use></svg>Content Library</span><b><%= dashboardData.nav.content %></b></a><% } %>
+      </nav>
+
+      <p class="nav-label">Planning & Creative</p>
+      <nav class="side-nav">
+        <% if (canSeePage('campaigns')) { %><a href="/dashboard/campaigns" data-page="campaigns"><span><svg class="icon"><use href="#icon-chart"></use></svg>Campaigns & Growth</span><b><%= dashboardData.nav.campaigns %></b></a><% } %>
+        <% if (canSeePage('media')) { %><a href="/dashboard/media" data-page="media"><span><svg class="icon"><use href="#icon-image"></use></svg>Media & Images</span><b><%= dashboardData.nav.images %></b></a><% } %>
+        <% if (canSeePage('video-system')) { %><a href="/dashboard/video-system" data-page="video-system"><span><svg class="icon"><use href="#icon-play"></use></svg>Video Studio</span><b><%= dashboardData.nav.videos %></b></a><% } %>
+        <% if (canSeePage('avatar-video')) { %><a href="/dashboard/avatar-video" data-page="avatar-video"><span><svg class="icon"><use href="#icon-avatar"></use></svg>Avatar Video</span><b><%= dashboardData.nav.avatars || 0 %></b></a><% } %>
+      </nav>
+
+      <p class="nav-label">Publishing</p>
+      <nav class="side-nav">
+        <% if (canSeePage('calendar')) { %><a href="/dashboard/calendar" data-page="calendar"><span><svg class="icon"><use href="#icon-calendar"></use></svg>Calendar & Schedule</span><b><%= dashboardData.nav.scheduled %></b></a><% } %>
+        <% if (canSeePage('social')) { %><a href="/dashboard/social" data-page="social"><span><svg class="icon"><use href="#icon-send"></use></svg>Social Channels</span><b><%= dashboardData.nav.social %></b></a><% } %>
+        <% if (canSeePage('approvals')) { %><a href="/dashboard/approvals" data-page="approvals"><span><svg class="icon"><use href="#icon-check"></use></svg>Approvals & Handoff</span><b><%= dashboardData.nav.approvals %></b></a><% } %>
+        <% if (canSeePage('analytics')) { %><a href="/dashboard/analytics" data-page="analytics"><span><svg class="icon"><use href="#icon-chart"></use></svg>Analytics</span><b>Live</b></a><% } %>
+        <a href="/dashboard/notifications" data-page="notifications"><span><svg class="icon"><use href="#icon-message"></use></svg>Notifications</span><b><%= dashboardData.nav.unread || '0' %></b></a>
+      </nav>
+
+      <p class="nav-label">Admin</p>
+      <nav class="side-nav">
+        <% if (canSeePage('team')) { %><a href="/dashboard/team" data-page="team"><span><svg class="icon"><use href="#icon-users"></use></svg>Team & Roles</span><b><%= dashboardData.nav.team || 0 %></b></a><% } %>
+        <a href="/dashboard/billing" data-page="billing"><span><svg class="icon"><use href="#icon-card"></use></svg>Billing & Usage</span><b><%= dashboardData.nav.plan %></b></a>
+        <% if (canSeeDashboardPlans) { %><a href="/dashboard/plans" data-page="plans"><span><svg class="icon"><use href="#icon-card"></use></svg>Plan Management</span><b>Plans</b></a><% } %>
+        <a href="/dashboard/settings" data-page="settings"><span><svg class="icon"><use href="#icon-settings"></use></svg>Settings & Security</span><b><%= dashboardData.nav.unread || '.' %></b></a>
+        <% if (visibleDashboardPages.includes('admin')) { %><a href="/dashboard/admin" data-page="admin"><span><svg class="icon"><use href="#icon-shield"></use></svg>Admin</span><b>Root</b></a><% } %>
+        <div class="mobile-menu-actions" aria-label="Mobile account and theme controls">
+          <button class="mobile-theme-toggle" id="themeToggleMenu" type="button" aria-label="Toggle theme">
+            <svg class="icon mobile-theme-icon"><use href="#icon-moon"></use></svg>
+            <strong>Dark mode</strong>
+          </button>
+          <div class="mobile-profile" aria-label="Current user">
+            <span><%= dashboardData.user.initials %></span>
+            <strong><%= dashboardData.user.firstName %></strong>
+          </div>
+        </div>
+        <form class="side-nav-logout" action="/auth/logout" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="side-nav-button" type="submit"><span><svg class="icon"><use href="#icon-x"></use></svg>Logout</span><b>Exit</b></button>
+        </form>
+      </nav>
+
+      <div class="upgrade-card">
+        <strong>Upgrade to Studio</strong>
+        <p>Unlock client approvals, clean AI video, avatar video, larger workspaces and premium exports.</p>
+        <a class="btn btn-light" href="/dashboard/billing">View plan</a>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="openDrawer" type="button" aria-label="Open menu"><svg class="icon"><use href="#icon-menu"></use></svg></button>
+      <div class="top-title">
+        <h1 id="pageTitle">Dashboard</h1>
+      </div>
+      <div class="top-actions">
+        <input class="search" id="searchInput" type="search" placeholder="Search campaigns, brands, posts..." />
+        <button class="icon-btn" id="themeToggle" type="button" aria-label="Toggle theme"><svg class="icon"><use href="#icon-moon"></use></svg></button>
+        <button class="btn btn-primary" type="button" data-full-composer><svg class="icon"><use href="#icon-plus"></use></svg>Create</button>
+        <div class="profile"><span><%= dashboardData.user.initials %></span><strong><%= dashboardData.user.firstName %></strong></div>
+      </div>
+    </header>
+
+    <section class="page active" id="pageRoot" aria-live="polite"></section>
+  </main>
+
+  <div id="dashboardTemplates" hidden>
+    <template id="dashboard-form-quick-create">
+      <% if (!brands.length) { %>
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Create Brand Brain first</h3><p>The AI needs a real brand record before it can generate useful posts.</p></div><span class="badge">Required</span></div>
+          <%- include('partials/brand-quick-form', { csrfToken }) %>
+        </article>
+      <% } else { %>
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Generate a real post</h3><p>Uses saved Brand Brain fields, connected accounts and media defaults.</p></div><span class="badge">Live post</span></div>
+          <form action="/posts" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="creationMode" value="ai">
+            <input type="hidden" name="generateImage" value="on">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Channel<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
+            <label>Media output<select name="mediaPreset"><option value="image-1">1 image</option><option value="carousel-3">3-image carousel</option><option value="video">Video</option><option value="text">Text only</option></select></label>
+            <label>Content angle<select name="contentType"><option value="promo">Promo</option><option value="educational">Educational</option><option value="testimonial">Testimonial</option><option value="offer">Offer</option><option value="faq">FAQ</option></select></label>
+            <label class="full">Goal<input name="goal" placeholder="Sell a service, announce an offer, collect WhatsApp inquiries"></label>
+            <label class="full">Offer<input name="offer" placeholder="Use saved offer or override it here"></label>
+            <div class="real-form-actions full">
+              <button class="btn btn-ghost" name="action" value="save" type="submit">Save draft</button>
+              <button class="btn btn-ghost" name="action" value="schedule" type="submit">Schedule</button>
+              <button class="btn btn-primary" name="action" value="publish" type="submit">Publish now</button>
+            </div>
+          </form>
+        </article>
+      <% } %>
+    </template>
+
+    <template id="dashboard-form-brand-brain">
+      <article class="card real-form-card" id="brand-form">
+        <div class="card-head"><div><h3>Add Brand Brain data</h3><p>These fields map directly to the Brand model, so low-data workspaces can become useful fast.</p></div><a class="btn btn-ghost" href="/dashboard/brand-brain">All brands</a></div>
+        <%- include('partials/brand-quick-form', { csrfToken }) %>
+      </article>
+    </template>
+
+    <template id="dashboard-form-full-composer">
+      <div class="classic-composer-modal dashboard-full-composer-shell">
+        <%- include('partials/full-composer', {
+          csrfToken,
+          error: null,
+          brands: composerBrands,
+          form: composerForm,
+          activeBrandId: composerBrands[0] ? composerBrands[0]._id : '',
+          generated: null,
+          socialAccounts: composerSocialAccounts,
+          platforms,
+          postTypes: composerPostTypes,
+          contentTypes: composerContentTypes,
+          contentGoals: composerContentGoals,
+          media: composerMedia
+        }) %>
+      </div>
+    </template>
+
+    <template id="dashboard-form-content-library"></template>
+
+    <template id="dashboard-form-campaigns">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Create campaign plan</h3><p>Writes a real Campaign document and AI plan.</p></div><a class="btn btn-ghost" href="/dashboard/campaigns">Campaigns</a></div>
+        <% if (!brands.length) { %><p class="empty-state">Create a brand first before planning campaigns.</p><% } else { %>
+          <form action="/campaigns" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Name<input name="name" placeholder="Weekend voucher push" required></label>
+            <label class="full">Goal<input name="goal" placeholder="Sell 100 daily vouchers"></label>
+            <label>Platforms<input name="platforms" value="facebook, instagram, whatsapp"></label>
+            <label>Duration days<input name="durationDays" type="number" min="1" max="30" value="7"></label>
+            <label>Posting frequency<input name="postingFrequency" placeholder="2 posts per day"></label>
+            <label>Start date<input name="startDate" type="date"></label>
+            <label>End date<input name="endDate" type="date"></label>
+            <label class="full">Description<textarea name="description" rows="3"></textarea></label>
+            <button class="btn btn-primary full" type="submit">Create campaign plan</button>
+          </form>
+        <% } %>
+      </article>
+    </template>
+
+    <template id="dashboard-form-calendar">
+      <%- include('partials/post-schedule-form', { csrfToken, brands, platforms }) %>
+    </template>
+
+    <template id="dashboard-form-media">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Media library upload</h3><p>Upload media through the same working backend inside the clean dashboard.</p></div><a class="btn btn-primary" href="/dashboard/media">Media library</a></div>
+        <% if (!brands.length) { %><p class="empty-state">Create a brand first before uploading media.</p><% } else { %>
+          <form action="/media/upload" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input name="folder" type="hidden" value="external">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>File type<select name="fileType"><option value="image">Image</option><option value="video">Video</option><option value="audio">Audio</option><option value="document">Document</option></select></label>
+            <label>File name<input name="fileName" placeholder="Product photo"></label>
+            <label>MIME type<input name="mimeType" placeholder="image/png"></label>
+            <label class="full">Media URL<input name="fileUrl" type="url" placeholder="https://..." required></label>
+            <label class="full">Tags<input name="tags" placeholder="logo, product, offer"></label>
+            <label class="checkbox-line full"><input name="consentRequired" type="checkbox"> Contains a real person / likeness and needs consent</label>
+            <button class="btn btn-primary full" type="submit">Save media asset</button>
+          </form>
+        <% } %>
+      </article>
+    </template>
+
+    <template id="dashboard-form-video-system">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Generate video</h3><p>Creates a real AI video job using saved Brand Brain context.</p></div><a class="btn btn-ghost" href="/dashboard/video-system">Video studio</a></div>
+        <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating videos.</p><% } else { %>
+          <form action="/videos/auto-generate" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Platform<select name="platform"><option>Facebook</option><option>Instagram Reels</option><option>TikTok</option><option>YouTube Shorts</option></select></label>
+            <label>Aspect ratio<select name="aspectRatio"><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
+            <label>Duration<input name="durationSeconds" type="number" min="6" max="60" value="20"></label>
+            <label class="full">Goal<input name="goal" placeholder="Sell weekend offer"></label>
+            <label class="full">Offer<input name="offer" placeholder="Main offer"></label>
+            <label class="full">Style<input name="style" placeholder="premium realistic, bright, smooth motion"></label>
+            <label class="full">Prompt<textarea name="prompt" rows="3" placeholder="Optional extra direction"></textarea></label>
+            <label class="checkbox-line full"><input name="renderVideo" type="checkbox"> Render video now if provider API is configured</label>
+            <button class="btn btn-primary full" type="submit">Create video job</button>
+          </form>
+        <% } %>
+      </article>
+    </template>
+
+    <template id="dashboard-form-avatar-video">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Avatar video request</h3><p>Requires approved owner media and consent.</p></div><a class="btn btn-ghost" href="/dashboard/avatar-video">Avatar consent</a></div>
+        <% if (!brands.length || !mediaAssets.length) { %><p class="empty-state">Add a brand and consent-ready owner media before creating avatar videos.</p><% } else { %>
+          <form action="/videos/avatar-video" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Aspect ratio<select name="aspectRatio"><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
+            <label>Duration<input name="durationSeconds" type="number" min="10" max="90" value="20"></label>
+            <label>Provider<select name="provider"><option value="planning">Plan only</option><option value="replicate">Replicate video API</option></select></label>
+            <label class="full">Approved owner media<select name="sourceMedia" multiple required><% mediaAssets.forEach((item) => { %><option value="<%= item.id %>"><%= item.brandName %> / <%= item.fileName %> (<%= item.consentStatus %>)</option><% }) %></select></label>
+            <label class="full">Script<textarea name="script" rows="4" placeholder="What should the owner/avatar say?"></textarea></label>
+            <label class="checkbox-line full"><input name="ownerConsent" type="checkbox" required> I confirm I own or have consent to use this likeness/media.</label>
+            <button class="btn btn-primary full" type="submit">Create avatar video</button>
+          </form>
+        <% } %>
+      </article>
+    </template>
+
+    <template id="dashboard-form-social">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Connected channels</h3><p>Use the real social API connection tools for OAuth and token health.</p></div><a class="btn btn-primary" href="/dashboard/social">Manage channels</a></div>
+        <div class="channel-grid">
+          <% ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'whatsapp'].forEach((platform) => { %>
+            <a class="channel-tile" href="/dashboard/social"><svg class="icon"><use href="#icon-<%= platform %>"></use></svg><span><%= platform %></span></a>
+          <% }) %>
+        </div>
+      </article>
+    </template>
+
+    <template id="dashboard-form-approvals">
+      <section class="handoff-workspace-shell">
+        <article class="handoff-hero-card">
+          <div>
+            <span class="kicker">automatic posting</span>
+            <h3>Generate the schedule from Brand Brain</h3>
+            <p>Pick the brand and run it. AutoBrand uses saved frequency, slots, media mix, customer goal, platform language, products, offers, proof and rules.</p>
+          </div>
+          <div class="handoff-mini-card">
+            <strong>Media first</strong>
+            <span>Images and carousel slides are generated automatically. Video requests use video media or storyboard fallback when no renderer is configured.</span>
+            <a class="btn btn-ghost" href="/dashboard/calendar">View calendar</a>
+          </div>
+        </article>
+        <article class="card real-form-card handoff-form-card">
+          <div class="card-head"><div><span class="kicker">handoff / auto mode</span><h3>Generate posts automatically</h3><p>Use the restored handoff flow inside the dashboard instead of an old standalone page.</p></div><button class="btn btn-ghost" type="button" data-full-composer>One-off post</button></div>
+          <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating handoff posts.</p><% } else { %>
+            <form action="/posts/handoff" method="post" class="real-form-grid composer-form handoff-dashboard-form">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="generateImages" value="on">
+              <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+              <label>Schedule<select name="frequencyUnit"><option value="day">Use daily plan</option><option value="week" selected>Use weekly plan</option><option value="month">Use monthly plan</option></select></label>
+              <label>Start date<input type="date" name="startDate"></label>
+              <label>Strength target<input type="number" name="strengthTarget" min="80" max="100" value="90"></label>
+              <fieldset class="composer-fieldset full"><legend>Destination override</legend><div class="composer-check-grid channel-spaced-grid">
+                <% socialAccounts.forEach((account) => { %>
+                  <label class="composer-check-card target-account-option" data-brand="<%= account.brandId || '' %>" data-platform="<%= account.platform %>"><input name="targetAccounts" type="checkbox" value="<%= account.id %>"><span><strong><%= account.accountName %></strong><small><%= account.platform %> / <%= account.brandName || 'Workspace' %></small></span></label>
+                <% }) %>
+                <% if (!socialAccounts.length) { %><p class="muted">No connected accounts yet. Connect accounts from Social first.</p><% } %>
+              </div></fieldset>
+              <fieldset class="composer-fieldset full"><legend>Platforms</legend><div class="composer-check-grid compact-checkboxes">
+                <% platforms.forEach((platform) => { %><label class="composer-check-card"><input name="platforms" type="checkbox" value="<%= platform %>" <%= platform === 'facebook' ? 'checked' : '' %>><span><strong><%= platform.replace(/_/g, ' ') %></strong><small>Use Brand Brain language</small></span></label><% }) %>
+              </div></fieldset>
+              <details class="composer-fieldset full"><summary>Brand Brain overrides</summary><div class="real-form-grid nested-grid">
+                <label>Posts per day<input type="number" name="postsPerDay" min="1" max="12" value="1"></label>
+                <label>Posts per week<input type="number" name="postsPerWeek" min="1" max="60" value="7"></label>
+                <label>Posts per month<input type="number" name="postsPerMonth" min="1" max="90" value="30"></label>
+                <label>Image size<select name="imageSize"><option value="1024x1024">Square feed</option><option value="1024x1536">Portrait</option><option value="1536x1024">Landscape</option></select></label>
+                <label>Min images<input type="number" name="imagesPerPostMin" min="1" max="5" value="1"></label>
+                <label>Max images/slides<input type="number" name="imagesPerPostMax" min="1" max="5" value="3"></label>
+                <label class="full">Preferred time slots<input name="preferredSlots" value="morning, evening"></label>
+                <label class="full">Customer goal<input name="customerGoal" value="get customers immediately with clear offers, proof, and a direct call to action"></label>
+              </div></details>
+              <div class="real-form-actions full"><button class="btn btn-primary" type="submit">Generate and schedule</button><a class="btn btn-ghost" href="/dashboard/brand-brain">Edit Brand Brain</a></div>
+            </form>
+          <% } %>
+        </article>
+      </section>
+    </template>
+
+    <template id="dashboard-form-team">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Team management</h3><p>Invite members and then manage status, roles and permissions on the team workspace.</p></div><a class="btn btn-primary" href="/dashboard/team">Team workspace</a></div>
+        <% if (!brands.length) { %><p class="empty-state">Create a brand before inviting team members.</p><% } else { %>
+          <form action="/team/invite" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Name<input name="name" placeholder="Team member name"></label>
+            <label>Email<input name="email" type="email" required placeholder="member@example.com"></label>
+            <label>Role<select name="role"><option value="viewer">Viewer</option><option value="reviewer">Reviewer</option><option value="editor">Editor</option><option value="content_creator">Content creator</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label>
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <fieldset class="composer-fieldset full">
+              <legend>Permissions</legend>
+              <div class="composer-check-grid">
+                <% ['brand_read', 'content_create', 'content_edit', 'schedule_posts', 'approve_posts', 'analytics_read'].forEach((permission) => { %>
+                  <label class="composer-check-card"><input name="permissions" type="checkbox" value="<%= permission %>"><span><strong><%= permission.replace(/_/g, ' ') %></strong><small>Team permission</small></span></label>
+                <% }) %>
+              </div>
+            </fieldset>
+            <button class="btn btn-primary full" type="submit">Invite member</button>
+          </form>
+        <% } %>
+      </article>
+    </template>
+
+    <template id="dashboard-form-analytics">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Analytics workspace</h3><p>Use the real analytics report while keeping live metrics visible in this dashboard.</p></div><a class="btn btn-primary" href="/dashboard/analytics">Analytics workspace</a></div>
+        <div class="data-list">
+          <div class="data-row"><div><strong>Performance reports</strong><span>Track published posts, platform results and campaign totals.</span></div><span class="badge">Live</span></div>
+          <div class="data-row"><div><strong>Brand-level insights</strong><span>Use Brand Brain data to compare products, offers and channels.</span></div><span class="badge">Database</span></div>
+        </div>
+      </article>
+    </template>
+
+    <template id="dashboard-form-notifications">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Notification center</h3><p>Alerts from publishing, approvals and workspace activity are now reachable from the clean dashboard.</p></div><a class="btn btn-primary" href="/dashboard/notifications">Notifications workspace</a></div>
+        <form action="/notifications/read-all" method="post" class="real-form-grid">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-ghost full" type="submit">Mark all notifications as read</button>
+        </form>
+      </article>
+    </template>
+
+
+    <template id="dashboard-form-plans">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Plan management is now inside the dashboard</h3><p>No old overlay page: create, edit, duplicate, activate, deactivate and seed plans from this clean dashboard section.</p></div><a class="btn btn-primary" href="/dashboard/plans?mode=create">Create plan</a></div>
+      </article>
+    </template>
+
+    <template id="dashboard-form-admin">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Admin console shortcut</h3><p>Super-admin tools are available here: plans, users, failed posts, API logs, audit logs and payments remain available.</p></div><a class="btn btn-primary" href="/dashboard/plans">Open plan page</a></div>
+        <div class="data-list">
+          <div class="data-row"><div><strong>Subscription plan management</strong><span>Create, edit, duplicate, reorder, activate and deactivate plans from the production admin page.</span></div><a class="badge" href="/dashboard/plans">Plans</a></div>
+          <div class="data-row"><div><strong>User & subscription management</strong><span>Use the admin workspace for account status and plan control.</span></div><span class="badge">Admin</span></div>
+          <div class="data-row"><div><strong>Failed publishing retry</strong><span>Retry failed posts through the existing admin backend.</span></div><span class="badge">Retry</span></div>
+          <div class="data-row"><div><strong>Audit/API/payment logs</strong><span>Review operational records from the existing models.</span></div><span class="badge">Logs</span></div>
+        </div>
+      </article>
+    </template>
+
+    <template id="dashboard-form-billing"></template>
+
+    <template id="dashboard-form-settings">
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Workspace settings</h3><p>Quick access to the existing settings, provider health and diagnostics workflow.</p></div><a class="btn btn-primary" href="/dashboard/settings">Settings workspace</a></div>
+        <form action="/settings/diagnostics" method="post" class="real-form-grid">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="full">Diagnostics scope<input name="scope" value="providers, queues, storage, social"></label>
+          <button class="btn btn-ghost full" type="submit">Check workspace</button>
+        </form>
+      </article>
+    </template>
+
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <div>
+          <span class="modal-kicker" id="modalKicker">View</span>
+          <h2 id="modalTitle">Record preview</h2>
+        </div>
+        <button class="icon-btn" id="modalClose" type="button" aria-label="Close modal"><svg class="icon"><use href="#icon-x"></use></svg></button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <script>
+    window.__AUTOBRAND_DASHBOARD_DATA__ = <%- dashboardJson %>;
+  </script>
+    <script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>
+  <script src="/js/composer-intent.js?v=20260524-smart-output"></script>
+  <script src="/js/dashboard-experience.js?v=20260528-billing-payment-flow"></script>
+</body>
+</html>

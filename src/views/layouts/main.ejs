@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= typeof title !== 'undefined' && title ? `${title} | ${appName}` : appName %></title>
+    <link rel="stylesheet" href="/css/main.css">
+  </head>
+  <body>
+    <%- include('../partials/public-nav') %>
+    <main>
+      <%- body %>
+    </main>
+    <script src="/js/theme.js"></script>
+  </body>
+</html>

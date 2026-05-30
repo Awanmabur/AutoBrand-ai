@@ -1,0 +1,59 @@
+<section class="workspace-hero compact-hero channel-preview-hero">
+  <div>
+    <p class="eyebrow">facebook pages</p>
+    <h2>Select Pages for <%= brand.name %></h2>
+    <p>Facebook may return Pages that were granted before. Choose only the Pages you want connected in this app. Previously disconnected Pages are left unchecked.</p>
+  </div>
+  <div class="social-health clean-health">
+    <span class="connector-icon connector-facebook">f</span>
+    <div><strong><%= accounts.filter((account) => account.checked && account.selectionStatus !== 'connected').length %> selected</strong><p>New or reconnected Pages</p></div>
+  </div>
+</section>
+
+<% if (notice) { %><p class="form-success"><%= notice %></p><% } %>
+
+<section class="panel channel-detail-card">
+  <div class="section-heading-row">
+    <div>
+      <p class="eyebrow">review</p>
+      <h2>Choose Facebook Pages</h2>
+      <p class="muted">Already connected Pages stay connected. Disconnected Pages are unchecked unless you choose to reconnect them.</p>
+    </div>
+    <a class="button ghost" href="/social">Cancel</a>
+  </div>
+
+  <form action="/social/facebook/select-pages" method="post" class="facebook-page-select-form">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <div class="connected-card-grid">
+      <% accounts.forEach((account) => { %>
+        <article class="connected-channel-card facebook-select-card">
+          <input type="hidden" name="pagePayloads" value="<%= account.payload %>">
+          <label class="facebook-page-choice">
+            <input
+              type="checkbox"
+              name="selectedPages"
+              value="<%= account.accountId %>"
+              <%= account.checked ? 'checked' : '' %>
+              <%= account.disabled ? 'disabled' : '' %>
+            >
+            <span class="connector-icon connector-facebook">f</span>
+            <span>
+              <strong><%= account.accountName %></strong>
+              <small><%= account.accountId %></small>
+            </span>
+          </label>
+          <div class="connected-card-actions">
+            <span class="status-pill"><%= account.selectionStatus.replace('_', ' ') %></span>
+          </div>
+          <p class="muted"><%= account.helper %></p>
+        </article>
+      <% }) %>
+    </div>
+
+    <div class="form-actions" style="margin-top: 1rem; display: flex; gap: .75rem; flex-wrap: wrap;">
+      <button class="button" type="submit">Save selected Pages</button>
+      <a class="button ghost" href="/social">Back to channels</a>
+    </div>
+  </form>
+</section>

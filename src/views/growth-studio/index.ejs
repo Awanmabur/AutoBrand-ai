@@ -1,0 +1,132 @@
+<section class="panel">
+  <p class="eyebrow">Growth Studio</p>
+  <h2>Generate the missing pieces around your brand</h2>
+  <p>Turn one Brand Brain into launch briefs, draft batches, hashtag packs, competitor snapshots, brand audits, offer angles, and AI video storyboards.</p>
+  <% if (message) { %>
+    <p class="success-note">Created: <%= message %>. Check the sections below or open the related workspace.</p>
+  <% } %>
+  <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+  <% if (!brands.length) { %>
+    <p class="form-error">Create a Brand Brain first so Growth Studio has context.</p>
+  <% } else { %>
+    <form action="/growth-studio/run" method="post" class="form-grid">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label>Brand
+        <select name="brand" required>
+          <% brands.forEach((brand) => { %>
+            <option value="<%= brand._id %>"><%= brand.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>Feature
+        <select name="actionType" required>
+          <option value="campaign_brief">Campaign brief</option>
+          <option value="draft_batch">7 draft posts</option>
+          <option value="video_storyboard">AI video storyboard</option>
+          <option value="hashtag_pack">Hashtag pack</option>
+          <option value="competitor_snapshot">Competitor snapshot</option>
+          <option value="brand_audit">Brand audit</option>
+          <option value="offer_angles">Offer angles</option>
+        </select>
+      </label>
+      <label>Platforms
+        <input name="platforms" value="facebook, instagram, tiktok" placeholder="facebook, instagram, tiktok">
+      </label>
+      <label>Style
+        <input name="style" placeholder="clean, premium, local, playful">
+      </label>
+      <label class="span-2">Goal or offer
+        <input name="campaignGoal" placeholder="Sell weekend vouchers, get bookings, launch a new product">
+      </label>
+      <label class="span-2">Use uploaded media
+        <select name="sourceMedia">
+          <option value="">No uploaded media</option>
+          <% media.forEach((item) => { %>
+            <option value="<%= item._id %>"><%= item.brand.name %> / <%= item.fileName %> (<%= item.fileType %>)</option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="button" type="submit">Generate</button>
+    </form>
+  <% } %>
+</section>
+
+<section class="feature-grid">
+  <article class="feature-card">
+    <strong>Campaign Brief</strong>
+    <p>Creates a campaign with pillars, posting times, and post ideas.</p>
+    <a href="/campaigns">Open campaigns</a>
+  </article>
+  <article class="feature-card">
+    <strong>7 Draft Posts</strong>
+    <p>Creates editable draft posts across selected platforms.</p>
+    <a href="/dashboard/content-library">Open drafts</a>
+  </article>
+  <article class="feature-card">
+    <strong>AI Video Storyboard</strong>
+    <p>Creates a brand-to-video plan without requiring uploaded media.</p>
+    <a href="/videos">Open videos</a>
+  </article>
+  <article class="feature-card">
+    <strong>Hashtags</strong>
+    <p>Saves brand-aware hashtags for reuse in captions.</p>
+  </article>
+  <article class="feature-card">
+    <strong>Competitor Snapshot</strong>
+    <p>Saves positioning notes based on competitors and customer pain points.</p>
+  </article>
+  <article class="feature-card">
+    <strong>Brand Audit</strong>
+    <p>Checks Brand Brain readiness and lists next moves.</p>
+  </article>
+</section>
+
+<section class="panel">
+  <h2>Saved growth reports</h2>
+  <% if (!assets.length) { %>
+    <p class="muted">No reports yet.</p>
+  <% } %>
+  <div class="item-grid">
+    <% assets.forEach((asset) => { %>
+      <article class="item-card">
+        <p class="eyebrow"><%= asset.type.replace(/_/g, ' ') %></p>
+        <h2><%= asset.title %></h2>
+        <p><%= asset.summary %></p>
+        <% asset.sections.forEach((section) => { %>
+          <strong><%= section.heading %></strong>
+          <ul class="clean-list">
+            <% section.items.forEach((item) => { %>
+              <li><%= item %></li>
+            <% }) %>
+          </ul>
+        <% }) %>
+      </article>
+    <% }) %>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Recent generated work</h2>
+  <div class="split-grid">
+    <div>
+      <h3>Campaigns</h3>
+      <% if (!campaigns.length) { %><p class="muted">No campaign briefs yet.</p><% } %>
+      <% campaigns.forEach((campaign) => { %>
+        <article class="mini-record">
+          <strong><%= campaign.name %></strong>
+          <span><%= campaign.brand.name %> &middot; <%= campaign.platforms.join(', ') %></span>
+        </article>
+      <% }) %>
+    </div>
+    <div>
+      <h3>Video storyboards</h3>
+      <% if (!videos.length) { %><p class="muted">No video storyboards yet.</p><% } %>
+      <% videos.forEach((video) => { %>
+        <article class="mini-record">
+          <strong><%= video.prompt %></strong>
+          <span><%= video.brand.name %> &middot; <%= video.status %> &middot; <%= video.aspectRatio %></span>
+        </article>
+      <% }) %>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,4224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title %> | AI Content Agent Platform</title>
+    <style>
+      :root {
+        --bg: #f7f9fc;
+        --surface: #ffffff;
+        --surface-soft: #eef4fb;
+        --surface-muted: #d9e3ef;
+        --text: #05070a;
+        --muted: #566170;
+        --primary: #082c52;
+        --primary-dark: #061a33;
+        --accent: #0d4f91;
+        --border: #d9e3ef;
+        --shadow: 0 22px 58px rgba(6, 26, 51, 0.1);
+        --shadow-soft: 0 16px 42px rgba(6, 26, 51, 0.1);
+        --radius-xl: 30px;
+        --radius-lg: 22px;
+        --radius-md: 16px;
+        --max: 1180px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-height: 100vh;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        background:
+          linear-gradient(rgba(8, 44, 82, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(8, 44, 82, 0.045) 1px, transparent 1px),
+          var(--bg);
+        background-size: 48px 48px;
+        color: var(--text);
+        overflow-x: hidden;
+        font-size: 15px;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      .container {
+        width: min(var(--max), calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .cursor-glow {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 330px;
+        height: 330px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(8, 44, 82, 0.16),
+          transparent 65%
+        );
+        filter: blur(10px);
+        pointer-events: none;
+        z-index: -1;
+        transform: translate(-50%, -50%);
+        transition: opacity 0.25s ease;
+      }
+
+      .nav {
+        position: sticky;
+        top: 16px;
+        z-index: 100;
+        background: transparent;
+        padding: 0 0 12px;
+        border-bottom: 0;
+      }
+
+      .nav-inner {
+        min-height: 66px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        background: rgba(255, 255, 255, 0.84);
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        box-shadow: var(--shadow-soft);
+        padding: 9px 12px 9px 14px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        font-size: 1.05rem;
+        white-space: nowrap;
+      }
+
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--primary);
+        color: #ffffff;
+        box-shadow: var(--shadow-soft);
+        font-weight: 850;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        color: var(--muted);
+        font-size: 0.95rem;
+        font-weight: 560;
+      }
+
+      .nav-links a {
+        transition: 0.2s ease;
+      }
+
+      .nav-links a:hover {
+        color: var(--text);
+      }
+
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .btn {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 0 20px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: 0.22s ease;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        font-size: 0.9rem;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: #ffffff !important;
+        box-shadow: 0 12px 28px rgba(8, 44, 82, 0.16);
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-dark);
+        transform: translateY(-2px);
+      }
+
+      .btn-ghost {
+        background: var(--surface);
+        border-color: var(--border);
+        color: var(--text);
+      }
+
+      .btn-ghost:hover {
+        background: var(--surface-soft);
+      }
+
+      .mobile-menu-cta {
+        display: none;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        width: 100%;
+        margin-top: 10px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+
+      .mobile-menu-cta .btn {
+        width: 100%;
+      }
+
+      .mobile-toggle {
+        display: none;
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .hero {
+        padding: 20px 0 29px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.82fr);
+        align-items: center;
+        gap: 34px;
+      }
+
+      .eyebrow {
+        width: fit-content;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 13px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--primary);
+        font-size: 0.9rem;
+        margin-bottom: 24px;
+        font-weight: 650;
+      }
+
+      .pulse {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .hero h1 {
+        font-size: clamp(2.3rem, 5.2vw, 4.55rem);
+        line-height: 1;
+        letter-spacing: -0.065em;
+        max-width: 680px;
+        margin-bottom: 18px;
+        color: var(--text);
+      }
+
+      .hero h1 span {
+        color: var(--primary);
+      }
+
+      .hero p {
+        max-width: 610px;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.68;
+        margin-bottom: 24px;
+      }
+
+      .hero-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .trust-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 18px;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+
+      .avatars {
+        display: flex;
+      }
+
+      .avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: 2px solid var(--bg);
+        margin-left: -9px;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        font-size: 0.76rem;
+        background: var(--surface-muted);
+        color: var(--primary);
+      }
+
+      .avatar:first-child {
+        margin-left: 0;
+      }
+
+      .hero-visual {
+        position: relative;
+      }
+
+      .product-card {
+        position: relative;
+        height: 485px;
+        min-height: 485px;
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        padding: 14px;
+        transition: 0.35s ease;
+      }
+
+      .product-card:hover {
+        transform: translateY(-4px);
+      }
+
+      .app-window {
+        height: 100%;
+        border-radius: 22px;
+        background: #ffffff;
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+
+      .window-top {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-soft);
+      }
+
+      .dots {
+        display: flex;
+        gap: 7px;
+      }
+
+      .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #cfc7ba;
+      }
+
+      .window-label {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .dashboard {
+        display: grid;
+        grid-template-columns: 145px 1fr;
+        height: calc(485px - 72px);
+        min-height: 0;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--border);
+        padding: 14px 10px;
+        background: var(--surface-soft);
+      }
+
+      .side-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 9px;
+        margin-bottom: 6px;
+        border-radius: 13px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+
+      .side-item.active {
+        color: white;
+        background: var(--primary);
+      }
+
+      .main-panel {
+        padding: 15px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+
+      .panel-head h3 {
+        font-size: 1.12rem;
+        letter-spacing: -0.035em;
+        margin-bottom: 6px;
+      }
+
+      .panel-head span {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .status-pill {
+        padding: 8px 11px;
+        border-radius: 999px;
+        background: #eaf3ff;
+        color: var(--primary);
+        font-size: 0.76rem;
+        font-weight: 750;
+        white-space: nowrap;
+      }
+
+      .composer {
+        padding: 13px;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background: var(--surface);
+        margin-bottom: 13px;
+      }
+
+      .composer label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-bottom: 9px;
+        font-weight: 650;
+      }
+
+      .prompt-box {
+        min-height: 72px;
+        max-height: 78px;
+        overflow: hidden;
+        padding: 12px;
+        border-radius: 16px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 0.86rem;
+        line-height: 1.5;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 10px;
+      }
+
+      .chip {
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: var(--surface-soft);
+        color: var(--muted);
+        font-size: 0.74rem;
+        border: 1px solid var(--border);
+        font-weight: 650;
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .input-row input {
+        min-height: 40px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        padding: 0 12px;
+        outline: none;
+      }
+
+      .input-row input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(49, 92, 76, 0.1);
+      }
+
+      .preview-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .post-preview {
+        min-height: 112px;
+        border-radius: 22px;
+        padding: 13px;
+        border: 1px solid var(--border);
+        background: var(--surface-soft);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .post-preview.alt {
+        background: #eaf3ff;
+      }
+
+      .mini-media {
+        height: 52px;
+        border-radius: 16px;
+        background: var(--primary);
+        margin-bottom: 12px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        padding: 10px;
+        color: white;
+        font-size: 0.74rem;
+        font-weight: 750;
+      }
+
+      .post-preview.alt .mini-media {
+        background: var(--accent);
+      }
+
+      .line {
+        height: 8px;
+        border-radius: 99px;
+        background: #d7d0c5;
+        margin-bottom: 8px;
+      }
+
+      .line.short {
+        width: 62%;
+      }
+      .line.mid {
+        width: 82%;
+      }
+
+      .metric-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .metric {
+        padding: 10px;
+        border-radius: 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 1.04rem;
+        margin-bottom: 4px;
+        color: var(--primary);
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 0.72rem;
+      }
+
+      .floating-card {
+        position: absolute;
+        z-index: 4;
+        width: 190px;
+        padding: 12px;
+        border-radius: 22px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(14px);
+        box-shadow: var(--shadow-soft);
+        animation: float 5s ease-in-out infinite;
+      }
+
+      .floating-card.one {
+        left: -24px;
+        bottom: 38px;
+      }
+
+      .floating-card.two {
+        right: -18px;
+        top: 38px;
+        animation-delay: -2s;
+      }
+
+      .floating-card small {
+        color: var(--muted);
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .floating-card strong {
+        font-size: 1.14rem;
+        letter-spacing: -0.035em;
+        color: var(--text);
+      }
+
+      .progress {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--surface-muted);
+        overflow: hidden;
+        margin-top: 12px;
+      }
+
+      .progress span {
+        display: block;
+        height: 100%;
+        width: 76%;
+        border-radius: inherit;
+        background: var(--primary);
+      }
+
+      .section {
+        padding: 31px 0;
+      }
+
+      .section-head {
+        max-width: 760px;
+        margin: 0 auto 25px;
+        text-align: center;
+      }
+
+      .section-kicker {
+        color: var(--primary);
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.76rem;
+        margin-bottom: 13px;
+      }
+
+      .section h2 {
+        font-size: clamp(2.1rem, 5vw, 4rem);
+        line-height: 1.04;
+        letter-spacing: -0.058em;
+        margin-bottom: 18px;
+      }
+
+      .section-head p {
+        color: var(--muted);
+        font-size: 1.04rem;
+        line-height: 1.75;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0;
+        margin-top: 21px;
+        border: 1px solid var(--border);
+        border-radius: 27px;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: var(--shadow-soft);
+        overflow: hidden;
+        padding: 0;
+      }
+
+      .stat-tile {
+        min-height: 150px;
+        padding: 34px 28px;
+        background: transparent;
+        box-shadow: none;
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .stat-tile:last-child {
+        border-right: 0;
+      }
+
+      .stat-tile strong {
+        display: block;
+        font-size: 1.55rem;
+        letter-spacing: -0.055em;
+        color: var(--primary);
+        margin-bottom: 8px;
+      }
+
+      .stat-tile span {
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 0.88rem;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .feature-card {
+        min-height: 282px;
+        padding: 24px;
+        border-radius: var(--radius-xl);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-soft);
+        transition: 0.24s ease;
+      }
+
+      .feature-card:hover {
+        transform: translateY(-5px);
+        border-color: #cfc6b7;
+      }
+
+      .icon {
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        background: #eaf3ff;
+        color: var(--primary);
+        font-size: 1.35rem;
+        margin-bottom: 22px;
+      }
+
+      .feature-card:nth-child(2n) .icon {
+        background: #e7f1fb;
+        color: var(--accent);
+      }
+
+      .feature-card h3 {
+        font-size: 1.28rem;
+        letter-spacing: -0.035em;
+        margin-bottom: 11px;
+      }
+
+      .feature-card p {
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .data-list {
+        list-style: none;
+        margin-top: 21px;
+        display: grid;
+        gap: 8px;
+        color: var(--text);
+        font-size: 0.9rem;
+        font-weight: 620;
+      }
+
+      .data-list li {
+        display: flex;
+        gap: 9px;
+      }
+
+      .data-list li::before {
+        content: "•";
+        color: var(--primary);
+        font-weight: 900;
+      }
+
+      .workflow {
+        display: grid;
+        grid-template-columns: 0.88fr 1.12fr;
+        gap: 34px;
+        align-items: center;
+      }
+
+      .steps {
+        display: grid;
+        gap: 14px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 54px 1fr;
+        gap: 16px;
+        padding: 18px;
+        border-radius: 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .step-number {
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+        color: var(--primary);
+        font-weight: 900;
+      }
+
+      .step h3 {
+        font-size: 1.1rem;
+        letter-spacing: -0.03em;
+        margin-bottom: 6px;
+      }
+
+      .step p {
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 0.95rem;
+      }
+
+      .workflow-board {
+        min-height: 560px;
+        border-radius: 34px;
+        padding: 20px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .calendar-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .calendar-top strong {
+        letter-spacing: -0.035em;
+        font-size: 1.18rem;
+      }
+
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .calendar-card {
+        min-height: 156px;
+        border-radius: 22px;
+        padding: 14px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+      }
+
+      .calendar-card.featured {
+        grid-column: span 2;
+        background: #eaf3ff;
+      }
+
+      .calendar-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.94rem;
+        line-height: 1.35;
+      }
+
+      .calendar-card span {
+        display: inline-block;
+        padding: 6px 8px;
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 0.72rem;
+        margin-bottom: 28px;
+        border: 1px solid var(--border);
+        font-weight: 650;
+      }
+
+      .platforms {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+
+      .platforms b {
+        display: inline-grid;
+        place-items: center;
+        min-width: 30px;
+        height: 30px;
+        padding: 0 8px;
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--primary);
+        border: 1px solid var(--border);
+        font-size: 0.72rem;
+      }
+
+      .insight-panel {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .insight-card {
+        padding: 15px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+        background: #ffffff;
+      }
+
+      .insight-card strong {
+        display: block;
+        color: var(--primary);
+        font-size: 1.16rem;
+        margin-bottom: 4px;
+      }
+
+      .insight-card span {
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+
+      .pricing-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .price-card {
+        padding: 26px;
+        border-radius: var(--radius-xl);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-soft);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .price-card.popular {
+        background: #eef4fb;
+        border-color: #b9cce1;
+        transform: translateY(-14px);
+        box-shadow: var(--shadow);
+      }
+
+      .plan-badge {
+        width: fit-content;
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: var(--surface-soft);
+        color: var(--primary);
+        font-size: 0.76rem;
+        margin-bottom: 16px;
+        font-weight: 750;
+      }
+
+      .price-card h3 {
+        font-size: 1.32rem;
+        letter-spacing: -0.035em;
+        margin-bottom: 9px;
+      }
+
+      .price-card .desc {
+        color: var(--muted);
+        line-height: 1.6;
+        min-height: 52px;
+        margin-bottom: 22px;
+      }
+
+      .price {
+        font-size: 3rem;
+        font-weight: 900;
+        letter-spacing: -0.075em;
+        margin-bottom: 20px;
+        color: var(--primary);
+      }
+
+      .price span {
+        color: var(--muted);
+        font-size: 0.96rem;
+        letter-spacing: -0.02em;
+        font-weight: 650;
+      }
+
+      .feature-list {
+        list-style: none;
+        display: grid;
+        gap: 12px;
+        margin: 22px 0 26px;
+        color: var(--text);
+        flex: 1;
+      }
+
+      .feature-list li {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        line-height: 1.45;
+      }
+
+      .feature-list li::before {
+        content: "✓";
+        color: var(--primary);
+        font-weight: 900;
+      }
+
+      .testimonials {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+
+      .quote-card {
+        padding: 24px;
+        border-radius: var(--radius-xl);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .quote-card p {
+        color: var(--text);
+        font-size: 1.04rem;
+        line-height: 1.7;
+        margin-bottom: 18px;
+      }
+
+      .person {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+      }
+
+      .person b {
+        color: var(--text);
+        display: block;
+        margin-bottom: 3px;
+      }
+
+      .cta {
+        padding: 36px;
+        border-radius: 36px;
+        background: var(--primary);
+        color: white;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        align-items: center;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .cta h2 {
+        font-size: clamp(2rem, 5vw, 3.25rem);
+        margin-bottom: 12px;
+        color: white;
+      }
+
+      .cta p {
+        color: rgba(255, 255, 255, 0.78);
+        line-height: 1.7;
+        max-width: 670px;
+      }
+
+      .cta .btn {
+        background: white;
+        color: var(--primary);
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.14);
+      }
+
+      footer {
+        margin: 25px auto 18px;
+        width: min(var(--max), calc(100% - 40px));
+        padding: 34px 28px 24px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--border);
+        border-radius: 36px;
+        box-shadow: var(--shadow-soft);
+      }
+
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1.6fr repeat(4, 1fr);
+        gap: 32px;
+        margin-bottom: 38px;
+      }
+
+      .footer-about p {
+        margin-top: 21px;
+        line-height: 1.7;
+        max-width: 340px;
+      }
+
+      .footer-col h4 {
+        color: var(--text);
+        font-size: 0.95rem;
+        margin-bottom: 14px;
+        letter-spacing: -0.01em;
+      }
+
+      .footer-col a {
+        display: block;
+        margin-bottom: 11px;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+
+      .footer-col a:hover {
+        color: var(--primary);
+      }
+
+      .footer-newsletter {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        max-width: 430px;
+        padding: 7px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .footer-newsletter input {
+        min-height: 44px;
+        border-radius: 999px;
+        border: 0;
+        background: transparent;
+        padding: 0 18px;
+        outline: none;
+        color: var(--text);
+        min-width: 0;
+      }
+
+      .footer-newsletter .btn {
+        border-radius: 999px;
+        min-height: 44px;
+        padding-inline: 22px;
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        border-top: 1px solid var(--border);
+        padding-top: 24px;
+        font-size: 0.92rem;
+      }
+
+      .page {
+        display: none;
+      }
+      .page.active {
+        display: block;
+        animation: pageFade 0.28s ease;
+      }
+
+      @keyframes pageFade {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .page-hero {
+        padding: 42px 0 24px;
+      }
+
+      .page-hero > .container {
+        width: min(var(--max), calc(100% - 40px));
+      }
+
+      .page-hero-card {
+        width: 100%;
+        margin: 0;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid var(--border);
+        border-radius: 34px;
+        box-shadow: var(--shadow-soft);
+        padding: 42px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .page-hero h1 {
+        font-size: clamp(2.2rem, 5vw, 4.2rem);
+        line-height: 1;
+        letter-spacing: -0.06em;
+        margin-bottom: 14px;
+      }
+
+      .page-hero p {
+        max-width: 720px;
+        color: var(--muted);
+        line-height: 1.7;
+        font-size: 1rem;
+      }
+
+      .page-grid {
+        width: min(var(--max), calc(100% - 40px));
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        padding: 24px 0 36px;
+      }
+
+      .page-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 26px;
+        padding: 24px;
+        box-shadow: var(--shadow-soft);
+      }
+
+      .page-card h3 {
+        font-size: 1.22rem;
+        letter-spacing: -0.03em;
+        margin-bottom: 10px;
+      }
+
+      .page-card p {
+        color: var(--muted);
+        line-height: 1.65;
+        margin-bottom: 16px;
+      }
+
+      .page-card ul {
+        list-style: none;
+        display: grid;
+        gap: 10px;
+        color: var(--text);
+        font-weight: 600;
+        font-size: 0.94rem;
+      }
+
+      .page-card li::before {
+        content: "✓";
+        color: var(--primary);
+        font-weight: 900;
+        margin-right: 8px;
+      }
+
+      .contact-panel {
+        width: min(var(--max), calc(100% - 40px));
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+        padding: 24px 0 36px;
+      }
+
+      .contact-form {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        padding: 24px;
+        box-shadow: var(--shadow-soft);
+        display: grid;
+        gap: 14px;
+      }
+
+      .contact-form input,
+      .contact-form textarea,
+      .contact-form select,
+      .auth-form input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        min-height: 48px;
+        padding: 0 16px;
+        outline: none;
+        background: var(--surface-soft);
+        color: var(--text);
+      }
+
+      .contact-form textarea {
+        min-height: 130px;
+        border-radius: 22px;
+        padding: 14px 16px;
+        resize: vertical;
+      }
+
+      .auth-shell {
+        width: min(var(--max), calc(100% - 40px));
+        min-height: 68vh;
+        display: grid;
+        place-items: center;
+        padding: 42px 0;
+        margin: 0 auto;
+      }
+
+      .auth-card {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid var(--border);
+        border-radius: 34px;
+        box-shadow: var(--shadow);
+        padding: 10px;
+        display: grid;
+        grid-template-columns: 0.92fr 1fr;
+        gap: 10px;
+        overflow: hidden;
+      }
+
+      .auth-banner {
+        min-height: 540px;
+        border-radius: 28px;
+        background: var(--primary);
+        color: white;
+        padding: 34px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .auth-banner::after {
+        content: "";
+        position: absolute;
+        right: -80px;
+        bottom: -80px;
+        width: 240px;
+        height: 240px;
+        border-radius: 50%;
+        border: 44px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .auth-banner .brand {
+        color: white;
+        position: relative;
+        z-index: 1;
+      }
+
+      .auth-banner .brand-mark {
+        background: white;
+        color: var(--primary);
+      }
+
+      .auth-banner h2 {
+        font-size: clamp(2.1rem, 5vw, 3.4rem);
+        line-height: 1;
+        letter-spacing: -0.06em;
+        margin-bottom: 16px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .auth-banner p {
+        color: rgba(255, 255, 255, 0.78);
+        line-height: 1.7;
+        max-width: 360px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .auth-banner-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 24px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .auth-banner-list span {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: rgba(255, 255, 255, 0.9);
+        font-weight: 650;
+      }
+
+      .auth-banner-list span::before {
+        content: "✓";
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.14);
+        display: grid;
+        place-items: center;
+        font-size: 0.8rem;
+      }
+
+      .auth-form-panel {
+        padding: 38px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .auth-form-panel h1 {
+        font-size: clamp(2rem, 5vw, 3rem);
+        line-height: 1;
+        letter-spacing: -0.055em;
+        margin-bottom: 10px;
+      }
+
+      .auth-form-panel p {
+        color: var(--muted);
+        line-height: 1.65;
+        margin-bottom: 22px;
+      }
+
+      .auth-form {
+        display: grid;
+        gap: 13px;
+      }
+
+      .google-auth-btn {
+        width: 100%;
+        min-height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        font-weight: 800;
+        cursor: pointer;
+        transition: 0.2s ease;
+      }
+
+      .google-auth-btn:hover {
+        background: var(--surface-soft);
+        transform: translateY(-1px);
+      }
+
+      .google-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+      }
+
+      .google-icon svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+      }
+
+      .auth-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 0.86rem;
+        margin: 2px 0;
+      }
+
+      .auth-divider::before,
+      .auth-divider::after {
+        content: "";
+        height: 1px;
+        flex: 1;
+        background: var(--border);
+      }
+
+      .auth-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 2px 0 8px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .auth-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .auth-check input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .auth-check span {
+        width: 20px;
+        height: 20px;
+        border-radius: 7px;
+        border: 1px solid var(--border);
+        background: var(--surface-soft);
+        display: grid;
+        place-items: center;
+        transition: 0.2s ease;
+        flex: 0 0 auto;
+      }
+
+      .auth-check span::after {
+        content: "✓";
+        color: white;
+        font-size: 0.72rem;
+        font-weight: 900;
+        opacity: 0;
+        transform: scale(0.6);
+        transition: 0.2s ease;
+      }
+
+      .auth-check input:checked + span {
+        background: var(--primary);
+        border-color: var(--primary);
+      }
+
+      .auth-check input:checked + span::after {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .auth-meta a,
+      .auth-switch a {
+        color: var(--primary);
+        font-weight: 750;
+      }
+
+      .auth-switch {
+        margin-top: 18px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+
+      .dashboard-preview {
+        width: min(var(--max), calc(100% - 40px));
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 18px;
+        padding: 28px 0 40px;
+      }
+
+      .dashboard-menu,
+      .dashboard-main {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        box-shadow: var(--shadow-soft);
+        padding: 22px;
+      }
+
+      .dashboard-menu a {
+        display: block;
+        padding: 12px 14px;
+        border-radius: 999px;
+        color: var(--muted);
+        font-weight: 650;
+        margin-bottom: 8px;
+      }
+
+      .dashboard-menu a.active {
+        background: var(--primary);
+        color: white;
+      }
+
+      .dashboard-cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .dashboard-stat {
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        padding: 18px;
+      }
+
+      .dashboard-stat strong {
+        display: block;
+        color: var(--primary);
+        font-size: 1.6rem;
+        letter-spacing: -0.04em;
+        margin-bottom: 5px;
+      }
+
+      .landing-showcase {
+        height: 100%;
+        padding: 18px;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 14px;
+      }
+
+      .showcase-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .showcase-header strong {
+        font-size: 1rem;
+        letter-spacing: -0.03em;
+      }
+
+      .showcase-brief {
+        padding: 16px;
+        border-radius: 22px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+      }
+
+      .showcase-brief label {
+        display: block;
+        color: var(--primary);
+        font-weight: 800;
+        font-size: 0.82rem;
+        margin-bottom: 8px;
+      }
+
+      .showcase-brief p {
+        color: var(--muted);
+        line-height: 1.55;
+        margin: 0;
+        font-size: 0.9rem;
+      }
+
+      .showcase-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+
+      .showcase-card {
+        padding: 15px;
+        border-radius: 22px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .showcase-card span {
+        display: inline-grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: var(--surface-soft);
+        color: var(--primary);
+        font-weight: 900;
+        font-size: 0.78rem;
+        margin-bottom: 12px;
+      }
+
+      .showcase-card strong {
+        display: block;
+        margin-bottom: 7px;
+        letter-spacing: -0.02em;
+      }
+
+      .showcase-card p {
+        color: var(--muted);
+        line-height: 1.5;
+        font-size: 0.82rem;
+        margin: 0;
+      }
+
+      .showcase-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+
+      .showcase-metrics div {
+        padding: 12px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: var(--surface-soft);
+      }
+
+      .showcase-metrics strong {
+        display: block;
+        color: var(--primary);
+        font-size: 1.25rem;
+        letter-spacing: -0.04em;
+      }
+
+      .showcase-metrics span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.75rem;
+        margin-top: 3px;
+      }
+
+      .simple-page-section {
+        width: min(var(--max), calc(100% - 40px));
+        margin: 0 auto;
+        padding: 26px 0 38px;
+      }
+
+      .simple-list {
+        display: grid;
+        gap: 14px;
+        margin-top: 18px;
+      }
+
+      .simple-list-item {
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        background: var(--surface-soft);
+      }
+
+      .simple-list-item strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--primary);
+      }
+
+      .legal-card {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        box-shadow: var(--shadow-soft);
+        padding: 38px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      .legal-card h2 {
+        color: var(--text);
+        margin: 28px 0 10px;
+        letter-spacing: -0.03em;
+        font-size: 1.55rem;
+      }
+
+      .legal-card h2:first-child {
+        margin-top: 0;
+      }
+
+      .legal-card p {
+        margin-bottom: 12px;
+      }
+
+      .legal-card ul {
+        margin: 12px 0 18px;
+        padding-left: 20px;
+      }
+
+      .legal-card li {
+        margin-bottom: 8px;
+      }
+
+      .legal-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      .legal-meta span {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+        color: var(--primary);
+        font-weight: 750;
+        font-size: 0.86rem;
+      }
+
+      .social-links {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .social-links a {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--primary);
+        font-weight: 800;
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(22px);
+        transition: 0.65s ease;
+      }
+
+      .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-12px);
+        }
+      }
+
+      @media (max-width: 980px) {
+        .page-hero-card,
+        .contact-panel {
+          grid-template-columns: 1fr;
+        }
+
+        .page-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .nav-links,
+        .nav-actions {
+          display: none;
+        }
+
+        .mobile-toggle {
+          display: grid;
+          place-items: center;
+          border-radius: 50%;
+        }
+
+        .nav.open .nav-links {
+          position: absolute;
+          left: 50%;
+          top: 82px;
+          transform: translateX(-50%);
+          width: min(720px, calc(100% - 24px));
+          display: grid;
+          gap: 6px;
+          padding: 16px;
+          border-radius: 24px;
+          background: var(--surface) !important;
+          backdrop-filter: blur(18px);
+          border: 1px solid var(--border);
+          box-shadow: var(--shadow);
+          text-align: left;
+          justify-items: stretch;
+        }
+
+        .nav.open .nav-links a {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          padding: 14px 16px;
+          border-radius: 14px;
+          text-align: left;
+          color: var(--text);
+        }
+
+        .nav.open .nav-links a:hover {
+          background: var(--surface-soft);
+        }
+
+        .mobile-menu-cta {
+          display: grid !important;
+        }
+
+        .hero-grid,
+        .workflow,
+        .cta {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding-top: 38px;
+        }
+
+        .hero-visual {
+          max-width: 640px;
+          margin: 0 auto;
+        }
+
+        .feature-grid,
+        .pricing-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
+          border-radius: 22px;
+        }
+
+        .stat-tile:nth-child(2) {
+          border-right: 0;
+        }
+
+        .stat-tile:nth-child(1),
+        .stat-tile:nth-child(2) {
+          border-bottom: 1px solid var(--border);
+        }
+
+        .price-card.popular {
+          transform: none;
+        }
+
+        .footer-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .hero {
+          padding-top: 10px !important;
+        }
+
+        .page-hero {
+          padding-top: 14px !important;
+        }
+
+        .auth-shell {
+          padding-top: 16px !important;
+        }
+
+        .section:first-child,
+        .simple-page-section,
+        .dashboard-preview,
+        .contact-panel,
+        .page-grid {
+          padding-top: 14px !important;
+        }
+
+        .mobile-menu-cta {
+          grid-template-columns: 1fr;
+        }
+
+        .page-hero-card {
+          padding: 28px;
+          border-radius: 26px;
+        }
+
+        .page-grid,
+        .contact-panel,
+        .dashboard-preview,
+        .dashboard-cards,
+        .app-dashboard,
+        .dashboard-section-grid,
+        .dashboard-stat-grid,
+        .role-feature-grid,
+        .calendar-strip {
+          grid-template-columns: 1fr;
+        }
+
+        .auth-card {
+          padding: 24px;
+          border-radius: 26px;
+        }
+
+        
+
+        .container {
+          width: min(100% - 28px, var(--max));
+        }
+
+        .hero h1 {
+          font-size: clamp(2.25rem, 12vw, 3.45rem);
+        }
+
+        .hero p {
+          font-size: 1rem;
+        }
+
+        .product-card {
+          min-height: auto;
+          padding: 12px;
+          border-radius: 26px;
+        }
+
+        .dashboard {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .floating-card {
+          display: none;
+        }
+
+        .preview-grid,
+        .metric-row,
+        .feature-grid,
+        .pricing-grid,
+        .testimonials,
+        .calendar-grid,
+        .insight-panel,
+        .footer-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stats-grid {
+          grid-template-columns: 1fr;
+          border-radius: 22px;
+        }
+
+        .stat-tile {
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .stat-tile:last-child {
+          border-bottom: 0;
+        }
+
+        .stat-tile:nth-child(2) {
+          border-bottom: 1px solid var(--border);
+        }
+
+        .calendar-card.featured {
+          grid-column: span 1;
+        }
+
+        .hero-actions .btn,
+        .cta .btn,
+        .input-row .btn {
+          width: 100%;
+        }
+
+        .input-row {
+          grid-template-columns: 1fr;
+        }
+
+        .cta {
+          padding: 24px;
+          border-radius: 28px;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+
+      /* Final responsive and mobile menu override */
+      @media (max-width: 980px) {
+        .nav.open .nav-links {
+          left: 50% !important;
+          right: auto !important;
+          top: 82px !important;
+          transform: translateX(-50%) !important;
+          width: min(980px, calc(100vw - 24px)) !important;
+          max-width: calc(100vw - 24px) !important;
+          padding: 18px !important;
+          display: grid !important;
+          grid-template-columns: 1fr !important;
+          gap: 6px !important;
+          justify-items: stretch !important;
+          align-items: stretch !important;
+          text-align: left !important;
+        }
+
+        .nav.open .nav-links > a {
+          width: 100% !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-start !important;
+          text-align: left !important;
+          padding: 15px 18px !important;
+          margin: 0 !important;
+          border-radius: 999px !important;
+        }
+
+        .nav.open .mobile-menu-cta {
+          width: 100% !important;
+          display: grid !important;
+          grid-template-columns: auto 1fr 1fr !important;
+          gap: 10px !important;
+        }
+
+        .nav.open .mobile-menu-cta .btn {
+          width: 100% !important;
+          justify-content: center !important;
+          text-align: center !important;
+          border-radius: 999px !important;
+        }
+
+        .nav.open .mobile-menu-cta .btn-primary {
+          color: #ffffff !important;
+        }
+
+        body.dark-mode .nav.open .mobile-menu-cta .btn-primary {
+          color: #06111f !important;
+        }
+
+        .page-hero-card,
+        .auth-card,
+        .contact-panel,
+        .dashboard-preview {
+          grid-template-columns: 1fr !important;
+        }
+
+        .auth-banner {
+          min-height: 360px !important;
+        }
+
+        .page-grid,
+        .dashboard-cards,
+        .feature-grid,
+        .pricing-grid,
+        .testimonials,
+        .dashboard-stat-grid,
+        .role-feature-grid,
+        .calendar-strip {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .app-dashboard,
+        .dashboard-section-grid {
+          grid-template-columns: 1fr !important;
+        }
+
+        .app-sidebar {
+          position: static !important;
+        }
+
+        .dashboard-topbar {
+          grid-template-columns: 1fr !important;
+        }
+
+        .dashboard-search {
+          min-width: 0 !important;
+          width: 100% !important;
+        }
+
+        .footer-grid {
+          grid-template-columns: 1fr 1fr !important;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .container,
+        .page-grid,
+        .contact-panel,
+        .auth-shell,
+        .dashboard-preview,
+        .simple-page-section,
+        .page-hero > .container,
+        footer,
+        .nav-inner,
+        .nav.open .nav-links {
+          width: calc(100vw - 16px) !important;
+        }
+
+        .hero-grid,
+        .workflow,
+        .cta,
+        .contact-panel,
+        .auth-card,
+        .dashboard-preview,
+        .page-hero-card,
+        .page-grid,
+        .dashboard-cards,
+        .feature-grid,
+        .pricing-grid,
+        .testimonials,
+        .footer-grid,
+        .stats-grid,
+        .calendar-grid,
+        .insight-panel {
+          grid-template-columns: 1fr !important;
+        }
+
+        .nav.open .mobile-menu-cta {
+          grid-template-columns: 1fr !important;
+        }
+
+        .nav.open .mobile-menu-cta .theme-toggle {
+          width: 100% !important;
+        }
+
+        .page-hero-card,
+        .auth-form-panel,
+        .legal-card,
+        .footer-about,
+        .contact-form,
+        .page-card {
+          padding: 24px !important;
+        }
+
+        .auth-banner {
+          min-height: 300px !important;
+          padding: 26px !important;
+        }
+
+        .auth-banner h2 {
+          font-size: 2.15rem !important;
+        }
+
+        
+
+        .page-hero h1,
+        .auth-form-panel h1 {
+          font-size: clamp(2rem, 11vw, 3rem) !important;
+        }
+      }
+
+      
+      @media (max-width: 480px) {
+        .footer-newsletter {
+          grid-template-columns: 1fr !important;
+          background: transparent !important;
+          border: none !important;
+          padding: 0 !important;
+          gap: 10px !important;
+          overflow: visible !important;
+        }
+        .footer-newsletter input {
+          background: var(--surface-soft) !important;
+          border: 1px solid var(--border) !important;
+          border-radius: 999px !important;
+          padding: 0 20px !important;
+          width: 100% !important;
+          min-height: 48px !important;
+        }
+        .footer-newsletter .btn {
+          width: 100% !important;
+          min-height: 48px !important;
+          border-radius: 999px !important;
+        }
+      }
+
+      /* Theme system */
+      body.dark-mode {
+        --bg: #07111f;
+        --surface: #0e1b2d;
+        --surface-soft: #13243a;
+        --surface-muted: #1c314d;
+        --text: #f5f8fc;
+        --muted: #b7c5d6;
+        --primary: #7db7ff;
+        --primary-dark: #4f9af4;
+        --accent: #9cc9ff;
+        --border: rgba(255, 255, 255, 0.12);
+        --shadow: 0 26px 70px rgba(0, 0, 0, 0.36);
+        --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.28);
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.035) 1px,
+            transparent 1px
+          ),
+          var(--bg);
+        background-size: 48px 48px;
+      }
+
+      body.dark-mode .nav-inner,
+      body.dark-mode footer,
+      body.dark-mode .page-hero-card,
+      body.dark-mode .auth-card,
+      body.dark-mode .legal-card,
+      body.dark-mode .page-card,
+      body.dark-mode .price-card,
+      body.dark-mode .feature-card,
+      body.dark-mode .quote-card,
+      body.dark-mode .contact-form,
+      body.dark-mode .dashboard-menu,
+      body.dark-mode .dashboard-main,
+      body.dark-mode .product-card,
+      body.dark-mode .app-window,
+      body.dark-mode .stats-grid,
+      body.dark-mode .floating-card,
+      body.dark-mode .footer-newsletter {
+        background: rgba(14, 27, 45, 0.92) !important;
+        color: var(--text);
+      }
+
+      body.dark-mode .nav-inner,
+      body.dark-mode footer,
+      body.dark-mode .page-hero-card,
+      body.dark-mode .auth-card,
+      body.dark-mode .legal-card,
+      body.dark-mode .page-card,
+      body.dark-mode .price-card,
+      body.dark-mode .feature-card,
+      body.dark-mode .quote-card,
+      body.dark-mode .contact-form,
+      body.dark-mode .dashboard-menu,
+      body.dark-mode .dashboard-main,
+      body.dark-mode .product-card,
+      body.dark-mode .app-window,
+      body.dark-mode .stats-grid,
+      body.dark-mode .floating-card {
+        background: rgba(14, 27, 45, 0.92);
+        color: var(--text);
+      }
+
+      body.dark-mode .window-top,
+      body.dark-mode .sidebar,
+      body.dark-mode .composer,
+      body.dark-mode .metric,
+      body.dark-mode .calendar-card,
+      body.dark-mode .dashboard-stat,
+      body.dark-mode .simple-list-item,
+      body.dark-mode .prompt-box,
+      body.dark-mode .input-row input,
+      body.dark-mode .contact-form input,
+      body.dark-mode .contact-form textarea,
+      body.dark-mode .contact-form select,
+      body.dark-mode .auth-form input,
+      body.dark-mode .post-preview,
+      body.dark-mode .post-preview.alt,
+      body.dark-mode .showcase-brief,
+      body.dark-mode .showcase-card,
+      body.dark-mode .showcase-metrics div {
+        background: var(--surface-soft) !important;
+        color: var(--text);
+        border-color: var(--border);
+      }
+
+      body.dark-mode .window-top,
+      body.dark-mode .sidebar,
+      body.dark-mode .composer,
+      body.dark-mode .metric,
+      body.dark-mode .calendar-card,
+      body.dark-mode .dashboard-stat,
+      body.dark-mode .simple-list-item,
+      body.dark-mode .prompt-box,
+      body.dark-mode .input-row input,
+      body.dark-mode .contact-form input,
+      body.dark-mode .contact-form textarea,
+      body.dark-mode .contact-form select,
+      body.dark-mode .auth-form input {
+        background: var(--surface-soft);
+        color: var(--text);
+        border-color: var(--border);
+      }
+
+      body.dark-mode .btn-primary,
+      body.dark-mode .side-item.active,
+      body.dark-mode .dashboard-menu a.active {
+        background: var(--primary);
+        color: #06111f !important;
+      }
+
+      body.dark-mode .btn-primary:hover {
+        background: var(--primary-dark);
+        color: #06111f;
+      }
+
+      body.dark-mode .btn-ghost,
+      body.dark-mode .google-auth-btn,
+      body.dark-mode .social-links a,
+      body.dark-mode .calendar-card span,
+      body.dark-mode .platforms b,
+      body.dark-mode .chip,
+      body.dark-mode .plan-badge,
+      body.dark-mode .legal-meta span,
+      body.dark-mode .theme-toggle,
+      body.dark-mode .footer-newsletter .btn,
+      body.dark-mode .google-icon {
+        background: var(--surface-soft) !important;
+        color: var(--text) !important;
+        border-color: var(--border) !important;
+      }
+
+      body.dark-mode .auth-banner {
+        background: #061a33;
+      }
+
+      body.dark-mode .auth-banner .brand-mark {
+        background: var(--primary);
+        color: #06111f;
+      }
+
+      body.dark-mode .brand-mark {
+        background: var(--primary);
+        color: #06111f;
+      }
+
+      body.dark-mode .footer-newsletter input {
+        background: transparent;
+        color: var(--text) !important;
+      }
+
+      body.dark-mode .line {
+        background: rgba(255, 255, 255, 0.18) !important;
+      }
+
+      body.dark-mode .dot {
+        background: rgba(255, 255, 255, 0.28) !important;
+      }
+
+      body.dark-mode .auth-check span {
+        background: var(--surface-muted) !important;
+        border-color: var(--border) !important;
+      }
+
+      body.dark-mode .auth-check input:checked + span {
+        background: var(--primary) !important;
+        border-color: var(--primary) !important;
+      }
+
+      body.dark-mode .mini-media {
+        background: var(--primary-dark);
+        color: #06111f;
+      }
+
+      body.dark-mode .post-preview.alt .mini-media {
+        background: var(--accent);
+        color: #06111f;
+      }
+
+      body.dark-mode .nav.open .nav-links {
+        background: var(--surface) !important;
+      }
+
+      body.dark-mode .nav.open .nav-links > a:hover {
+        background: var(--surface-soft);
+      }
+
+      body.dark-mode .cursor-glow {
+        background: radial-gradient(
+          circle,
+          rgba(125, 183, 255, 0.2),
+          transparent 65%
+        );
+      }
+
+      .theme-toggle {
+        min-height: 44px;
+        width: 44px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        display: inline-grid;
+        place-items: center;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: 0.2s ease;
+      }
+
+      .theme-toggle:hover {
+        background: var(--surface-soft);
+        transform: translateY(-1px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="cursor-glow" id="cursorGlow"></div>
+
+    <nav class="nav" id="nav">
+      <div class="container nav-inner">
+        <a href="#" class="brand" aria-label="Classic AI Autobrand home">
+          <span class="brand-mark">CA</span>
+          <span>Classic AI Autobrand</span>
+        </a>
+
+        <div class="nav-links" id="navLinks">
+          <a href="#home" data-page-link="homePage">Home</a>
+          <a href="#features" data-page-link="featuresPage">Features</a>
+          <a href="#pricing" data-page-link="pricingPage">Pricing</a>
+          <a href="#resources" data-page-link="resourcesPage">Resources</a>
+          <a href="#help" data-page-link="helpPage">Help</a>
+          <div class="mobile-menu-cta">
+            <button
+              class="theme-toggle"
+              id="mobileThemeToggle"
+              type="button"
+              aria-label="Toggle dark mode"
+            >
+              ☾
+            </button>
+            <a href="/auth/login" class="btn btn-ghost"
+              >Login</a
+            >
+            <a
+              href="/auth/register"
+              class="btn btn-primary"
+              >Start free</a
+            >
+          </div>
+        </div>
+
+        <div class="nav-actions">
+          <button
+            class="theme-toggle"
+            id="themeToggle"
+            type="button"
+            aria-label="Toggle dark mode"
+          >
+            ☾
+          </button>
+          <a href="/auth/login" class="btn btn-ghost"
+            >Login</a
+          >
+          <a href="/auth/register" class="btn btn-primary"
+            >Start free</a
+          >
+        </div>
+
+        <button
+          class="mobile-toggle"
+          id="mobileToggle"
+          aria-label="Open navigation"
+        >
+          ☰
+        </button>
+      </div>
+    </nav>
+
+    <main>
+      <div class="page active" id="homePage">
+        <section class="hero" id="start">
+          <div class="container hero-grid">
+            <div class="hero-copy reveal">
+              <div class="eyebrow">
+                <span class="pulse"></span> AI content workspace for creators,
+                shops and agencies
+              </div>
+              <h1>
+                Create a consistent brand presence with <span>AI agents.</span>
+              </h1>
+              <p>
+                Classic AI Autobrand helps you plan campaigns, write captions,
+                generate scripts, organize brand kits and schedule content from
+                one simple workspace built for growing brands.
+              </p>
+              <div class="hero-actions">
+                <a href="/auth/register" class="btn btn-primary"
+                  >Create my first campaign</a
+                >
+                <a href="#workflow" class="btn btn-ghost">See workflow</a>
+              </div>
+              <div class="trust-row">
+                <div class="avatars" aria-hidden="true">
+                  <span class="avatar">AM</span>
+                  <span class="avatar">JK</span>
+                  <span class="avatar">PL</span>
+                  <span class="avatar">+8</span>
+                </div>
+                <span
+                  >Designed for content creators, solo founders, marketing teams
+                  and client-based agencies.</span
+                >
+              </div>
+            </div>
+
+            <div class="hero-visual reveal">
+              <div class="floating-card one">
+                <small>Campaign readiness</small>
+                <strong><%= siteStats.approvalRate %>% approved</strong>
+                <div class="progress"><span></span></div>
+              </div>
+              <div class="floating-card two">
+                <small>This week</small>
+                <strong><%= siteStats.generatedAssetsLabel %> assets created</strong>
+                <div class="chip-row">
+                  <span class="chip"><%= siteStats.totalPostsLabel %> posts</span>
+                  <span class="chip"><%= siteStats.videoJobs %> videos</span>
+                  <span class="chip"><%= siteStats.connectedAccounts %> accounts</span>
+                </div>
+              </div>
+
+              <div class="product-card">
+                <div class="app-window">
+                  <div class="window-top">
+                    <div class="dots">
+                      <span class="dot"></span><span class="dot"></span
+                      ><span class="dot"></span>
+                    </div>
+                    <span class="window-label"
+                      >Brand workspace / Summer launch</span
+                    >
+                  </div>
+                  <div class="landing-showcase">
+                    <div class="showcase-header">
+                      <span class="status-pill">AI campaign builder</span>
+                      <strong>From brand brief to content plan</strong>
+                    </div>
+
+                    <div class="showcase-brief">
+                      <label>Campaign brief</label>
+                      <p>
+                        Build a 14-day content campaign for a new streetwear
+                        drop. Focus on product story, scarcity, creator videos,
+                        and clear sales CTAs.
+                      </p>
+                    </div>
+
+                    <div class="showcase-grid">
+                      <div class="showcase-card">
+                        <span>01</span>
+                        <strong>Brand strategy</strong>
+                        <p>Audience, positioning, offer angle and tone.</p>
+                      </div>
+                      <div class="showcase-card">
+                        <span>02</span>
+                        <strong>Content ideas</strong>
+                        <p>Reels, carousels, stories and ad copy.</p>
+                      </div>
+                      <div class="showcase-card">
+                        <span>03</span>
+                        <strong>Calendar plan</strong>
+                        <p>Daily publishing flow with review status.</p>
+                      </div>
+                      <div class="showcase-card">
+                        <span>04</span>
+                        <strong>Performance notes</strong>
+                        <p>Track hooks, clicks, saves and conversions.</p>
+                      </div>
+                    </div>
+
+                    <div class="showcase-metrics">
+                      <div><strong><%= siteStats.generatedAssetsLabel %></strong><span>Assets created</span></div>
+                      <div><strong><%= siteStats.campaignsLabel %></strong><span>Campaigns</span></div>
+                      <div><strong><%= siteStats.scheduledPosts %></strong><span>Scheduled posts</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div class="section-head reveal">
+              <div class="section-kicker">Built for practical marketing</div>
+              <h2>Turn scattered ideas into clear campaigns.</h2>
+              <p>
+                Give the AI your niche, product, audience and tone. It converts
+                your strategy into platform-ready content with measurable goals
+                and clear next steps.
+              </p>
+            </div>
+            <div class="stats-grid reveal">
+              <div class="stat-tile">
+                <strong><%= siteStats.campaignsLabel %></strong
+                ><span
+                  >Real campaigns currently tracked by the platform.</span
+                >
+              </div>
+              <div class="stat-tile">
+                <strong><%= siteStats.platformCount %> channels</strong
+                ><span
+                  >Plan content for Instagram, TikTok, YouTube, LinkedIn and
+                  ads.</span
+                >
+              </div>
+              <div class="stat-tile">
+                <strong><%= siteStats.generatedAssetsLabel %></strong
+                ><span
+                  >Posts, media assets and video jobs managed in the system.</span
+                >
+              </div>
+              <div class="stat-tile">
+                <strong><%= siteStats.activeBrandsLabel %></strong
+                ><span
+                  >Active brand memories for voice, offers and audience rules.</span
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="features">
+          <div class="container">
+            <div class="section-head reveal">
+              <div class="section-kicker">Core features</div>
+              <h2>Your clean AI agent platform for brand growth.</h2>
+              <p>
+                Plan content, create copy, organize brand data and prepare
+                campaigns without jumping between many tools.
+              </p>
+            </div>
+
+            <div class="feature-grid">
+              <article class="feature-card reveal">
+                <div class="icon">01</div>
+                <h3>Brand Strategy Agent</h3>
+                <p>
+                  Generate positioning, target audience, content pillars, offer
+                  angles and brand voice from a simple business description.
+                </p>
+                <ul class="data-list">
+                  <li>Audience personas</li>
+                  <li>Messaging framework</li>
+                  <li>Brand voice rules</li>
+                </ul>
+              </article>
+              <article class="feature-card reveal">
+                <div class="icon">02</div>
+                <h3>Content Production</h3>
+                <p>
+                  Create captions, hooks, carousels, reels, video scripts, email
+                  ideas and ad variations for daily publishing.
+                </p>
+                <ul class="data-list">
+                  <li>Caption sets</li>
+                  <li>Script outlines</li>
+                  <li>Repurposed content</li>
+                </ul>
+              </article>
+              <article class="feature-card reveal">
+                <div class="icon">03</div>
+                <h3>Calendar Planning</h3>
+                <p>
+                  Turn campaign goals into weekly or monthly schedules with
+                  formats, channels, posting focus and content status.
+                </p>
+                <ul class="data-list">
+                  <li>Weekly plans</li>
+                  <li>Post status tracking</li>
+                  <li>Channel mapping</li>
+                </ul>
+              </article>
+              <article class="feature-card reveal">
+                <div class="icon">04</div>
+                <h3>Brand Kit Memory</h3>
+                <p>
+                  Save your tone, product facts, audience, offers and creative
+                  rules so each output stays consistent.
+                </p>
+                <ul class="data-list">
+                  <li>Voice settings</li>
+                  <li>Product library</li>
+                  <li>Client notes</li>
+                </ul>
+              </article>
+              <article class="feature-card reveal">
+                <div class="icon">05</div>
+                <h3>Ad Angle Builder</h3>
+                <p>
+                  Generate paid campaign angles based on pain points, benefits,
+                  objections, proof and call-to-action strategy.
+                </p>
+                <ul class="data-list">
+                  <li>Offer hooks</li>
+                  <li>CTA variations</li>
+                  <li>Testing ideas</li>
+                </ul>
+              </article>
+              <article class="feature-card reveal">
+                <div class="icon">06</div>
+                <h3>Performance Notes</h3>
+                <p>
+                  Record content results and let the AI suggest what to repeat,
+                  improve or stop in the next campaign cycle.
+                </p>
+                <ul class="data-list">
+                  <li>Winning themes</li>
+                  <li>Content gaps</li>
+                  <li>Next actions</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="workflow">
+          <div class="container workflow">
+            <div class="reveal">
+              <div class="section-kicker">Workflow</div>
+              <h2>One simple process from brief to publishing plan.</h2>
+              <div class="steps">
+                <div class="step">
+                  <div class="step-number">01</div>
+                  <div>
+                    <h3>Set brand context</h3>
+                    <p>
+                      Add your product, target market, brand tone, price range,
+                      proof points and key offers.
+                    </p>
+                  </div>
+                </div>
+                <div class="step">
+                  <div class="step-number">02</div>
+                  <div>
+                    <h3>Select campaign objective</h3>
+                    <p>
+                      Choose awareness, launch, sales, lead generation,
+                      retention or community growth.
+                    </p>
+                  </div>
+                </div>
+                <div class="step">
+                  <div class="step-number">03</div>
+                  <div>
+                    <h3>Generate, review and schedule</h3>
+                    <p>
+                      Review AI suggestions, edit the copy, approve the calendar
+                      and export assets for publishing.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="workflow-board reveal">
+              <div class="calendar-top">
+                <strong>AI Content Calendar</strong>
+                <span class="status-pill">Week 1 ready</span>
+              </div>
+              <div class="calendar-grid">
+                <div class="calendar-card featured">
+                  <span>Monday</span>
+                  <strong>Launch teaser carousel with product close-ups</strong>
+                  <div class="platforms"><b>IG</b><b>FB</b><b>LI</b></div>
+                </div>
+                <div class="calendar-card">
+                  <span>Tuesday</span>
+                  <strong>Founder story short video</strong>
+                  <div class="platforms"><b>TT</b><b>YT</b></div>
+                </div>
+                <div class="calendar-card">
+                  <span>Wednesday</span>
+                  <strong>Offer breakdown and FAQ post</strong>
+                  <div class="platforms"><b>IG</b><b>ADS</b></div>
+                </div>
+                <div class="calendar-card featured">
+                  <span>Thursday</span>
+                  <strong>Creator-style product demo script pack</strong>
+                  <div class="platforms"><b>TT</b><b>IG</b><b>YT</b></div>
+                </div>
+                <div class="calendar-card">
+                  <span>Friday</span>
+                  <strong>Final call CTA and testimonial post</strong>
+                  <div class="platforms"><b>FB</b><b>LI</b></div>
+                </div>
+              </div>
+              <div class="insight-panel">
+                <div class="insight-card">
+                  <strong>18</strong><span>approved content pieces</span>
+                </div>
+                <div class="insight-card">
+                  <strong>6</strong><span>assets waiting for review</span>
+                </div>
+                <div class="insight-card">
+                  <strong>3</strong><span>ad tests prepared</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="pricing">
+          <div class="container">
+            <div class="section-head reveal">
+              <div class="section-kicker">Pricing</div>
+              <h2>Simple plans for every stage of growth.</h2>
+              <p>
+                Start with one brand workspace, then scale into team workflows
+                and client campaign systems.
+              </p>
+            </div>
+
+            <div class="pricing-grid">
+              <article class="price-card reveal">
+                <div class="plan-badge">Starter</div>
+                <h3>Creator</h3>
+                <p class="desc">
+                  For solo creators building a consistent online presence.
+                </p>
+                <div class="price">$19<span>/mo</span></div>
+                <a href="#start" class="btn btn-ghost">Start creator</a>
+                <ul class="feature-list">
+                  <li>1 brand workspace</li>
+                  <li>120 AI generations monthly</li>
+                  <li>Basic calendar planning</li>
+                  <li>Captions, hooks and hashtags</li>
+                </ul>
+              </article>
+
+              <article class="price-card popular reveal">
+                <div class="plan-badge">Most popular</div>
+                <h3>Growth</h3>
+                <p class="desc">
+                  For marketers and teams growing campaigns across channels.
+                </p>
+                <div class="price">$49<span>/mo</span></div>
+                <a href="#start" class="btn btn-primary">Start growth</a>
+                <ul class="feature-list">
+                  <li>5 brand workspaces</li>
+                  <li>Unlimited campaign drafts</li>
+                  <li>AI brand kit memory</li>
+                  <li>Ad angles and launch plans</li>
+                  <li>Performance notes and insights</li>
+                </ul>
+              </article>
+
+              <article class="price-card reveal">
+                <div class="plan-badge">Agency</div>
+                <h3>Studio</h3>
+                <p class="desc">
+                  For agencies managing clients, approvals and repeatable
+                  systems.
+                </p>
+                <div class="price">$129<span>/mo</span></div>
+                <a href="#start" class="btn btn-ghost">Talk to sales</a>
+                <ul class="feature-list">
+                  <li>25 brand workspaces</li>
+                  <li>Client approval flows</li>
+                  <li>Reusable campaign templates</li>
+                  <li>Team roles and permissions</li>
+                  <li>Priority support</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="testimonials">
+          <div class="container">
+            <div class="section-head reveal">
+              <div class="section-kicker">Results</div>
+              <h2>For people who need content that feels planned.</h2>
+            </div>
+            <div class="testimonials">
+              <article class="quote-card reveal">
+                <p>
+                  “The campaign brief feature helped us turn one product idea
+                  into a full week of content. The outputs were organized enough
+                  for my team to review quickly.”
+                </p>
+                <div class="person">
+                  <span class="avatar">NK</span
+                  ><span><b>Nadia K.</b>Fashion founder</span>
+                </div>
+              </article>
+              <article class="quote-card reveal">
+                <p>
+                  “The biggest win is consistency. Every caption, script and ad
+                  angle now follows the same brand direction instead of sounding
+                  random.”
+                </p>
+                <div class="person">
+                  <span class="avatar">DM</span
+                  ><span><b>Daniel M.</b>Growth marketer</span>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div class="cta reveal">
+              <div>
+                <h2>Build your next campaign with a cleaner AI workflow.</h2>
+                <p>
+                  Turn your brand idea into social posts, scripts, ad angles and
+                  a complete content calendar from one modern workspace.
+                </p>
+              </div>
+              <a href="/auth/register" class="btn">Get started free</a>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="page" id="featuresPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Features</div>
+                <h1>Everything your AI brand team needs.</h1>
+                <p>
+                  Plan campaigns, create content, keep brand memory and prepare
+                  publishing assets from one clean workspace.
+                </p>
+              </div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Book a demo</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="page-grid">
+          <article class="page-card reveal">
+            <h3>Brand Strategy</h3>
+            <p>
+              Create clear positioning and campaign direction before generating
+              content.
+            </p>
+            <ul>
+              <li>Audience personas</li>
+              <li>Messaging angles</li>
+              <li>Brand voice rules</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>AI Content Studio</h3>
+            <p>Generate platform-ready posts, captions, scripts and ad copy.</p>
+            <ul>
+              <li>Social captions</li>
+              <li>Reel scripts</li>
+              <li>Carousel outlines</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Campaign Calendar</h3>
+            <p>
+              Organize approved ideas into a weekly or monthly publishing plan.
+            </p>
+            <ul>
+              <li>Post status</li>
+              <li>Channel mapping</li>
+              <li>Review workflow</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Brand Kit Memory</h3>
+            <p>
+              Save your tone, offers, products and client rules for consistent
+              output.
+            </p>
+            <ul>
+              <li>Voice profile</li>
+              <li>Product library</li>
+              <li>Client notes</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Ad Angle Builder</h3>
+            <p>
+              Create hooks and testing angles for paid campaigns and launches.
+            </p>
+            <ul>
+              <li>Pain points</li>
+              <li>Benefits</li>
+              <li>CTA variations</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Performance Notes</h3>
+            <p>
+              Capture lessons from each campaign and improve future content
+              plans.
+            </p>
+            <ul>
+              <li>Winning themes</li>
+              <li>Content gaps</li>
+              <li>Next actions</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="pricingPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Pricing</div>
+                <h1>Plans for creators, teams and agencies.</h1>
+                <p>
+                  Choose a workspace size that matches how many brands,
+                  campaigns and clients you manage.
+                </p>
+              </div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Talk to sales</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="section">
+          <div class="container pricing-grid">
+            <article class="price-card reveal">
+              <div class="plan-badge">Starter</div>
+              <h3>Creator</h3>
+              <p class="desc">For solo creators building consistency.</p>
+              <div class="price">$19<span>/mo</span></div>
+              <a
+                href="#contact"
+                class="btn btn-ghost"
+                data-page-link="contactPage"
+                >Start creator</a
+              >
+              <ul class="feature-list">
+                <li>1 brand workspace</li>
+                <li>120 AI generations</li>
+                <li>Basic calendar</li>
+                <li>Captions and hooks</li>
+              </ul>
+            </article>
+            <article class="price-card popular reveal">
+              <div class="plan-badge">Most popular</div>
+              <h3>Growth</h3>
+              <p class="desc">For marketers and small teams.</p>
+              <div class="price">$49<span>/mo</span></div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Start growth</a
+              >
+              <ul class="feature-list">
+                <li>5 brand workspaces</li>
+                <li>Unlimited drafts</li>
+                <li>Brand kit memory</li>
+                <li>Ad angle builder</li>
+              </ul>
+            </article>
+            <article class="price-card reveal">
+              <div class="plan-badge">Agency</div>
+              <h3>Studio</h3>
+              <p class="desc">For client-based campaign teams.</p>
+              <div class="price">$129<span>/mo</span></div>
+              <a
+                href="#contact"
+                class="btn btn-ghost"
+                data-page-link="contactPage"
+                >Contact sales</a
+              >
+              <ul class="feature-list">
+                <li>25 brand workspaces</li>
+                <li>Approval flows</li>
+                <li>Team roles</li>
+                <li>Priority support</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <div class="page" id="resourcesPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Resources</div>
+                <h1>Guides and templates for better campaigns.</h1>
+                <p>
+                  Use practical playbooks to create sharper brand strategy,
+                  content calendars and campaign briefs.
+                </p>
+              </div>
+              <a href="/auth/register" class="btn btn-primary">Get updates</a>
+            </div>
+          </div>
+        </section>
+        <section class="page-grid">
+          <article class="page-card reveal">
+            <h3>Brand Strategy Guide</h3>
+            <p>
+              A step-by-step guide for defining audience, voice, offers and
+              positioning.
+            </p>
+            <ul>
+              <li>Voice prompts</li>
+              <li>Persona worksheet</li>
+              <li>Offer checklist</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Content Calendar Template</h3>
+            <p>
+              A reusable weekly planning system for creators and marketing
+              teams.
+            </p>
+            <ul>
+              <li>Weekly themes</li>
+              <li>Platform mapping</li>
+              <li>Status tracking</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Launch Campaign Pack</h3>
+            <p>
+              Campaign ideas for product launches, waitlists, events and service
+              offers.
+            </p>
+            <ul>
+              <li>Hooks</li>
+              <li>CTA examples</li>
+              <li>Ad testing plan</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="contactPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Contact</div>
+                <h1>Start building your AI brand workflow.</h1>
+                <p>
+                  Tell us about your brand, team size and content goals. We will
+                  help you choose the right setup.
+                </p>
+              </div>
+              <span class="status-pill">Usually replies within 24 hours</span>
+            </div>
+          </div>
+        </section>
+        <section class="contact-panel">
+          <form class="contact-form reveal">
+            <input type="text" placeholder="Full name" aria-label="Full name" />
+            <input
+              type="email"
+              placeholder="Email address"
+              aria-label="Email address"
+            />
+            <select aria-label="Team type">
+              <option>Creator</option>
+              <option>Marketing team</option>
+              <option>Agency</option>
+              <option>Online store</option>
+            </select>
+            <textarea
+              placeholder="Tell us what you want to build"
+              aria-label="Message"
+            ></textarea>
+            <button class="btn btn-primary" type="submit">Send message</button>
+          </form>
+          <div class="page-card reveal">
+            <h3>What we can help with</h3>
+            <p>
+              Use this page for demo requests, onboarding questions, agency
+              setup, pricing help or partnership conversations.
+            </p>
+            <ul>
+              <li>Brand workspace setup</li>
+              <li>Campaign workflow planning</li>
+              <li>Team and client approvals</li>
+              <li>Custom AI content systems</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      <div class="page" id="aboutPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">About</div>
+                <h1>Built for modern brand operators.</h1>
+                <p>
+                  Classic AI Autobrand gives creators, marketing teams and
+                  agencies a cleaner way to create consistent content systems,
+                  campaign plans and brand-safe creative output.
+                </p>
+              </div>
+              <a href="/auth/register" class="btn btn-primary">Join now</a>
+            </div>
+          </div>
+        </section>
+        <section class="page-grid">
+          <article class="page-card reveal">
+            <h3>Our mission</h3>
+            <p>
+              Help every growing brand turn ideas into strategic, consistent
+              campaigns without creative chaos.
+            </p>
+            <ul>
+              <li>Reduce planning time</li>
+              <li>Improve brand consistency</li>
+              <li>Organize campaign assets</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Who it serves</h3>
+            <p>
+              Creators, founders, coaches, online stores, marketers and agencies
+              managing multi-channel content.
+            </p>
+            <ul>
+              <li>Solo creators</li>
+              <li>Small business teams</li>
+              <li>Client-based agencies</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Why it matters</h3>
+            <p>
+              Brands grow faster when messaging, creative direction and
+              publishing plans stay aligned.
+            </p>
+            <ul>
+              <li>Clearer offers</li>
+              <li>Better campaign structure</li>
+              <li>Repeatable workflows</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Operating values</h3>
+            <p>
+              The platform is designed around clarity, speed and practical
+              execution instead of overwhelming creative dashboards.
+            </p>
+            <ul>
+              <li>Clean interface</li>
+              <li>Useful AI outputs</li>
+              <li>Human review first</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Platform focus</h3>
+            <p>
+              Classic AI Autobrand focuses on brand memory, campaign briefs,
+              content generation, review workflows and analytics notes.
+            </p>
+            <ul>
+              <li>Brand kits</li>
+              <li>Campaign calendar</li>
+              <li>Performance learnings</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Best fit</h3>
+            <p>
+              Use it when your team needs daily content ideas, launch planning,
+              offer messaging or client campaign systems.
+            </p>
+            <ul>
+              <li>Product launches</li>
+              <li>Weekly content</li>
+              <li>Paid ad testing</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="blogPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Blog</div>
+                <h1>Content strategy insights.</h1>
+                <p>
+                  Practical articles for building campaigns, using AI
+                  responsibly and improving brand consistency.
+                </p>
+              </div>
+              <a
+                href="#resources"
+                class="btn btn-primary"
+                data-page-link="resourcesPage"
+                >View resources</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="page-grid">
+          <article class="page-card reveal">
+            <h3>How to plan a 14-day launch</h3>
+            <p>
+              A simple structure for awareness, education, proof, urgency and
+              conversion content.
+            </p>
+            <ul>
+              <li>Launch timeline</li>
+              <li>Post format ideas</li>
+              <li>CTA structure</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Using AI without losing voice</h3>
+            <p>
+              Keep brand tone consistent by saving rules, examples, offers and
+              forbidden phrases.
+            </p>
+            <ul>
+              <li>Voice examples</li>
+              <li>Brand memory</li>
+              <li>Review checklist</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>What to track after posting</h3>
+            <p>
+              Measure hooks, saves, comments, clicks and conversions to improve
+              the next campaign.
+            </p>
+            <ul>
+              <li>Engagement signals</li>
+              <li>Conversion notes</li>
+              <li>Learning loops</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Building content pillars</h3>
+            <p>
+              Separate your content into education, proof, community, product
+              and conversion themes.
+            </p>
+            <ul>
+              <li>Audience problems</li>
+              <li>Product benefits</li>
+              <li>Trust-building ideas</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Creating better hooks</h3>
+            <p>
+              Use curiosity, urgency, specificity and audience pain points to
+              make people stop scrolling.
+            </p>
+            <ul>
+              <li>Opening lines</li>
+              <li>Pattern interrupts</li>
+              <li>Problem framing</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Repurposing one idea</h3>
+            <p>
+              Turn one campaign idea into a reel, carousel, email, story, ad and
+              LinkedIn post.
+            </p>
+            <ul>
+              <li>Format switching</li>
+              <li>Message consistency</li>
+              <li>Channel adaptation</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="helpPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Help center</div>
+                <h1>Get support and guidance.</h1>
+                <p>
+                  Find answers about workspaces, campaigns, billing, brand kits
+                  and publishing workflows.
+                </p>
+              </div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Contact support</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="simple-page-section">
+          <div class="legal-card reveal">
+            <h2>Common questions</h2>
+            <div class="simple-list">
+              <div class="simple-list-item">
+                <strong>How do I create a brand kit?</strong>
+                <p>
+                  Add your audience, products, tone, offers, sample captions,
+                  brand rules and visual direction in the brand workspace.
+                </p>
+              </div>
+              <div class="simple-list-item">
+                <strong>Can agencies manage clients?</strong>
+                <p>
+                  Yes. Agency workspaces are designed for multiple brand
+                  profiles, approvals and repeatable campaign systems.
+                </p>
+              </div>
+              <div class="simple-list-item">
+                <strong>Can I export content?</strong>
+                <p>
+                  Yes. Campaigns can be copied, exported or prepared for
+                  scheduling tools and social media workflows.
+                </p>
+              </div>
+              <div class="simple-list-item">
+                <strong>What should I add to a campaign brief?</strong>
+                <p>
+                  Include objective, product, audience, offer, deadline, tone,
+                  channel, key proof points and preferred content formats.
+                </p>
+              </div>
+              <div class="simple-list-item">
+                <strong>How does brand memory help?</strong>
+                <p>
+                  It keeps repeated outputs aligned with your saved tone,
+                  audience, offers, content pillars and client-specific rules.
+                </p>
+              </div>
+              <div class="simple-list-item">
+                <strong>Can my team review content before publishing?</strong>
+                <p>
+                  Yes. Use statuses such as draft, in review, approved and
+                  scheduled to organize the content pipeline.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="page" id="templatesPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Templates</div>
+                <h1>Reusable campaign templates.</h1>
+                <p>
+                  Start faster with templates for launches, promotions, lead
+                  generation and social growth.
+                </p>
+              </div>
+              <a href="/auth/register" class="btn btn-primary">Use templates</a>
+            </div>
+          </div>
+        </section>
+        <section class="page-grid">
+          <article class="page-card reveal">
+            <h3>Product launch</h3>
+            <p>
+              Pre-launch, launch day and follow-up campaign plan for products,
+              collections and digital offers.
+            </p>
+            <ul>
+              <li>Teaser posts</li>
+              <li>Proof content</li>
+              <li>Urgency CTAs</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Lead magnet</h3>
+            <p>
+              Capture emails using educational posts, landing copy and CTA
+              ideas.
+            </p>
+            <ul>
+              <li>Value promise</li>
+              <li>Download CTAs</li>
+              <li>Email follow-up ideas</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Weekly content</h3>
+            <p>Plan seven days of content from one pillar topic.</p>
+            <ul>
+              <li>Daily formats</li>
+              <li>Caption prompts</li>
+              <li>Story ideas</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Service promotion</h3>
+            <p>
+              Promote coaching, consulting, design, marketing or professional
+              service offers.
+            </p>
+            <ul>
+              <li>Problem posts</li>
+              <li>Case study angles</li>
+              <li>Booking CTAs</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Ad testing sprint</h3>
+            <p>
+              Create multiple paid ad angles around objections, pain points,
+              benefits and proof.
+            </p>
+            <ul>
+              <li>Hook sets</li>
+              <li>Creative briefs</li>
+              <li>Testing notes</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Community growth</h3>
+            <p>
+              Build engagement with polls, conversation starters,
+              behind-the-scenes posts and founder stories.
+            </p>
+            <ul>
+              <li>Engagement prompts</li>
+              <li>Story stickers</li>
+              <li>Community questions</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="integrationsPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Integrations</div>
+                <h1>Connect your content workflow.</h1>
+                <p>
+                  Prepare content for social platforms, scheduling tools,
+                  analytics sheets and team review systems.
+                </p>
+              </div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Request integration</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="page-grid">
+          <article class="page-card reveal">
+            <h3>Social channels</h3>
+            <p>
+              Plan assets for Instagram, TikTok, YouTube, LinkedIn, Facebook and
+              ads.
+            </p>
+            <ul>
+              <li>Platform copy</li>
+              <li>Format guidance</li>
+              <li>Channel notes</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Team workflows</h3>
+            <p>
+              Use approvals, campaign statuses and review notes to manage
+              content production.
+            </p>
+            <ul>
+              <li>Draft status</li>
+              <li>Approval queues</li>
+              <li>Client feedback</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Exports</h3>
+            <p>
+              Prepare copy, scripts and calendars for external publishing
+              workflows.
+            </p>
+            <ul>
+              <li>CSV-style planning</li>
+              <li>Copy blocks</li>
+              <li>Campaign summaries</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Analytics sheets</h3>
+            <p>
+              Record performance signals and use them to guide the next content
+              cycle.
+            </p>
+            <ul>
+              <li>CTR notes</li>
+              <li>Engagement logs</li>
+              <li>Winning hooks</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Design workflow</h3>
+            <p>
+              Turn AI concepts into creative briefs for designers or visual
+              generation tools.
+            </p>
+            <ul>
+              <li>Image direction</li>
+              <li>Carousel structure</li>
+              <li>Brand references</li>
+            </ul>
+          </article>
+          <article class="page-card reveal">
+            <h3>Scheduling tools</h3>
+            <p>
+              Prepare content calendars for use in posting and scheduling
+              platforms.
+            </p>
+            <ul>
+              <li>Post dates</li>
+              <li>Channel labels</li>
+              <li>Caption exports</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+
+      <div class="page" id="privacyPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Privacy</div>
+                <h1>Privacy policy.</h1>
+                <p>
+                  How Classic AI Autobrand handles account details, brand
+                  workspaces, campaign content and support information.
+                </p>
+              </div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Ask a question</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="simple-page-section">
+          <div class="legal-card reveal">
+            <div class="legal-meta">
+              <span>Last updated: May 21, 2026</span
+              ><span>Applies to website and app users</span>
+            </div>
+            <h2>Overview</h2>
+            <p>
+              This privacy policy explains how Classic AI Autobrand may collect,
+              use and protect information when users create accounts, build
+              brand workspaces, generate campaign content or contact support.
+            </p>
+            <p>
+              The goal of this policy is to make data handling clear for
+              creators, marketing teams, agencies and businesses using the
+              platform to manage brand content.
+            </p>
+
+            <h2>Information we collect</h2>
+            <p>
+              Depending on how the platform is used, we may collect the
+              following types of information:
+            </p>
+            <ul>
+              <li>
+                Account details such as name, email address and login
+                information.
+              </li>
+              <li>
+                Brand workspace data such as brand voice, audience notes,
+                product descriptions, campaign briefs and content preferences.
+              </li>
+              <li>
+                Generated content such as captions, scripts, calendars, ad
+                angles and campaign notes.
+              </li>
+              <li>
+                Support information such as messages, requests, feedback and
+                troubleshooting details.
+              </li>
+              <li>
+                Basic usage data that helps improve performance, reliability and
+                product experience.
+              </li>
+            </ul>
+
+            <h2>How we use information</h2>
+            <p>
+              Information is used to provide the service, personalize AI
+              outputs, maintain account access, improve product quality, respond
+              to support requests and keep the platform secure.
+            </p>
+            <ul>
+              <li>To create and manage user accounts and brand workspaces.</li>
+              <li>
+                To generate more relevant content based on saved brand context.
+              </li>
+              <li>
+                To provide customer support, onboarding and troubleshooting.
+              </li>
+              <li>
+                To understand product usage and improve platform reliability.
+              </li>
+            </ul>
+
+            <h2>Brand and campaign content</h2>
+            <p>
+              Brand kits, campaign briefs and generated outputs are treated as
+              user workspace content. Users should avoid uploading sensitive
+              information unless it is necessary for their workflow.
+            </p>
+
+            <h2>Sharing and disclosure</h2>
+            <p>
+              We do not sell user content. Information may be shared only when
+              needed to operate the service, comply with legal obligations,
+              prevent abuse or support integrations requested by the user.
+            </p>
+
+            <h2>Security</h2>
+            <p>
+              Reasonable technical and organizational safeguards should be used
+              to protect accounts and workspace data. Users are responsible for
+              keeping passwords secure and controlling access to their accounts.
+            </p>
+
+            <h2>User choices</h2>
+            <p>
+              Users may request updates, exports or deletion of account
+              information where applicable. Some data may be retained when
+              required for legal, security or operational reasons.
+            </p>
+            <p>
+              Users can also choose what brand information they add to the
+              platform and should remove outdated product, audience or campaign
+              details when they are no longer needed.
+            </p>
+
+            <h2>Contact</h2>
+            <p>
+              For privacy questions, contact the Classic AI Autobrand team
+              through the Contact page.
+            </p>
+          </div>
+        </section>
+      </div>
+
+      <div class="page" id="termsPage">
+        <section class="page-hero">
+          <div class="container">
+            <div class="page-hero-card reveal">
+              <div>
+                <div class="section-kicker">Terms</div>
+                <h1>Terms of service.</h1>
+                <p>
+                  The basic rules for using Classic AI Autobrand accounts,
+                  workspaces, AI tools and generated content.
+                </p>
+              </div>
+              <a
+                href="#contact"
+                class="btn btn-primary"
+                data-page-link="contactPage"
+                >Contact support</a
+              >
+            </div>
+          </div>
+        </section>
+        <section class="simple-page-section">
+          <div class="legal-card reveal">
+            <div class="legal-meta">
+              <span>Last updated: May 21, 2026</span
+              ><span>Use of service terms</span>
+            </div>
+            <h2>Agreement</h2>
+            <p>
+              By using Classic AI Autobrand, users agree to follow these terms
+              and any additional policies that apply to accounts, subscriptions,
+              content generation and platform use.
+            </p>
+            <p>
+              These terms are written to support fair, safe and responsible use
+              of AI tools for content planning, brand development and marketing
+              workflows.
+            </p>
+
+            <h2>Accounts</h2>
+            <p>
+              Users are responsible for keeping their login details secure,
+              maintaining accurate account information and all activity that
+              happens under their account.
+            </p>
+
+            <h2>Acceptable use</h2>
+            <p>
+              Users must not use the platform to create illegal, harmful,
+              deceptive, infringing or abusive content. Users are responsible
+              for reviewing AI-generated outputs before publishing.
+            </p>
+            <ul>
+              <li>
+                Do not impersonate another person, brand or business without
+                permission.
+              </li>
+              <li>
+                Do not publish misleading claims, fake testimonials or
+                unsupported guarantees.
+              </li>
+              <li>Do not upload content that violates the rights of others.</li>
+              <li>
+                Do not attempt to disrupt, reverse engineer or abuse the
+                platform.
+              </li>
+            </ul>
+
+            <h2>Generated content</h2>
+            <p>
+              Classic AI Autobrand helps generate campaign ideas, captions,
+              scripts, ad angles and brand materials. AI output may require
+              editing and verification. Users should ensure final content is
+              accurate, lawful and appropriate for their brand.
+            </p>
+            <p>
+              Users should check facts, offers, pricing, claims, platform rules
+              and legal requirements before using generated content in public
+              campaigns.
+            </p>
+
+            <h2>Subscriptions and billing</h2>
+            <p>
+              Paid plans may include usage limits, workspace limits, team
+              features or support levels. Billing terms, renewals and
+              cancellations should be clearly shown at checkout or account
+              settings.
+            </p>
+
+            <h2>Intellectual property</h2>
+            <p>
+              Users keep responsibility for the materials they upload and
+              publish. Platform branding, interface design and service features
+              remain the property of Classic AI Autobrand or its licensors.
+            </p>
+
+            <h2>Service availability</h2>
+            <p>
+              The platform may change, pause or discontinue features as needed
+              for maintenance, security, product improvements or operational
+              reasons.
+            </p>
+
+            <h2>Limitation of liability</h2>
+            <p>
+              The service is provided as a productivity and creative support
+              tool. Users are responsible for business decisions, campaign
+              performance and published content outcomes.
+            </p>
+
+            <h2>Contact</h2>
+            <p>
+              For questions about these terms, contact the Classic AI Autobrand
+              team through the Contact page.
+            </p>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-about">
+            <a
+              href="#home"
+              class="brand"
+              aria-label="Classic AI Autobrand home"
+              data-page-link="homePage"
+            >
+              <span class="brand-mark">CA</span>
+              <span>Classic AI Autobrand</span>
+            </a>
+            <p>
+              AI content planning, brand memory and campaign generation for
+              creators, small businesses and marketing teams.
+            </p>
+            <form class="footer-newsletter">
+              <input
+                type="email"
+                placeholder="Email alert address"
+                aria-label="Email alert address"
+              />
+              <button class="btn btn-primary" type="submit">Join</button>
+            </form>
+          </div>
+
+          <div class="footer-col">
+            <h4>Product</h4>
+            <a href="#features" data-page-link="featuresPage">Features</a>
+            <a href="#pricing" data-page-link="pricingPage">Pricing</a>
+            <a href="#integrations" data-page-link="integrationsPage"
+              >Integrations</a
+            >
+            <a href="#templates" data-page-link="templatesPage">Templates</a>
+          </div>
+
+          <div class="footer-col">
+            <h4>Account</h4>
+            <a href="/auth/login">Login</a>
+            <a href="/auth/register">Sign up</a>
+            <a href="/auth/forgot-password">Forgot password</a>
+            <a href="#contact" data-page-link="contactPage">Contact sales</a>
+            <a href="#help" data-page-link="helpPage">Support</a>
+          </div>
+
+          <div class="footer-col">
+            <h4>Resources</h4>
+            <a href="#resources" data-page-link="resourcesPage">Resources</a>
+            <a href="#blog" data-page-link="blogPage">Blog</a>
+            <a href="#templates" data-page-link="templatesPage">Templates</a>
+            <a href="#help" data-page-link="helpPage">Help center</a>
+            <a href="#contact" data-page-link="contactPage">Contact</a>
+          </div>
+
+          <div class="footer-col">
+            <h4>Company</h4>
+            <a href="#about" data-page-link="aboutPage">About</a>
+            <a href="#privacy" data-page-link="privacyPage">Privacy policy</a>
+            <a href="#terms" data-page-link="termsPage">Terms of service</a>
+            <a href="#home" data-page-link="homePage">Home</a>
+            <a href="/auth/register">Get started</a>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <span>© 2026 Classic AI Autobrand. All rights reserved.</span>
+          <div class="social-links">
+            <a href="#" aria-label="X">X</a>
+            <a href="#" aria-label="Instagram">IG</a>
+            <a href="#" aria-label="LinkedIn">in</a>
+            <a href="#" aria-label="YouTube">YT</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const savedTheme = localStorage.getItem("classicAutobrandTheme");
+      const prefersDark = window.matchMedia(
+        "(prefers-color-scheme: dark)",
+      ).matches;
+
+      if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
+        document.body.classList.add("dark-mode");
+      }
+
+      function syncThemeIcons() {
+        const isDark = document.body.classList.contains("dark-mode");
+        document.querySelectorAll(".theme-toggle").forEach((button) => {
+          button.textContent = isDark ? "☀" : "☾";
+          button.setAttribute(
+            "aria-label",
+            isDark ? "Switch to light mode" : "Switch to dark mode",
+          );
+        });
+      }
+
+      function toggleTheme() {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem(
+          "classicAutobrandTheme",
+          document.body.classList.contains("dark-mode") ? "dark" : "light",
+        );
+        syncThemeIcons();
+      }
+
+      document.querySelectorAll(".theme-toggle").forEach((button) => {
+        button.addEventListener("click", toggleTheme);
+      });
+
+      syncThemeIcons();
+
+      const cursorGlow = document.getElementById("cursorGlow");
+
+      window.addEventListener("mousemove", (event) => {
+        cursorGlow.style.left = `${event.clientX}px`;
+        cursorGlow.style.top = `${event.clientY}px`;
+      });
+
+      window.addEventListener("mouseleave", () => {
+        cursorGlow.style.opacity = "0";
+      });
+
+      window.addEventListener("mouseenter", () => {
+        cursorGlow.style.opacity = "1";
+      });
+
+      const pages = document.querySelectorAll(".page");
+
+      function showPage(pageId) {
+        pages.forEach((page) => page.classList.remove("active"));
+        const targetPage = document.getElementById(pageId);
+
+        if (targetPage) {
+          targetPage.classList.add("active");
+          document.body.dataset.currentPage = pageId;
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+
+      function pageFromHash() {
+        const map = {
+          "#home": "homePage",
+          "#features": "featuresPage",
+          "#pricing": "pricingPage",
+          "#resources": "resourcesPage",
+          "#contact": "contactPage",
+          "#about": "aboutPage",
+          "#blog": "blogPage",
+          "#help": "helpPage",
+          "#templates": "templatesPage",
+          "#integrations": "integrationsPage",
+          "#privacy": "privacyPage",
+          "#terms": "termsPage",
+        };
+        return map[window.location.hash] || "homePage";
+      }
+
+      document.querySelectorAll("[data-page-link]").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+
+          const pageId = link.dataset.pageLink;
+          const href = link.getAttribute("href");
+
+          if (href) {
+            history.pushState(null, "", href);
+          }
+
+          showPage(pageId);
+
+          nav?.classList.remove("open");
+          if (mobileToggle) mobileToggle.textContent = "☰";
+        });
+      });
+
+      window.addEventListener("popstate", () => showPage(pageFromHash()));
+      showPage(pageFromHash());
+
+      const nav = document.getElementById("nav");
+      const mobileToggle = document.getElementById("mobileToggle");
+      const navLinks = document.getElementById("navLinks");
+
+      mobileToggle.addEventListener("click", () => {
+        nav.classList.toggle("open");
+        mobileToggle.textContent = nav.classList.contains("open") ? "✕" : "☰";
+      });
+
+      navLinks.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          if (link.dataset.pageLink) return;
+
+          const targetId = link.getAttribute("href");
+
+          if (targetId && targetId.startsWith("#") && targetId.length > 1) {
+            const targetSection = document.querySelector(targetId);
+
+            if (targetSection) {
+              event.preventDefault();
+
+              const navBottom = nav.getBoundingClientRect().bottom;
+              const gap = 2;
+              const targetTop =
+                targetSection.getBoundingClientRect().top +
+                window.pageYOffset -
+                navBottom -
+                gap;
+
+              window.scrollTo({
+                top: targetTop,
+                behavior: "smooth",
+              });
+            }
+          }
+
+          nav.classList.remove("open");
+          mobileToggle.textContent = "☰";
+        });
+      });
+
+      const revealElements = document.querySelectorAll(".reveal");
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.12 },
+      );
+
+      revealElements.forEach((element, index) => {
+        element.style.transitionDelay = `${Math.min(index * 35, 220)}ms`;
+        observer.observe(element);
+      });
+
+      const productCard = document.querySelector(".product-card");
+
+      if (window.matchMedia("(min-width: 981px)").matches) {
+        productCard.addEventListener("mousemove", (event) => {
+          const rect = productCard.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          const rotateY = (x / rect.width - 0.5) * 8;
+          const rotateX = (0.5 - y / rect.height) * 8;
+          productCard.style.transform = `perspective(1100px) rotateY(${rotateY}deg) rotateX(${rotateX}deg) translateY(-7px)`;
+        });
+
+        productCard.addEventListener("mouseleave", () => {
+          productCard.style.transform =
+            "perspective(1100px) rotateY(0deg) rotateX(0deg) translateY(0)";
+        });
+      }
+    </script>
+  </body>
+</html>

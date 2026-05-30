@@ -1,0 +1,32 @@
+<section class="workspace-hero compact-hero">
+  <div>
+    <p class="eyebrow">brand setup</p>
+    <h2>Brand Brains</h2>
+    <p>Each brand stores voice, audience, offers, hashtags and location details so generated posts are more consistent.</p>
+  </div>
+  <a class="button" href="/brands/create">New brand</a>
+</section>
+
+<section class="item-grid brand-grid-clean">
+  <% if (!brands.length) { %>
+    <article class="empty-state">
+      <h2>No brands yet</h2>
+      <p>Create a Brand Brain before connecting Pages or generating posts.</p>
+      <a class="button" href="/brands/create">Create brand</a>
+    </article>
+  <% } %>
+  <% brands.forEach((brand) => { %>
+    <article class="item-card brand-card-clean">
+      <div>
+        <p class="eyebrow"><%= brand.businessType || 'Business' %></p>
+        <h2><%= brand.name %></h2>
+        <p><%= brand.location || 'No location set' %></p>
+      </div>
+      <div class="brand-card-actions">
+        <a class="button ghost" href="/brands/<%= brand._id %>">View</a>
+        <a class="button ghost" href="/brands/<%= brand._id %>/edit">Edit</a>
+        <a class="button" href="/posts/new?brand=<%= brand._id %>">Create post</a>
+      </div>
+    </article>
+  <% }) %>
+</section>

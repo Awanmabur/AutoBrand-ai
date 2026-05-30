@@ -1,0 +1,52 @@
+<form action="/brands" method="post" class="real-form-grid brand-brain-form" data-brand-upload-form>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <label>Brand name<input name="name" required placeholder="Your brand name"></label>
+  <label>Business type<input name="businessType" placeholder="School, restaurant, agency"></label>
+  <input type="hidden" name="logo" data-brand-upload-url="logo">
+  <input type="hidden" name="logoPublicId" data-brand-upload-public-id="logo">
+  <input type="hidden" name="favicon" data-brand-upload-url="favicon">
+  <input type="hidden" name="faviconPublicId" data-brand-upload-public-id="favicon">
+  <input type="hidden" name="coverImage" data-brand-upload-url="cover">
+  <input type="hidden" name="coverImagePublicId" data-brand-upload-public-id="cover">
+  <input type="hidden" name="assetUploadsJson" data-brand-upload-assets value="[]">
+  <label class="brand-upload-control">Upload logo<input type="file" accept="image/*" data-brand-upload-file="logo"><small data-brand-upload-status="logo">Upload from your computer. No public URL field needed.</small><img data-brand-upload-preview="logo" alt="Logo preview" hidden></label>
+  <label class="brand-upload-control">Upload favicon<input type="file" accept="image/*" data-brand-upload-file="favicon"><small data-brand-upload-status="favicon">Square icon preferred.</small><img data-brand-upload-preview="favicon" alt="Favicon preview" hidden></label>
+  <label class="brand-upload-control">Upload cover image<input type="file" accept="image/*" data-brand-upload-file="cover"><small data-brand-upload-status="cover">Wide cover image for brand pages.</small><img data-brand-upload-preview="cover" alt="Cover preview" hidden></label>
+  <label class="brand-upload-control full">Upload extra brand assets<input type="file" multiple accept="image/*,video/*,.pdf" data-brand-upload-file="asset"><small data-brand-upload-status="asset">Upload product photos, guidelines, PDFs, or sample videos.</small></label>
+  <label>Website<input name="website" placeholder="https://example.com"></label>
+  <label>Location<input name="location" placeholder="City, country"></label>
+  <label>Language<input name="language" value="English"></label>
+  <label>Tone<input name="tone" value="clean, friendly, local"></label>
+  <label>Posting frequency<input name="postingFrequency" placeholder="Daily, 3x weekly, weekends"></label>
+  <label>Font style<input name="fontStyle" placeholder="Modern sans, elegant serif"></label>
+  <label>Local style<input name="localStyle" placeholder="Friendly local, premium, community-first"></label>
+  <label>Brand colors<input name="brandColors" placeholder="#082c52, #25d366, white"></label>
+  <label class="full">Target audience<input name="targetAudience" placeholder="Parents, students, local buyers, founders"></label>
+  <label class="full">Preferred CTA<input name="preferredCta" placeholder="Message us on WhatsApp, book a call, visit today"></label>
+  <label class="full">Description<textarea name="description" rows="4" placeholder="What the brand does, who it helps, and what makes it different"></textarea></label>
+  <label class="full">Products/services<textarea name="products" rows="3" placeholder="Name | Price | Description"></textarea></label>
+  <label class="full">Offers<textarea name="offers" rows="3" placeholder="Title | Description"></textarea></label>
+  <label class="full">Social links<textarea name="socialLinks" rows="3" placeholder="facebook | https://facebook.com/page&#10;instagram | https://instagram.com/name"></textarea></label>
+  <label>Goals<textarea name="goals" rows="3" placeholder="Get leads, grow awareness, increase sales"></textarea></label>
+  <label>Customer pain points<textarea name="customerPainPoints" rows="3" placeholder="What customers struggle with"></textarea></label>
+  <label>Common objections<textarea name="commonObjections" rows="3" placeholder="Too expensive, not enough time, not sure it works"></textarea></label>
+  <label>Testimonials<textarea name="testimonials" rows="3" placeholder="Author | Quote"></textarea></label>
+  <label>Brand rules<textarea name="brandRules" rows="3" placeholder="Words to use, style rules, visual rules"></textarea></label>
+  <label>Preferred hashtags<textarea name="preferredHashtags" rows="3" placeholder="#brand #local #offer"></textarea></label>
+  <label>Blocked words<textarea name="blockedWords" rows="3" placeholder="Words, claims or phrases AI must avoid"></textarea></label>
+  <label>Competitors<textarea name="competitors" rows="3" placeholder="Competitor names or URLs"></textarea></label>
+  <label class="checkbox-line full"><input name="autoPostingEnabled" type="checkbox" checked> Auto-posting enabled</label>
+  <label>Auto frequency unit<select name="autoFrequencyUnit"><option value="day">Day</option><option value="week" selected>Week</option><option value="month">Month</option></select></label>
+  <label>Posts per day<input name="autoPostsPerDay" type="number" min="1" value="1"></label>
+  <label>Posts per week<input name="autoPostsPerWeek" type="number" min="1" value="7"></label>
+  <label>Posts per month<input name="autoPostsPerMonth" type="number" min="1" value="30"></label>
+  <label>Images per post min<input name="imagesPerPostMin" type="number" min="0" value="1"></label>
+  <label>Images per post max<input name="imagesPerPostMax" type="number" min="0" value="3"></label>
+  <label>Strength target<input name="strengthTarget" type="number" min="1" max="100" value="90"></label>
+  <label class="full">Customer goal<input name="autoCustomerGoal" value="get customers immediately with clear offers and strong calls to action"></label>
+  <label class="full">Preferred posting slots<textarea name="autoPreferredSlots" rows="2" placeholder="morning&#10;evening">morning, evening</textarea></label>
+  <label class="full">Media mix<textarea name="autoMediaMix" rows="2" placeholder="auto&#10;image&#10;slides&#10;video">auto, image, slides, video</textarea></label>
+  <label class="full">Platform languages<textarea name="platformLanguages" rows="2" placeholder="facebook | English&#10;whatsapp | Arabic"></textarea></label>
+  <label class="checkbox-line full"><input name="autoRequireMedia" type="checkbox" checked> Require media for auto posts</label>
+  <button class="btn btn-primary full" type="submit">Save Brand Brain</button>
+</form>

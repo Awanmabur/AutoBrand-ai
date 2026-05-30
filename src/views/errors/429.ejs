@@ -1,0 +1,11 @@
+<section class="panel" style="max-width:720px;margin:4rem auto;padding:2rem;">
+  <div class="section-kicker">Error <%= errorCode || '' %></div>
+  <h1><%= errorTitle || title || 'Something went wrong' %></h1>
+  <p><%= errorMessage || message || 'Please try again.' %></p>
+  <p class="muted">Request ID: <%= typeof requestId !== 'undefined' ? requestId : 'n/a' %></p>
+  <div class="row-actions">
+    <a class="button" href="<%= typeof primaryActionHref !== 'undefined' ? primaryActionHref : '/' %>"><%= typeof primaryActionLabel !== 'undefined' ? primaryActionLabel : 'Back home' %></a>
+    <a class="button ghost" href="<%= typeof secondaryActionHref !== 'undefined' ? secondaryActionHref : '/auth/login' %>"><%= typeof secondaryActionLabel !== 'undefined' ? secondaryActionLabel : 'Sign in' %></a>
+  </div>
+  <% if (typeof details !== 'undefined' && details) { %><details><summary>Development details</summary><pre><%= details %></pre></details><% } %>
+</section>

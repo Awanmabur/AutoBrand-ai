@@ -1,0 +1,21 @@
+<section class="panel error-state-card">
+  <div class="section-kicker">Error <%= errorCode %></div>
+  <h2><%= errorTitle %></h2>
+  <p><%= errorMessage %></p>
+  <div class="row-actions">
+    <a class="button" href="<%= primaryActionHref %>"><%= primaryActionLabel %></a>
+    <% if (secondaryActionHref) { %><a class="button ghost" href="<%= secondaryActionHref %>"><%= secondaryActionLabel %></a><% } %>
+  </div>
+  <div class="mini-record">
+    <strong>Request ID</strong>
+    <span><%= requestId %></span>
+  </div>
+  <div class="mini-record">
+    <strong>Timestamp</strong>
+    <span><%= timestamp %></span>
+  </div>
+  <% if (supportHref) { %><p class="muted">Need help? <a href="<%= supportHref %>">Contact support</a>.</p><% } %>
+  <% if (typeof details !== 'undefined' && details) { %>
+    <details><summary>Development details</summary><pre><%= details %></pre></details>
+  <% } %>
+</section>

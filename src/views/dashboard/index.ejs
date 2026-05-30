@@ -1,0 +1,74 @@
+<section class="workspace-hero">
+  <div>
+    <p class="eyebrow">workspace overview</p>
+    <h2>Run your brand content from one place</h2>
+    <p>Start with a Brand Brain, connect Facebook Pages, create a post, then manage the schedule from the calendar.</p>
+  </div>
+  <div class="hero-action-card">
+    <strong>Next best action</strong>
+    <% if (!stats.brandCount) { %>
+      <p>Create your first brand before generating content.</p>
+      <a class="button" href="/brands/create">Create brand</a>
+    <% } else if (!stats.socialCount) { %>
+      <p>Connect your Facebook Pages so posts can publish.</p>
+      <a class="button" href="/dashboard/social">Connect Pages</a>
+    <% } else { %>
+      <p>Create a brand-ready post or check the calendar.</p>
+      <div class="row-actions wrap"><a class="button" href="/dashboard/quick-create">Create post</a><a class="button ghost" href="/dashboard/calendar">Open calendar</a></div>
+    <% } %>
+  </div>
+</section>
+
+<section class="stats-grid executive-stats">
+  <article class="stat-card"><span>Brands</span><strong><%= stats.brandCount %></strong><small>Brand brains</small></article>
+  <article class="stat-card"><span>Connected Pages</span><strong><%= stats.socialCount %></strong><small>Facebook/accounts</small></article>
+  <article class="stat-card"><span>Drafts</span><strong><%= stats.draftCount %></strong><small>Ready to review</small></article>
+  <article class="stat-card"><span>Scheduled</span><strong><%= stats.scheduledCount %></strong><small>On calendar</small></article>
+</section>
+
+<section class="command-grid">
+  <a class="command-card" href="/dashboard/quick-create">
+    <span>01</span>
+    <h3>Create Post</h3>
+    <p>AI or manual captions, images/videos by URL, Page targeting, draft, schedule, or publish now.</p>
+  </a>
+  <a class="command-card" href="/dashboard/calendar">
+    <span>02</span>
+    <h3>Calendar</h3>
+    <p>Monthly status dots, day-level posts, and Page breakdowns.</p>
+  </a>
+  <a class="command-card" href="/brands">
+    <span>03</span>
+    <h3>Brands</h3>
+    <p>Voice, offers, hashtags, audience, and location rules for better AI output.</p>
+  </a>
+  <a class="command-card" href="/dashboard/social">
+    <span>04</span>
+    <h3>Channels</h3>
+    <p>Connect or reconnect Facebook Pages for every brand.</p>
+  </a>
+</section>
+
+<section class="panel">
+  <div class="section-heading-row">
+    <div>
+      <p class="eyebrow">latest work</p>
+      <h2>Recent content</h2>
+    </div>
+    <a class="button ghost" href="/dashboard/content-library">View library</a>
+  </div>
+  <% if (!recentPosts.length) { %>
+    <article class="empty-state compact"><h2>No posts yet</h2><p>Create your first post from the studio.</p><a class="button" href="/dashboard/quick-create">Create post</a></article>
+  <% } %>
+  <div class="compact-list">
+    <% recentPosts.forEach((post) => { %>
+      <a class="compact-row" href="/posts/<%= post._id %>/edit">
+        <span class="status-pill"><%= post.status %></span>
+        <div>
+          <strong><%= post.title || post.platform %></strong>
+          <p><%= post.brand ? post.brand.name : 'No brand' %> · <%= post.caption.slice(0, 120) %><%= post.caption.length > 120 ? '...' : '' %></p>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+</section>

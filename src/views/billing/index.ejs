@@ -1,0 +1,78 @@
+<% if (pendingMessage) { %><section class="panel"><p><%= pendingMessage %></p></section><% } %>
+
+<section class="stats-grid">
+  <article class="stat-card"><span>Current plan</span><strong><%= currentPlan ? currentPlan.name : subscription.plan %></strong></article>
+  <article class="stat-card"><span>Status</span><strong><%= subscription.status %></strong></article>
+  <article class="stat-card"><span>Credits</span><strong><%= balance %></strong></article>
+  <article class="stat-card"><span>Provider</span><strong><%= subscription.paymentProvider || subscription.provider %></strong></article>
+</section>
+
+<section class="panel">
+  <h2>Usage this month</h2>
+  <div class="item-grid">
+    <% usageDashboard.cards.slice(0, 8).forEach((card) => { %>
+      <article class="mini-record">
+        <strong><%= card.metric.replace(/_/g, ' ') %></strong>
+        <span><%= card.unlimited ? 'Unlimited' : `${card.used} / ${card.limit}` %></span>
+        <% if (!card.unlimited) { %><progress max="100" value="<%= card.percent %>"></progress><% } %>
+      </article>
+    <% }) %>
+  </div>
+</section>
+
+<section class="item-grid">
+  <% plans.forEach((plan) => { %>
+    <article class="item-card <%= plan.isPopular ? 'popular' : '' %>">
+      <div class="plan-badge"><%= plan.isPopular ? 'Most popular' : plan.name %></div>
+      <h2><%= plan.name %></h2>
+      <p><%= plan.description %></p>
+      <div class="price"><%= plan.priceLabel %><% if (!plan.isTrial) { %><span>/<%= plan.intervalLabel %></span><% } %></div>
+      <ul class="feature-list">
+        <% plan.featureList.slice(0, 6).forEach((feature) => { %><li><%= feature %></li><% }) %>
+      </ul>
+      <div class="row-actions">
+        <% if (currentPlan && currentPlan.slug === plan.slug) { %>
+          <button class="button ghost" disabled>Current plan</button>
+        <% } else if (plan.isTrial) { %>
+          <form action="/billing/plan" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="plan" value="<%= plan.slug %>">
+            <button class="button ghost" type="submit">Start trial</button>
+          </form>
+        <% } else { %>
+          <a class="button" href="<%= plan.checkoutUrl %>">Checkout</a>
+        <% } %>
+      </div>
+    </article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <h2>Payments</h2>
+  <% if (!payments.length) { %><p class="muted">No payments yet.</p><% } %>
+  <% payments.forEach((payment) => { %>
+    <article class="job-card">
+      <div>
+        <h3><%= payment.reference %></h3>
+        <p><%= payment.provider %> / <%= payment.currency %> <%= payment.amount %></p>
+        <% if (payment.metadata && payment.metadata.message) { %><p class="muted"><%= payment.metadata.message %></p><% } %>
+      </div>
+      <form action="/billing/payments/<%= payment._id %>/mark-paid" method="post" class="row-actions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <span class="status-pill"><%= payment.status %></span>
+        <% if (payment.status !== 'paid') { %><button class="button ghost" type="submit">Mark paid</button><% } %>
+      </form>
+    </article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <h2>Credit ledger</h2>
+  <% if (!ledger.length) { %><p class="muted">No credit entries yet.</p><% } %>
+  <% ledger.forEach((entry) => { %>
+    <article class="mini-record">
+      <strong><%= entry.reason %></strong>
+      <span><%= entry.type %> / <%= entry.amount %> / balance <%= entry.balanceAfter %></span>
+    </article>
+  <% }) %>
+</section>

@@ -1,0 +1,13 @@
+<nav class="public-nav">
+  <a class="brand-mark" href="/"><%= appName %></a>
+  <div class="nav-actions">
+    <a class="nav-link" href="/#features">Features</a>
+    <button class="button ghost" type="button" data-theme-toggle>Theme</button>
+    <% if (user) { %>
+      <a class="button ghost" href="/dashboard">Dashboard</a>
+    <% } else { %>
+      <a class="button ghost" href="/auth/login">Login</a>
+      <a class="button" href="/auth/register">Start</a>
+    <% } %>
+  </div>
+</nav>

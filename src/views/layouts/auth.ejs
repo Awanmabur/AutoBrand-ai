@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= title %> | <%= appName %></title>
+    <link rel="stylesheet" href="/css/auth-modern.css">
+  </head>
+  <body>
+    <main class="auth-shell">
+      <section class="auth-card">
+        <div class="auth-banner">
+          <a href="/" class="brand" aria-label="AutoBrand AI home">
+            <span class="brand-mark">AB</span>
+            <span>AutoBrand AI</span>
+          </a>
+          <div>
+            <h2>Create consistent brand content with AI agents.</h2>
+            <p>Plan campaigns, save Brand Brain data, generate media, review approvals and publish to real social channels.</p>
+            <div class="auth-banner-list">
+              <span>Brand Brain memory</span>
+              <span>Images, carousels and videos</span>
+              <span>Facebook, Instagram, YouTube, TikTok and more</span>
+            </div>
+          </div>
+        </div>
+        <div class="auth-form-panel">
+          <%- body %>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

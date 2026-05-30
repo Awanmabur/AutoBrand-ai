@@ -1,0 +1,99 @@
+<section class="stats-grid">
+  <article class="stat-card"><span>Users</span><strong><%= stats.userCount %></strong></article>
+  <article class="stat-card"><span>Brands</span><strong><%= stats.brandCount %></strong></article>
+  <article class="stat-card"><span>Posts</span><strong><%= stats.postCount %></strong></article>
+  <article class="stat-card"><span>Failed posts</span><strong><%= stats.failedPostCount %></strong></article>
+  <article class="stat-card"><span>Videos</span><strong><%= stats.videoJobCount %></strong></article>
+  <article class="stat-card"><span>Social accounts</span><strong><%= stats.socialCount %></strong></article>
+</section>
+
+<section class="panel">
+  <h2>Admin tools</h2>
+  <div class="row-actions">
+    <a class="button" href="/dashboard/plans">Manage plans</a>
+    <a class="button ghost" href="/dashboard/billing">Billing dashboard</a>
+    <a class="button ghost" href="/dashboard/social">Integrations</a>
+    <a class="button ghost" href="/dashboard/analytics">Analytics</a>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Recent users</h2>
+  <% recentUsers.forEach((account) => { %>
+    <article class="job-card">
+      <div><h3><%= account.name %></h3><p><%= account.email %></p></div>
+      <form action="/admin/users/<%= account._id %>/status" method="post" class="row-actions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <select name="status">
+          <% ['active', 'pending', 'suspended'].forEach((status) => { %>
+            <option value="<%= status %>" <%= account.status === status ? 'selected' : '' %>><%= status %></option>
+          <% }) %>
+        </select>
+        <button class="button ghost" type="submit">Update</button>
+      </form>
+      <form action="/admin/users/<%= account._id %>/plan" method="post" class="row-actions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <select name="plan">
+          <% plans.forEach((plan) => { %>
+            <option value="<%= plan.slug %>" <%= account.plan === plan.slug ? 'selected' : '' %>><%= plan.name %></option>
+          <% }) %>
+        </select>
+        <button class="button ghost" type="submit">Set plan</button>
+      </form>
+    </article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <h2>Failed posts</h2>
+  <% if (!failedPosts.length) { %><p class="muted">No failed posts.</p><% } %>
+  <% failedPosts.forEach((post) => { %>
+    <article class="job-card">
+      <div><h3><%= post.title || post.platform %></h3><p><%= post.brand ? post.brand.name : 'Unknown brand' %> / <%= post.errorMessage || 'No error recorded' %></p></div>
+      <form action="/admin/posts/<%= post._id %>/retry" method="post">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="button ghost" type="submit">Retry</button>
+      </form>
+    </article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <h2>Payments</h2>
+  <% if (!payments.length) { %><p class="muted">No payments.</p><% } %>
+  <% payments.forEach((payment) => { %>
+    <article class="job-card">
+      <div>
+        <h3><%= payment.reference %></h3>
+        <p><%= payment.user ? payment.user.email : 'unknown' %> / <%= payment.provider %> / <%= payment.currency %> <%= payment.amount %></p>
+      </div>
+      <form action="/admin/payments/<%= payment._id %>/mark-paid" method="post" class="row-actions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <span class="status-pill"><%= payment.status %></span>
+        <% if (payment.status !== 'paid') { %><button class="button ghost" type="submit">Mark paid</button><% } %>
+      </form>
+    </article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <h2>API logs</h2>
+  <% if (!apiLogs.length) { %><p class="muted">No API entries yet.</p><% } %>
+  <% apiLogs.forEach((log) => { %>
+    <article class="mini-record">
+      <strong><%= log.provider %> / <%= log.action %></strong>
+      <span><%= log.status %> / <%= log.message || 'no message' %></span>
+    </article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <h2>Audit log</h2>
+  <% if (!auditLogs.length) { %><p class="muted">No audit entries yet.</p><% } %>
+  <% auditLogs.forEach((log) => { %>
+    <article class="job-card">
+      <div><h3><%= log.action %></h3><p><%= log.entityType || 'system' %></p></div>
+      <span><%= log.user ? log.user.name : 'system' %></span>
+    </article>
+  <% }) %>
+</section>

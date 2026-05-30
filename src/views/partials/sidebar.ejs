@@ -1,0 +1,27 @@
+<aside class="sidebar">
+  <a class="brand-mark" href="/dashboard/overview"><%= appName %></a>
+  <p class="sidebar-tagline">AI content, calendar and Page publishing.</p>
+
+  <nav class="side-nav" aria-label="Main navigation">
+    <span class="side-section">Operate</span>
+    <a class="<%= currentPath === '/dashboard' ? 'active' : '' %>" href="/dashboard/overview">Overview</a>
+    <a class="<%= currentPath === '/posts/new' ? 'active' : '' %>" href="/dashboard/quick-create">Create Post</a>
+    <a class="<%= (currentPath.startsWith('/posts/handoff') || currentPath.startsWith('/dashboard/approvals')) ? 'active' : '' %>" href="/dashboard/approvals">Auto Handoff</a>
+    <a class="<%= currentPath.startsWith('/calendar') ? 'active' : '' %>" href="/dashboard/calendar">Calendar</a>
+    <a class="<%= currentPath.startsWith('/posts') && currentPath !== '/posts/new' && !(currentPath.startsWith('/posts/handoff') || currentPath.startsWith('/dashboard/approvals')) ? 'active' : '' %>" href="/dashboard/content-library">Content Library</a>
+
+    <span class="side-section">Setup</span>
+    <a class="<%= currentPath.startsWith('/brands') ? 'active' : '' %>" href="/dashboard/brand-brain">Brands</a>
+    <a class="<%= currentPath.startsWith('/media') ? 'active' : '' %>" href="/dashboard/media">Media</a>
+    <a class="<%= currentPath.startsWith('/videos') ? 'active' : '' %>" href="/dashboard/video-system">AI Studio</a>
+    <a class="<%= currentPath.startsWith('/social') ? 'active' : '' %>" href="/dashboard/social">Channels</a>
+
+    <span class="side-section">Review</span>
+    <a class="<%= currentPath.startsWith('/analytics') ? 'active' : '' %>" href="/dashboard/analytics">Analytics</a>
+    <a class="<%= currentPath.startsWith('/settings') ? 'active' : '' %>" href="/dashboard/settings">Settings</a>
+    <form class="side-nav-logout" action="/auth/logout" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <button class="side-nav-button" type="submit"><span>Logout</span><b>Exit</b></button>
+    </form>
+  </nav>
+</aside>
