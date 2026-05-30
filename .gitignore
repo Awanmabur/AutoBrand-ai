@@ -16,3 +16,4 @@ temp/
 .DS_Store
 coverage/
 .nyc_output/
+*.zip
