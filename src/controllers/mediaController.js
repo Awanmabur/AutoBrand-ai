@@ -4,6 +4,7 @@ const Post = require('../models/Post');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { createUploadSignature } = require('../services/cloudinaryService');
 const { buildMediaInsights } = require('../services/mediaInsightService');
+const { createBrandedVariant, createResizeVariants } = require('../services/mediaTransformService');
 
 function mediaKind(mimeType) {
   if (mimeType.startsWith('image/')) return 'image';
@@ -148,24 +149,16 @@ async function creativeAction(req, res, next) {
     }
 
     if (req.body.actionType === 'resize') {
-      ['9:16', '1:1', '16:9'].forEach((ratio) => {
-        media.variants.push({
-          kind: 'resize',
-          label: `${ratio} platform resize`,
-          prompt: `Resize/crop ${media.fileName} for ${ratio} while preserving the key subject and brand space.`,
-          status: 'planned',
-          metadata: { aspectRatio: ratio }
-        });
-      });
+      const variants = await createResizeVariants(media, media.brand);
+      media.variants.push(...variants);
     }
 
     if (req.body.actionType === 'variant') {
-      media.variants.push({
-        kind: 'image_variant',
+      const variant = await createBrandedVariant(media, media.brand, {
         label: req.body.label || 'Brand style variant',
-        prompt: req.body.prompt || `Create a branded variation for ${media.brand.name}.`,
-        status: 'planned'
+        prompt: req.body.prompt || `Create a branded variation for ${media.brand.name}.`
       });
+      media.variants.push(variant);
     }
 
     await media.save();

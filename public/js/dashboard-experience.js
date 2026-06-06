@@ -1402,7 +1402,7 @@ function calendarPostMedia(post = {}) {
 }
 
 function calendarLibraryPost(post, compact = false) {
-  return `<article class="dashboard-library-post ${compact ? 'is-compact' : ''}">
+  return `<article class="dashboard-library-post ${compact ? 'is-compact' : ''}" ${post?.id ? `draggable="true" data-calendar-drag-post="${escapeHtml(post.id)}"` : ''}>
     <div class="dashboard-library-main">
       ${calendarPostMedia(post)}
       <div class="dashboard-library-title-row">
@@ -1441,13 +1441,13 @@ function renderCalendarDashboard(page) {
           ? `data-calendar-post-view="${escapeHtml(singlePost.id)}"`
           : `data-library-day="${escapeHtml(day.key)}"`;
         const isToday = Boolean(day.isToday || day.key === todayKey);
-        return `<article class="dashboard-calendar-day ${day.inMonth ? '' : 'is-muted'} ${isToday ? 'is-today' : ''}" data-calendar-day="${escapeHtml(day.key)}" ${isToday ? 'aria-current="date"' : ''}>
+        return `<article class="dashboard-calendar-day ${day.inMonth ? '' : 'is-muted'} ${isToday ? 'is-today' : ''}" data-calendar-day="${escapeHtml(day.key)}" data-calendar-drop-day="${escapeHtml(day.key)}" ${isToday ? 'aria-current="date"' : ''}>
           <button class="dashboard-calendar-day-head" type="button" ${dayOpenAttr} aria-label="Open ${escapeHtml(day.dateLabel)} content">
             <span class="dashboard-calendar-day-title"><strong>${escapeHtml(day.dayNumber)}</strong>${isToday ? '<em>Today</em>' : ''}</span>
             ${postCount ? `<span>${escapeHtml(postCount)} post${postCount === 1 ? '' : 's'}</span>` : '<span>No posts</span>'}
           </button>
           <div class="dashboard-calendar-mini-list">
-            ${visiblePosts.map((post) => `<button class="dashboard-calendar-mini-post" type="button" data-calendar-post-view="${escapeHtml(post.id)}">
+            ${visiblePosts.map((post) => `<button class="dashboard-calendar-mini-post" type="button" draggable="true" data-calendar-drag-post="${escapeHtml(post.id)}" data-calendar-post-view="${escapeHtml(post.id)}" title="Drag to another day to reschedule">
               ${statusDot(post.status)}
               <span>${escapeHtml(post.timeLabel)}</span>
               <strong>${escapeHtml(post.title)}</strong>
@@ -2442,11 +2442,75 @@ function bindScheduleDefaults() {
   });
 }
 
+function localTimeForCalendarPost(post) {
+  const iso = post?.scheduledAt || post?.publishedAt || post?.createdAt || '';
+  if (!iso) return '09:00';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '09:00';
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: dashboardTimeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = formatter.formatToParts(date).reduce((map, part) => {
+    if (part.type !== 'literal') map[part.type] = part.value;
+    return map;
+  }, {});
+  return `${parts.hour || '09'}:${parts.minute || '00'}`;
+}
+
+function submitCalendarReschedule(postId, dayKey) {
+  const post = (dashboardCalendar.posts || []).find((item) => String(item.id) === String(postId));
+  if (!post || !dayKey) return;
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action = `/posts/${encodeURIComponent(post.id)}/schedule`;
+  form.style.display = 'none';
+  form.innerHTML = `${csrfInput()}<input name="scheduledAt" value="${escapeHtml(`${dayKey}T${localTimeForCalendarPost(post)}`)}">`;
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function bindCalendarDragDrop() {
+  document.querySelectorAll('[data-calendar-drag-post]').forEach((item) => {
+    if (item.dataset.dragBound === '1') return;
+    item.dataset.dragBound = '1';
+    item.addEventListener('dragstart', (event) => {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', item.dataset.calendarDragPost || '');
+      item.classList.add('is-dragging');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('is-dragging');
+      document.querySelectorAll('.dashboard-calendar-day.is-drop-target').forEach((day) => day.classList.remove('is-drop-target'));
+    });
+  });
+
+  document.querySelectorAll('[data-calendar-drop-day]').forEach((day) => {
+    if (day.dataset.dropBound === '1') return;
+    day.dataset.dropBound = '1';
+    day.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      day.classList.add('is-drop-target');
+    });
+    day.addEventListener('dragleave', () => day.classList.remove('is-drop-target'));
+    day.addEventListener('drop', (event) => {
+      event.preventDefault();
+      day.classList.remove('is-drop-target');
+      const postId = event.dataTransfer.getData('text/plain');
+      submitCalendarReschedule(postId, day.dataset.calendarDropDay);
+    });
+  });
+}
+
 function bindActions() {
   window.AutoBrandBrandUploads?.init(document);
   window.AutoBrandComposerIntent?.init(document);
   bindDashboardLinks();
   bindScheduleDefaults();
+  bindCalendarDragDrop();
   document.querySelectorAll('[data-card-action]').forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();

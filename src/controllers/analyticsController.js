@@ -1,9 +1,11 @@
 const Analytics = require('../models/Analytics');
 const Brand = require('../models/Brand');
 const Post = require('../models/Post');
+const { updateBrandPerformanceMemoryForOwner } = require('../services/analyticsMemoryService');
 
 async function index(req, res, next) {
   try {
+    await updateBrandPerformanceMemoryForOwner(req.user._id);
     const brands = await Brand.find({ owner: req.user._id }).sort({ name: 1 });
     const brandIds = brands.map((brand) => brand._id);
     const [analytics, publishedCount, scheduledCount, posts] = await Promise.all([

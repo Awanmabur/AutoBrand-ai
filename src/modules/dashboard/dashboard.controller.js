@@ -22,6 +22,7 @@ const { getCurrentPlan, plainPlan } = require('../../services/subscription.servi
 const { buildFeatureAccess, resolveDashboardPageForAccess } = require('../../services/subscription/featureAccess.service');
 const { buildUsageDashboard } = require('../../services/usage.service');
 const { getPublicPricingCards } = require('../../services/pricing.service');
+const { updateBrandPerformanceMemoryForOwner } = require('../../services/analyticsMemoryService');
 
 const DASHBOARD_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TIME_ZONE || process.env.TZ || 'Africa/Kampala';
 
@@ -1938,6 +1939,8 @@ async function index(req, res, next) {
     const calendarStart = startOfMonth(selectedCalendarMonth);
     const calendarEnd = endOfMonth(selectedCalendarMonth);
     const shouldLoadPlans = canViewPlanManagement(req.user);
+
+    await updateBrandPerformanceMemoryForOwner(userId);
 
     const [
       brands,

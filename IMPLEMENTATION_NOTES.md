@@ -1,56 +1,19 @@
-# Classic Trip dashboard completion pass
+# AutoBrand AI Continuation Notes
 
-This pass keeps the existing Classic Trip architecture and upgrades the dashboard system end-to-end instead of replacing it with duplicate pages.
+This project is AutoBrand AI. Any notes from unrelated projects have been removed so future work starts from the correct product context.
 
-## Implemented across all dashboards
+## Completed Local End-To-End Upgrades
 
-- Dashboard payloads are exposed to the browser as `window.__CT_DASHBOARD_DATA__` for reusable row metadata, modal details, exports, and filters.
-- A shared dashboard enhancer (`public/js/full-dashboard-enhancer.js`) adds:
-  - per-table search,
-  - status filters,
-  - date filter inputs,
-  - CSV export of currently visible rows,
-  - full record detail modals grouped by backend detail sections,
-  - JSON export for individual records,
-  - copy-reference actions,
-  - disabled-state protection for UI actions that do not have a safe backend endpoint.
-- Existing dashboard visuals are preserved; the enhancer augments tables/cards without replacing the UI.
+- Template video renders now create real local MP4 files and save matching Media records.
+- Template render drafts now attach the rendered MP4 to the created video post.
+- Calendar posts can be dragged to another day to reschedule through the existing schedule endpoint.
+- Publishing failures now apply a platform-aware retry policy for temporary errors.
+- Brand Brain performance memory now updates from synced Analytics records.
+- Media resize and brand-variant actions now create actual local image outputs instead of only planned manifests.
+- The lint script is Windows-safe and checks all JavaScript files through Node.
 
-## Backend/API additions
+## Still Provider-Gated
 
-- `GET /api/dashboards/data`
-- `GET /api/dashboards/:role/data`
-- `POST /api/dashboards/actions/:action`
-- Protected scanner endpoints:
-  - `POST /api/scanner/lookup`
-  - `POST /api/scanner/validate`
-  - `POST /api/scanner/no-show`
-- Employee/company no-show web actions:
-  - `POST /employee/bookings/:bookingRef/no-show`
-  - `POST /company/bookings/:bookingRef/no-show`
-
-## Data/model additions
-
-- `ShiftHandover` model for operational staff shift handovers.
-- `SavedListing` model for customer saved trips/listings.
-- `PlatformSetting` model for safe global platform settings.
-- Existing rich schema fields for bookings/payments/users/companies/support/refunds/audit/settings/notifications remain in place.
-- `demoStore` now includes richer metadata for customer and promoter dashboard rows, not only admin/company records.
-
-## Scanner/check-in improvements
-
-- Lookup can review full backend booking details before action.
-- Check-in uses existing booking check-in lifecycle fields and persists when MongoDB is connected.
-- No-show action added with backend validation.
-- Scanner API is now protected by auth and dashboard roles.
-
-## Verification run
-
-- `npm install` completed.
-- `npm run check` passed.
-- `npm test` passed: 4 suites, 28 tests.
-- `npm start` starts the server; MongoDB was unavailable in this environment, so the app continued using the in-memory demo store as designed.
-
-## Notes
-
-The project already contains extensive dashboard pages and controllers. This completion pass makes the pages richer and safer by adding a reusable full-details/filter/export/action layer and filling missing backend action/model gaps while preserving existing route conventions and visual design.
+- Live social publishing requires configured and approved provider apps.
+- Hosted AI, clean video, avatar rendering, payment automation, and outbound email require real provider accounts and keys.
+- Those are deployment/configuration blockers, not places where the app should silently pretend success.

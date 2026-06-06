@@ -1771,6 +1771,12 @@ body.dark-mode .social-logo {
   box-shadow: 0 0 0 2px rgba(8, 44, 82, .12), var(--shadow-soft);
 }
 
+.dashboard-calendar-day.is-drop-target {
+  border-color: var(--accent);
+  background: rgba(37, 211, 102, .08);
+  box-shadow: 0 0 0 2px rgba(37, 211, 102, .16), var(--shadow-soft);
+}
+
 .dashboard-calendar-day-head {
   width: 100%;
   display: flex;
@@ -1811,6 +1817,12 @@ body.dark-mode .social-logo {
   border-radius: 14px;
   background: var(--surface);
   color: inherit;
+  cursor: grab;
+}
+
+.dashboard-calendar-mini-post.is-dragging,
+.dashboard-library-post.is-dragging {
+  opacity: .55;
 }
 
 .dashboard-calendar-mini-post span {

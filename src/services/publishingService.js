@@ -12,6 +12,7 @@ const { isTikTokConfigured, publishTikTokVideo } = require('./tiktokService');
 const { isWhatsAppConfigured, publishWhatsAppMessage } = require('./whatsappService');
 const { isYouTubeConfigured, publishYouTubeVideo } = require('./youtubeService');
 const { shouldUseHandoffFallback } = require('./auto-handoff/handoff.service');
+const { applyRetryPolicy } = require('./publishingRetryPolicyService');
 
 async function accountsForPost(post) {
   const selectedIds = (post.targetAccounts || []).map((id) => id?._id || id).filter(Boolean);
@@ -102,22 +103,34 @@ async function publishPost(postId) {
     post.errorMessage = failures.join(' | ');
     await post.save();
 
+    if (failures.length) {
+      const retry = await applyRetryPolicy(post, failures.join(' | '));
+      await Notification.create({
+        user: post.createdBy,
+        type: retry.scheduled ? 'post_retry_scheduled' : 'post_failed',
+        title: retry.scheduled ? 'Post retry scheduled' : 'Post failed on some Pages',
+        message: retry.scheduled
+          ? `${post.title || post.platform} will retry at ${retry.nextRetryAt.toLocaleString()}.`
+          : failures.join(' | '),
+        entityType: 'Post',
+        entityId: post._id
+      });
+      throw new Error(failures.join(' | '));
+    }
+
     await Notification.create({
       user: post.createdBy,
-      type: failures.length ? 'post_failed' : 'post_published',
-      title: failures.length ? 'Post failed on some Pages' : 'Post published',
-      message: failures.length ? failures.join(' | ') : `${post.title || post.platform} was published to ${results.length} destination(s).`,
+      type: 'post_published',
+      title: 'Post published',
+      message: `${post.title || post.platform} was published to ${results.length} destination(s).`,
       entityType: 'Post',
       entityId: post._id
     });
-
-    if (failures.length) throw new Error(failures.join(' | '));
     return post;
   } catch (error) {
     if (!post.publishResults?.length) {
-      post.status = 'failed';
       post.errorMessage = error.message;
-      await post.save();
+      const retry = await applyRetryPolicy(post, error.message);
 
       if (shouldUseHandoffFallback(error)) {
         post.workflowMode = post.workflowMode === 'auto' ? 'handoff' : post.workflowMode;
@@ -128,9 +141,9 @@ async function publishPost(postId) {
 
       await Notification.create({
         user: post.createdBy,
-        type: 'post_failed',
-        title: shouldUseHandoffFallback(error) ? 'Post moved to handoff' : 'Post failed',
-        message: error.message,
+        type: retry.scheduled ? 'post_retry_scheduled' : 'post_failed',
+        title: retry.scheduled ? 'Post retry scheduled' : shouldUseHandoffFallback(error) ? 'Post moved to handoff' : 'Post failed',
+        message: retry.scheduled ? `${error.message} Retrying at ${retry.nextRetryAt.toLocaleString()}.` : error.message,
         entityType: 'Post',
         entityId: post._id
       });

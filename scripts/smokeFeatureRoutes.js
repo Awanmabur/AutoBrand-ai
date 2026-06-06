@@ -85,6 +85,22 @@ function makeClient(baseUrl) {
     return { response, text };
   }
 
+  async function follow(path, options = {}) {
+    let nextPath = path;
+    let nextOptions = options;
+    for (let index = 0; index < 5; index += 1) {
+      const result = await request(nextPath, nextOptions);
+      if (![301, 302, 303, 307, 308].includes(result.response.status)) return result;
+      const location = result.response.headers.get('location');
+      if (!location) return result;
+      const url = new URL(location, baseUrl);
+      if (url.origin !== baseUrl) return result;
+      nextPath = `${url.pathname}${url.search}`;
+      nextOptions = {};
+    }
+    throw new Error(`Too many redirects for ${path}`);
+  }
+
   async function form(path, fields) {
     const body = new URLSearchParams(fields);
     return request(path, {
@@ -94,7 +110,7 @@ function makeClient(baseUrl) {
     });
   }
 
-  return { request, form };
+  return { request, form, follow };
 }
 
 async function cleanup(email) {
@@ -166,11 +182,12 @@ async function run() {
     });
     if (result.response.status !== 200) throw new Error(`Refresh failed ${result.response.status}`);
 
-    page = await client.request('/brands/create');
+    page = await client.follow('/brands/create');
     csrf = csrfFrom(page.text);
+    const brandName = `Feature Brand ${stamp}`;
     result = await client.form('/brands', {
       _csrf: csrf,
-      name: `Feature Brand ${stamp}`,
+      name: brandName,
       businessType: 'Internet vouchers',
       description: 'Affordable local internet',
       location: 'Kampala',
@@ -188,9 +205,13 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Brand create failed ${result.response.status}`);
 
-    page = await client.request('/ai/generator');
+    const smokeUser = await User.findOne({ email });
+    const createdBrand = await Brand.findOne({ owner: smokeUser._id, name: brandName });
+    if (!createdBrand) throw new Error('Created brand was not saved');
+    const brandId = createdBrand._id.toString();
+
+    page = await client.follow('/ai/generator');
     csrf = csrfFrom(page.text);
-    const brandId = optionValueFrom(page.text);
     result = await client.form('/ai/generate-post', {
       _csrf: csrf,
       brand: brandId,
@@ -200,9 +221,11 @@ async function run() {
     });
     if (result.response.status !== 200) throw new Error(`AI generate failed ${result.response.status}`);
 
-    page = await client.request('/posts/drafts');
-    const postId = postIdFrom(page.text);
-    page = await client.request(`/posts/${postId}/edit`);
+    page = await client.follow('/posts/drafts');
+    const post = await Post.findOne({ createdBy: smokeUser._id, status: 'draft' }).sort({ createdAt: -1 });
+    if (!post) throw new Error('Missing generated draft post');
+    const postId = post._id.toString();
+    page = await client.follow(`/posts/${postId}/edit`);
     csrf = csrfFrom(page.text);
     result = await client.form(`/posts/${postId}/schedule`, {
       _csrf: csrf,
@@ -231,12 +254,12 @@ async function run() {
     ];
 
     for (const path of checks) {
-      const checked = await client.request(path);
+      const checked = path.startsWith('/social/facebook/connect') ? await client.request(path) : await client.follow(path);
       const okStatuses = path.startsWith('/social/facebook/connect') ? [200, 302, 303] : [200];
       if (!okStatuses.includes(checked.response.status)) throw new Error(`${path} returned ${checked.response.status}`);
     }
 
-    page = await client.request('/growth-studio');
+    page = await client.follow('/growth-studio');
     csrf = csrfFrom(page.text);
     result = await client.form('/growth-studio/run', {
       _csrf: csrf,
@@ -247,7 +270,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Growth Studio drafts failed ${result.response.status}`);
 
-    page = await client.request('/growth-studio');
+    page = await client.follow('/growth-studio');
     csrf = csrfFrom(page.text);
     result = await client.form('/growth-studio/run', {
       _csrf: csrf,
@@ -257,7 +280,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Growth Studio audit failed ${result.response.status}`);
 
-    page = await client.request('/ai/generator');
+    page = await client.follow('/ai/generator');
     csrf = csrfFrom(page.text);
     result = await client.form('/ai/generate-hashtags', {
       _csrf: csrf,
@@ -288,14 +311,14 @@ async function run() {
     });
     if (result.response.status !== 200) throw new Error(`AI campaign failed ${result.response.status}`);
 
-    page = await client.request('/campaigns');
+    page = await client.follow('/campaigns');
     csrf = csrfFrom(page.text);
     const campaignDraftPath = String(page.text).match(/\/campaigns\/([a-f0-9]{24})\/create-drafts/);
     if (!campaignDraftPath) throw new Error('Missing campaign create-drafts action');
     result = await client.form(`/campaigns/${campaignDraftPath[1]}/create-drafts`, { _csrf: csrf });
     if (![302, 303].includes(result.response.status)) throw new Error(`Campaign draft creation failed ${result.response.status}`);
 
-    page = await client.request('/media');
+    page = await client.follow('/media');
     csrf = csrfFrom(page.text);
     result = await client.form('/media/upload', {
       _csrf: csrf,
@@ -309,7 +332,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Media upload failed ${result.response.status}`);
 
-    page = await client.request('/media');
+    page = await client.follow('/media');
     csrf = csrfFrom(page.text);
     const mediaMatch = String(page.text).match(/\/media\/([a-f0-9]{24})\/creative/);
     if (!mediaMatch) throw new Error('Missing media creative action');
@@ -331,7 +354,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Media draft creation failed ${result.response.status}`);
 
-    page = await client.request('/ai/generator');
+    page = await client.follow('/ai/generator');
     csrf = csrfFrom(page.text);
     result = await client.form('/ai/generate-post', {
       _csrf: csrf,
@@ -343,7 +366,7 @@ async function run() {
     });
     if (result.response.status !== 200) throw new Error(`Media-powered AI generate failed ${result.response.status}`);
 
-    page = await client.request('/growth-studio');
+    page = await client.follow('/growth-studio');
     csrf = csrfFrom(page.text);
     result = await client.form('/growth-studio/run', {
       _csrf: csrf,
@@ -355,7 +378,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Media-powered Growth Studio video failed ${result.response.status}`);
 
-    page = await client.request('/templates');
+    page = await client.follow('/templates');
     csrf = csrfFrom(page.text);
     const templateId = optionValueForSelect(page.text, 'template');
     result = await client.form('/templates/render', {
@@ -368,7 +391,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Template render failed ${result.response.status}`);
 
-    page = await client.request('/videos');
+    page = await client.follow('/videos');
     csrf = csrfFrom(page.text);
     result = await client.form('/videos/clean-generate', {
       _csrf: csrf,
@@ -384,7 +407,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Clean video failed ${result.response.status}`);
 
-    page = await client.request('/avatars');
+    page = await client.follow('/avatars');
     csrf = csrfFrom(page.text);
     result = await client.form('/avatars', {
       _csrf: csrf,
@@ -396,7 +419,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Avatar create failed ${result.response.status}`);
 
-    page = await client.request('/avatars');
+    page = await client.follow('/avatars');
     csrf = csrfFrom(page.text);
     const avatarMatch = String(page.text).match(/\/avatars\/([a-f0-9]{24})\/generate-video/);
     if (!avatarMatch) throw new Error('Missing avatar video action');
@@ -408,7 +431,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Avatar video failed ${result.response.status}`);
 
-    page = await client.request('/billing');
+    page = await client.follow('/billing');
     csrf = csrfFrom(page.text);
     result = await client.form('/billing/checkout', {
       _csrf: csrf,
@@ -417,7 +440,7 @@ async function run() {
     });
     if (![302, 303].includes(result.response.status)) throw new Error(`Checkout failed ${result.response.status}`);
 
-    page = await client.request('/billing');
+    page = await client.follow('/billing');
     csrf = csrfFrom(page.text);
     const paymentMatch = String(page.text).match(/\/billing\/payments\/([a-f0-9]{24})\/mark-paid/);
     if (!paymentMatch) throw new Error('Missing payment mark-paid action');
@@ -432,7 +455,7 @@ async function run() {
     if (result.response.status !== 200) throw new Error(`Webhook failed ${result.response.status}`);
     await WebhookEvent.deleteMany({ eventId: `smoke_${stamp}` });
 
-    page = await client.request('/settings');
+    page = await client.follow('/settings');
     csrf = csrfFrom(page.text);
     result = await client.form('/settings/diagnostics', { _csrf: csrf });
     if (result.response.status !== 200) throw new Error(`Diagnostics failed ${result.response.status}`);
