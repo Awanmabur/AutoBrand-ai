@@ -114,6 +114,153 @@ function offerAngles(brand, campaignGoal) {
   };
 }
 
+function contentIdeas(brand, campaignGoal) {
+  const products = compactList((brand.products || []).map((product) => product.name), [brand.businessType || 'main offer']);
+  return {
+    title: `${brand.name} content ideas`,
+    summary: `Reusable content ideas for ${campaignGoal || brand.targetAudience || 'the next campaign'}.`,
+    sections: [
+      {
+        heading: 'Post ideas',
+        items: [
+          `Teach: explain one mistake ${brand.targetAudience || 'customers'} make before choosing ${products[0]}.`,
+          `Proof: show a testimonial, result, or behind-the-scenes moment.`,
+          `Offer: turn ${brand.offers?.[0]?.title || products[0]} into a clear benefit-led post.`,
+          `FAQ: answer the most common buyer question in plain language.`,
+          `Local relevance: connect ${brand.name} to ${brand.location || 'the customer location'}.`
+        ]
+      }
+    ]
+  };
+}
+
+function hookGenerator(brand, campaignGoal) {
+  const offer = brand.offers?.[0]?.title || brand.products?.[0]?.name || brand.businessType || 'this offer';
+  return {
+    title: `${brand.name} hook pack`,
+    summary: `Scroll-stopping hooks for ${campaignGoal || offer}.`,
+    sections: [
+      {
+        heading: 'Hooks',
+        items: [
+          `If ${brand.targetAudience || 'you'} need ${offer}, start here.`,
+          `Most people miss this before choosing ${offer}.`,
+          `The faster way to get ${offer} without the usual stress.`,
+          `${brand.location || 'Local'} customers: this is for you.`,
+          `Before you book, check this one detail.`
+        ]
+      }
+    ]
+  };
+}
+
+function reelScriptGenerator(brand, campaignGoal) {
+  const storyboard = videoStoryboard({ brand, campaignGoal, platform: 'instagram', style: 'fast social promo' });
+  return {
+    title: `${brand.name} reel script`,
+    summary: `Short-form script for ${campaignGoal || brand.preferredCta || 'brand growth'}.`,
+    sections: [
+      { heading: 'Hook', items: [storyboard.scenePlan[0]?.narration || `Need ${brand.name}?`] },
+      { heading: 'Scenes', items: storyboard.scenePlan.map((scene) => `${scene.title}: ${scene.narration}`) },
+      { heading: 'CTA', items: [brand.preferredCta || 'Message us today.'] }
+    ],
+    metadata: { storyboard }
+  };
+}
+
+function carouselIdeaGenerator(brand, campaignGoal) {
+  return {
+    title: `${brand.name} carousel ideas`,
+    summary: `Carousel structures for ${campaignGoal || 'education, trust, and offers'}.`,
+    sections: [
+      {
+        heading: 'Carousel concepts',
+        items: [
+          `5 reasons ${brand.targetAudience || 'customers'} choose ${brand.name}.`,
+          `Problem -> solution -> proof -> offer -> CTA.`,
+          `Checklist before buying ${brand.products?.[0]?.name || brand.businessType || 'this service'}.`,
+          `Customer story: need, decision, result, next step.`
+        ]
+      }
+    ]
+  };
+}
+
+function contentPlanAsset(brand, campaignGoal, platforms, days = 7) {
+  const plan = buildCampaignPlan({ brand, goal: campaignGoal, platforms: platformList(platforms), durationDays: days });
+  return {
+    title: `${brand.name} ${days}-day content plan`,
+    summary: `${days} planned posts for ${campaignGoal || 'growth'} across ${plan.postIdeas.length ? [...new Set(plan.postIdeas.map((item) => item.platform))].join(', ') : 'saved platforms'}.`,
+    sections: [
+      {
+        heading: `${days}-day plan`,
+        items: plan.postIdeas.map((idea) => `Day ${idea.day} - ${idea.platform}: ${idea.title} - ${idea.caption}`)
+      }
+    ],
+    metadata: { aiPlan: plan }
+  };
+}
+
+function whatsappPromoPack(brand, campaignGoal) {
+  const offer = brand.offers?.[0]?.title || brand.products?.[0]?.name || brand.businessType || 'today\'s offer';
+  return {
+    title: `${brand.name} WhatsApp promo pack`,
+    summary: `WhatsApp-ready promotional messages for ${campaignGoal || offer}.`,
+    sections: [
+      {
+        heading: 'Messages',
+        items: [
+          `Hi, ${brand.name} has ${offer} ready for you. ${brand.preferredCta || 'Reply here for details.'}`,
+          `Quick reminder: ${offer} is available today. Want us to help you choose?`,
+          `Last call for ${offer}. Message us now and we will guide you.`
+        ]
+      }
+    ]
+  };
+}
+
+function adCopyPack(brand, campaignGoal) {
+  const offer = brand.offers?.[0]?.title || brand.products?.[0]?.name || brand.businessType || 'your next step';
+  return {
+    title: `${brand.name} ad copy pack`,
+    summary: `Paid social copy angles for ${campaignGoal || offer}.`,
+    sections: [
+      {
+        heading: 'Ad copy',
+        items: [
+          `Primary text: ${offer} for ${brand.targetAudience || 'customers'} who want a simpler option. ${brand.preferredCta || 'Book today.'}`,
+          `Headline: ${offer} made easier`,
+          `Description: Clear, local, and ready when you are.`,
+          `CTA: ${brand.preferredCta || 'Learn more'}`
+        ]
+      }
+    ]
+  };
+}
+
+function draftsFromGrowthAsset({ asset, brand, platforms }) {
+  const cleanPlatforms = platformList(platforms);
+  const items = (asset.sections || []).flatMap((section) => section.items || []).slice(0, 10);
+  const type = asset.type === 'reel_script' ? 'reel'
+    : asset.type === 'carousel_ideas' ? 'carousel'
+      : asset.type === 'whatsapp_promo_pack' ? 'whatsapp_message'
+        : 'text';
+  return items.map((item, index) => ({
+    brand: brand._id,
+    platform: type === 'whatsapp_message' ? 'whatsapp' : cleanPlatforms[index % cleanPlatforms.length],
+    platforms: [type === 'whatsapp_message' ? 'whatsapp' : cleanPlatforms[index % cleanPlatforms.length]],
+    type,
+    title: `${asset.title} ${index + 1}`,
+    caption: item,
+    hashtags: makeHashtags(brand, asset.summary).slice(0, 6),
+    status: 'draft',
+    platformMetadata: {
+      growthAsset: asset._id,
+      growthAssetType: asset.type
+    }
+  }));
+}
+
 function draftBatch({ brand, campaignGoal, platforms }) {
   const cleanPlatforms = platformList(platforms);
   const pillars = ['Offer', 'Education', 'Trust', 'Reminder', 'Objection', 'Proof', 'CTA'];
@@ -128,7 +275,7 @@ function draftBatch({ brand, campaignGoal, platforms }) {
   }));
 }
 
-function campaignBrief({ brand, campaignGoal, platforms }) {
+function campaignBrief({ brand, campaignGoal, platforms, durationDays = 14 }) {
   const cleanPlatforms = platformList(platforms);
   return {
     name: `${brand.name} growth campaign`,
@@ -137,7 +284,7 @@ function campaignBrief({ brand, campaignGoal, platforms }) {
     platforms: cleanPlatforms,
     postingFrequency: brand.postingFrequency || '1 post per day',
     status: 'draft',
-    aiPlan: buildCampaignPlan({ brand, goal: campaignGoal, platforms: cleanPlatforms, durationDays: 14 })
+    aiPlan: buildCampaignPlan({ brand, goal: campaignGoal, platforms: cleanPlatforms, durationDays })
   };
 }
 
@@ -156,9 +303,17 @@ module.exports = {
   brandAudit,
   campaignBrief,
   competitorSnapshot,
+  adCopyPack,
+  carouselIdeaGenerator,
+  contentIdeas,
+  contentPlanAsset,
   draftBatch,
+  draftsFromGrowthAsset,
+  hookGenerator,
   makeHashtags,
   offerAngles,
   platformList,
+  reelScriptGenerator,
+  whatsappPromoPack,
   videoStoryboard
 };

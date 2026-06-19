@@ -16,6 +16,7 @@ router.post('/forgot-password', requireGuest, authController.forgot);
 router.get('/reset-password', requireGuest, authController.showReset);
 router.post('/reset-password', requireGuest, authController.reset);
 router.get('/verify-email', authController.verifyEmail);
+router.post('/resend-verification', requireAuth, authController.resendVerification);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
 router.post('/logout-all', requireAuth, authController.logoutAll);

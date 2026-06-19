@@ -43,6 +43,7 @@ function buildBrandContext(brand = {}) {
     `Tone of voice: ${brand.toneOfVoice || brand.tone || 'not set'}`,
     `Writing style: ${brand.writingStyle || 'not set'}`,
     `Banned/blocked words: ${list([...(brand.bannedWords || []), ...(brand.blockedWords || [])], 'none')}`,
+    `Keywords: ${list(brand.keywords)}`,
     `Preferred words: ${list(brand.preferredWords)}`,
     `Emoji usage: ${brand.emojiUsage || 'not set'}`,
     `Hashtag style: ${brand.hashtagStyle || list(brand.preferredHashtags)}`,
@@ -59,7 +60,8 @@ function buildBrandContext(brand = {}) {
     `Rejected styles: ${list(brand.rejectedStyles)}`,
     `Previous best posts: ${list(brand.previousBestPosts)}`,
     `High-performing topics: ${list(brand.highPerformingTopics)}`,
-    `Knowledge base: ${list(brand.brandKnowledgeBase)}`
+    `Knowledge base: ${list(brand.brandKnowledgeBase)}`,
+    `Brand voice summary: ${brand.brandVoiceSummary || 'not scored yet'}`
   ].join('\n');
 }
 
@@ -72,7 +74,8 @@ function buildComposerDefaults(brand = {}) {
     approvalRequired: Boolean(brand.approvalRequiredByDefault),
     postingTimes: brand.defaultPostingTimes || brand.autoPosting?.preferredSlots || [],
     contentPillars: brand.contentPillars || [],
-    blockedWords: [...(brand.bannedWords || []), ...(brand.blockedWords || [])]
+    blockedWords: [...(brand.bannedWords || []), ...(brand.blockedWords || [])],
+    keywords: [...(brand.keywords || []), ...(brand.preferredWords || [])]
   };
 }
 

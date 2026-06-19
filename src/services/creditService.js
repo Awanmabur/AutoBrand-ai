@@ -1,4 +1,5 @@
 const CreditLedger = require('../models/CreditLedger');
+const { notifyLowCredits } = require('./notification.service');
 
 const starterBalances = {
   free: 20,
@@ -41,6 +42,7 @@ async function spendCredits({ user, amount, reason, referenceType, referenceId }
     referenceType,
     referenceId
   });
+  await notifyLowCredits({ user, balance: balanceAfter });
 
   return balanceAfter;
 }

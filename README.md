@@ -72,7 +72,7 @@ npm run seed:ai-providers
 
 ## Single dashboard UX
 
-The app now uses one main dashboard shell at `/dashboard/:page`. Legacy feature landing URLs such as `/brands`, `/posts`, `/calendar`, `/social`, `/media`, `/billing`, and `/admin` redirect back into the dashboard shell. The embedded composer route `/posts/new?embedded=1` remains available because the dashboard modal uses it.
+The app now uses one dashboard route structure. User-facing product pages live at `/dashboard/:page` such as `/dashboard/content-library`, `/dashboard/media`, `/dashboard/social`, `/dashboard/billing`, and `/dashboard/settings`. Legacy root feature URLs such as `/posts`, `/media`, `/billing`, `/settings`, `/admin`, and `/content-library` are no longer mounted; they return a clear 404 that points users to the correct dashboard page. Authenticated mutations and integration callbacks live under `/dashboard/actions/...`, while checkout is under `/dashboard/billing/...`.
 
 Feature navigation is calculated from the signed-in user role plus the current `SubscriptionPlan`. Role-blocked pages are hidden. Plan-locked pages remain visible with an upgrade/billing state, so users understand what their plan unlocks without leaving the dashboard.
 
@@ -108,49 +108,36 @@ Plan data is used by:
 Admin plan management routes:
 
 ```text
-/admin/plans
-/admin/plans/new
-/admin/plans/:id
-/admin/plans/:id/edit
+/dashboard/plans
+/dashboard/plans?mode=create
+/dashboard/actions/admin/plans/:id
+/dashboard/actions/admin/plans/:id?_method=PUT
 ```
 
 Only Superadmin can permanently delete plans. Plans with subscriptions are soft-deleted/deactivated to avoid breaking existing subscribers.
 
 ## Billing configuration
 
-Billing is provider-based. Set:
+Billing is Pesapal-only in production. Set:
 
 ```env
-BILLING_PROVIDER=manual
+BILLING_PROVIDER=pesapal
+CHECKOUT_DEFAULT_PROVIDER=pesapal
+PESAPAL_ENVIRONMENT=sandbox
+PESAPAL_CONSUMER_KEY=
+PESAPAL_CONSUMER_SECRET=
+PESAPAL_IPN_ID=
+PESAPAL_CALLBACK_URL=https://your-domain.com/dashboard/billing/pesapal/callback
+PESAPAL_IPN_URL=https://your-domain.com/dashboard/billing/pesapal/ipn
 ```
 
-Supported provider adapters:
-
-- manual
-- stripe
-- paypal
-- flutterwave
-
-Manual billing works as a safe fallback when a paid provider is not configured. To configure paid providers, fill the matching values in `.env`:
-
-```env
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-STRIPE_PRICE_STARTER=
-
-PAYPAL_CLIENT_ID=
-PAYPAL_CLIENT_SECRET=
-PAYPAL_WEBHOOK_ID=
-
-FLUTTERWAVE_SECRET_KEY=
-FLUTTERWAVE_WEBHOOK_SECRET=
-```
-
-Checkout routes:
+Customer checkout routes:
 
 ```text
-GET  /billing/checkout/:planSlug
-POST /billing/checkout/:planSlug
+GET  /dashboard/billing/checkout/:planSlug
+POST /dashboard/billing/checkout/:planSlug
+GET  /dashboard/billing/pesapal/callback
+POST /dashboard/billing/pesapal/ipn
 ```
 
 ## AI provider configuration
@@ -265,8 +252,8 @@ src/models/ClientApprovalLink.js
 Public review routes:
 
 ```text
-GET  /approvals/review/:token
-POST /approvals/review/:token
+GET  /review/:token
+POST /review/:token
 ```
 
 Publishing errors can move eligible auto posts into handoff fallback instead of failing silently.
@@ -281,19 +268,12 @@ src/utils/AppError.js
 src/utils/errorResponse.js
 ```
 
-Dashboard users get dashboard-styled error pages, public users get public error pages, and API/JSON requests receive JSON. Production responses do not expose stack traces.
+Error pages now render through the dashboard error page when the user is in the dashboard, while API/JSON requests receive JSON. Production responses do not expose stack traces.
 
-Dashboard error views:
+Error views:
 
 ```text
-src/views/dashboard/pages/errors/400.ejs
-src/views/dashboard/pages/errors/401.ejs
-src/views/dashboard/pages/errors/403.ejs
-src/views/dashboard/pages/errors/404.ejs
-src/views/dashboard/pages/errors/419.ejs
-src/views/dashboard/pages/errors/429.ejs
-src/views/dashboard/pages/errors/500.ejs
-src/views/dashboard/pages/errors/503.ejs
+src/views/dashboard/pages/error.ejs
 ```
 
 ## Production checklist
@@ -305,10 +285,35 @@ Before hosting:
 3. Configure a production MongoDB URL.
 4. Configure HTTPS and set `APP_URL` to the public domain.
 5. Add production OAuth redirect URLs in every provider dashboard.
-6. Configure the billing provider or keep manual billing as fallback.
+6. Configure Pesapal billing and verify the callback/IPN URLs.
 7. Configure AI provider keys/models by plan.
 8. Seed plans, permissions, platform rules, AI providers, and the superadmin.
 9. Run `npm run lint` and `npm test`.
 10. Check `/health` after deployment.
 
 See `DEPLOYMENT.md` for a hosting-oriented guide.
+
+## Production checkout with Pesapal
+
+This build includes a complete onboarding-to-payment path:
+
+```text
+Landing plan card -> /start/:planSlug -> register/login -> /dashboard/billing/checkout/:planSlug -> Pesapal -> callback/IPN -> verified activation
+```
+
+For production payments, configure:
+
+```env
+BILLING_PROVIDER=pesapal
+CHECKOUT_DEFAULT_PROVIDER=pesapal
+PESAPAL_ENVIRONMENT=production
+PESAPAL_CONSUMER_KEY=your_consumer_key
+PESAPAL_CONSUMER_SECRET=your_consumer_secret
+PESAPAL_IPN_ID=your_registered_ipn_id
+PESAPAL_IPN_URL=https://your-domain.com/dashboard/billing/pesapal/ipn
+PESAPAL_CALLBACK_URL=https://your-domain.com/dashboard/billing/pesapal/callback
+PESAPAL_CANCELLATION_URL=https://your-domain.com/dashboard/billing?cancelled=1
+PESAPAL_REDIRECT_MODE=TOP_WINDOW
+```
+
+Paid plans remain pending until Pesapal transaction status verification confirms payment. The IPN route is public and CSRF-exempt so Pesapal can post payment notifications.

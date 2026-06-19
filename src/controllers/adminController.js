@@ -9,46 +9,15 @@ const Payment = require('../models/Payment');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 const { enqueuePost } = require('../services/schedulerService');
 const { activatePlanForUser } = require('../services/subscription.service');
-const { markManualPaymentPaid } = require('../services/billing.service');
 
-async function index(req, res, next) {
-  try {
-    const [userCount, brandCount, postCount, failedPostCount, videoJobCount, socialCount, recentUsers, failedPosts, auditLogs, apiLogs, payments, plans] = await Promise.all([
-      User.countDocuments(),
-      Brand.countDocuments(),
-      Post.countDocuments(),
-      Post.countDocuments({ status: 'failed' }),
-      AiVideoJob.countDocuments(),
-      SocialAccount.countDocuments(),
-      User.find().sort({ createdAt: -1 }).limit(8),
-      Post.find({ status: 'failed' }).populate('brand').sort({ updatedAt: -1 }).limit(10),
-      AuditLog.find().populate('user').sort({ createdAt: -1 }).limit(8)
-      ,
-      ApiLog.find().populate('user').sort({ createdAt: -1 }).limit(10),
-      Payment.find().populate('user').sort({ createdAt: -1 }).limit(10),
-      SubscriptionPlan.find({ deletedAt: { $exists: false }, isActive: true }).sort({ sortOrder: 1, price: 1 }).limit(50)
-    ]);
-
-    res.render('admin/index', {
-      title: 'Admin',
-      layout: 'layouts/dashboard',
-      stats: { userCount, brandCount, postCount, failedPostCount, videoJobCount, socialCount },
-      recentUsers,
-      failedPosts,
-      auditLogs,
-      apiLogs,
-      payments,
-      plans
-    });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/admin');
 }
 
 async function updateUserPlan(req, res, next) {
   try {
     const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!user) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     await activatePlanForUser(user, req.body.plan, {
       paymentProvider: 'admin',
       metadata: { changedBy: req.user._id, source: 'admin_console' }
@@ -68,30 +37,10 @@ async function updateUserPlan(req, res, next) {
   }
 }
 
-async function markPaymentPaid(req, res, next) {
-  try {
-    const payment = await Payment.findById(req.params.id);
-    if (!payment) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
-    await markManualPaymentPaid(payment);
-    await AuditLog.create({
-      user: req.user._id,
-      action: 'admin_payment_mark_paid',
-      entityType: 'Payment',
-      entityId: payment._id,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      metadata: { reference: payment.reference, plan: payment.metadata?.plan }
-    });
-    res.redirect('/dashboard/admin');
-  } catch (error) {
-    next(error);
-  }
-}
-
 async function updateUserStatus(req, res, next) {
   try {
     const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!user) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     user.status = req.body.status;
     await user.save();
@@ -114,10 +63,10 @@ async function updateUserStatus(req, res, next) {
 async function retryPost(req, res, next) {
   try {
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     post.status = 'publishing';
-    post.retryCount += 1;
+    post.retryCount = Number(post.retryCount || 0) + 1;
     post.errorMessage = undefined;
     post.scheduledAt = new Date();
     await post.save();
@@ -137,4 +86,34 @@ async function retryPost(req, res, next) {
   }
 }
 
-module.exports = { index, markPaymentPaid, retryPost, updateUserPlan, updateUserStatus };
+async function retryJob(req, res, next) {
+  try {
+    const job = await AiVideoJob.findById(req.params.id);
+    if (!job) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+
+    job.status = 'queued';
+    job.errorMessage = '';
+    job.metadata = {
+      ...(job.metadata || {}),
+      adminRetry: {
+        by: req.user._id,
+        at: new Date()
+      }
+    };
+    await job.save();
+    await AuditLog.create({
+      user: req.user._id,
+      action: 'admin_retry_ai_video_job',
+      entityType: 'AiVideoJob',
+      entityId: job._id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.redirect('/dashboard/admin');
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { index, retryJob, retryPost, updateUserPlan, updateUserStatus };

@@ -129,9 +129,27 @@ function planDetails(req, res, next) {
   });
 }
 
-function signup(req, res) {
-  const query = req.query.plan ? `?plan=${encodeURIComponent(req.query.plan)}` : '';
-  res.redirect(`/auth/register${query}`);
+async function startPlan(req, res, next) {
+  try {
+    const pricingPlans = await getPublicPricingCards();
+    const plan = pricingPlans.find((item) => item.slug === req.params.planSlug);
+    if (!plan) {
+      const error = new Error('Plan not found.');
+      error.status = 404;
+      throw error;
+    }
+    const checkoutPath = `/dashboard/billing/checkout/${encodeURIComponent(plan.slug)}`;
+    if (req.user) return res.redirect(`${checkoutPath}?onboarding=1`);
+    return res.redirect(`/auth/register?plan=${encodeURIComponent(plan.slug)}&next=${encodeURIComponent(checkoutPath)}`);
+  } catch (error) {
+    next(error);
+  }
 }
 
-module.exports = { landing, pricing, planDetails, signup };
+function signup(req, res) {
+  const plan = req.query.plan ? String(req.query.plan) : 'free-trial';
+  const checkoutPath = `/dashboard/billing/checkout/${encodeURIComponent(plan)}`;
+  res.redirect(`/auth/register?plan=${encodeURIComponent(plan)}&next=${encodeURIComponent(checkoutPath)}`);
+}
+
+module.exports = { landing, pricing, planDetails, signup, startPlan };

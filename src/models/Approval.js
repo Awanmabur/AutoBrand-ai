@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 
 const approvalSchema = new mongoose.Schema(
   {
-    post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', required: true, index: true },
+    targetType: { type: String, enum: ['post', 'campaign'], default: 'post', index: true },
+    post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', index: true },
+    campaign: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', index: true },
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     reviewerEmail: { type: String, trim: true, lowercase: true },
     reviewer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -14,6 +16,13 @@ const approvalSchema = new mongoose.Schema(
     decision: { type: String, enum: ['pending', 'approved', 'rejected', 'changes_requested'], default: 'pending' },
     note: { type: String },
     decisionNote: { type: String, default: '' },
+    history: [{
+      status: String,
+      note: String,
+      actorName: String,
+      actorEmail: String,
+      createdAt: { type: Date, default: Date.now }
+    }],
     resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     resolvedAt: { type: Date }
   },

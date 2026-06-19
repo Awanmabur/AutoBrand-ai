@@ -4,6 +4,7 @@ const BrandAsset = require('../models/BrandAsset');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { assertCanCreateBrand } = require('../services/usageLimitService');
 const { addBrandAsset } = require('../services/brandBrain/brandAsset.service');
+const { updateBrandScore } = require('../services/brandBrain/brandScore.service');
 
 async function index(req, res, next) {
   try {
@@ -68,7 +69,6 @@ function brandPayload(body) {
     faqs: parseFaqs(body.faqs),
     socialLinks: parseSocialLinks(body.socialLinks),
     customerPainPoints: splitLines(body.customerPainPoints),
-    commonObjections: splitLines(body.commonObjections),
     testimonials: parseTestimonials(body.testimonials),
     brandRules: splitLines(body.brandRules),
     goals: splitLines(body.goals),
@@ -79,6 +79,7 @@ function brandPayload(body) {
     preferredHashtags: splitTags(body.preferredHashtags),
     bannedWords: splitLines(body.bannedWords),
     blockedWords: splitLines(body.blockedWords),
+    keywords: splitLines(body.keywords),
     preferredWords: splitLines(body.preferredWords),
     competitors: splitLines(body.competitors),
     competitorLinks: parseCompetitorLinks(body.competitorLinks),
@@ -273,27 +274,16 @@ async function store(req, res, next) {
       ...brandPayload(req.body)
     });
     await saveBrandUploadAssets({ brand, user: req.user, body: req.body });
+    await updateBrandScore(brand);
 
     res.redirect(`/dashboard/brand-brain?brand_created=1&brand=${encodeURIComponent(brand.name)}`);
   } catch (error) {
     if (error.status === 402) {
-      return res.status(402).render('brands/create', {
-        title: 'Create brand',
-        layout: 'layouts/dashboard',
-        form: req.body,
-        cloudinaryReady: isCloudinaryConfigured(),
-        error: error.message
-      });
+      return res.redirect(`/dashboard/brand-brain?error=${encodeURIComponent(error.message)}`);
     }
 
     if (error.code === 11000) {
-      return res.status(422).render('brands/create', {
-        title: 'Create brand',
-        layout: 'layouts/dashboard',
-        form: req.body,
-        cloudinaryReady: isCloudinaryConfigured(),
-        error: 'You already have a brand with this name.'
-      });
+      return res.redirect('/dashboard/brand-brain?error=You%20already%20have%20a%20brand%20with%20this%20name.');
     }
 
     return next(error);
@@ -303,7 +293,7 @@ async function store(req, res, next) {
 async function show(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     return res.redirect('/dashboard/brand-brain');
   } catch (error) {
@@ -314,7 +304,7 @@ async function show(req, res, next) {
 async function edit(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     return res.redirect('/dashboard/brand-brain');
   } catch (error) {
@@ -325,23 +315,17 @@ async function edit(req, res, next) {
 async function update(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     Object.assign(brand, brandPayload(req.body));
     await brand.save();
     await saveBrandUploadAssets({ brand, user: req.user, body: req.body });
+    await updateBrandScore(brand);
 
     return res.redirect('/dashboard/brand-brain');
   } catch (error) {
     if (error.code === 11000) {
-      const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
-      return res.status(422).render('brands/edit', {
-        title: `Edit ${brand?.name || 'brand'}`,
-        layout: 'layouts/dashboard',
-        brand: { ...brand.toObject(), ...req.body },
-        cloudinaryReady: isCloudinaryConfigured(),
-        error: 'You already have another brand with this name.'
-      });
+      return res.redirect('/dashboard/brand-brain?error=You%20already%20have%20another%20brand%20with%20this%20name.');
     }
 
     return next(error);

@@ -318,7 +318,7 @@ const DEFAULT_PLAN_MATRIX = [
     description: 'Internal unlimited platform administrator plan.',
     price: 0,
     currency: 'USD',
-    billingInterval: 'manual',
+    billingInterval: 'one_time',
     trialDays: 0,
     sortOrder: 999,
     isPopular: false,

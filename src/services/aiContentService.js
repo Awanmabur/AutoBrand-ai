@@ -1,5 +1,6 @@
 const { mediaContext } = require('./mediaInsightService');
 const { activeProvider, generateJsonText, generateImage, checkProviders } = require('./aiProviderService');
+const { generateContentBundle } = require('./aiContentGeneration.service');
 
 function normalizeGeneratedPost(raw, fallbackInput) {
   const fallback = fallbackPost(fallbackInput);
@@ -74,6 +75,11 @@ function mediaDrivenFallback(input) {
 }
 
 function brandBrainLines(brand) {
+  const productsAndServices = [...(brand.products || []), ...(brand.services || [])]
+    .map((item) => `${item.name || ''} ${item.price || ''} ${item.description || ''}`.trim())
+    .filter(Boolean)
+    .join('; ') || 'not set';
+  const objections = brand.customerObjections || brand.commonObjections || [];
   return [
     `Website: ${brand.website || 'not set'}`,
     `Language: ${brand.language || 'English'}`,
@@ -87,7 +93,10 @@ function brandBrainLines(brand) {
     `Auto posting image range: ${brand.autoPosting?.imagesPerPostMin || 1}-${brand.autoPosting?.imagesPerPostMax || 3}`,
     `Goals: ${(brand.goals || []).join('; ') || 'not set'}`,
     `Pain points: ${(brand.customerPainPoints || []).join('; ') || 'not set'}`,
-    `Objections: ${(brand.commonObjections || []).join('; ') || 'not set'}`,
+    `Objections: ${objections.join('; ') || 'not set'}`,
+    `Keywords: ${(brand.keywords || []).join(', ') || 'not set'}`,
+    `Preferred words: ${(brand.preferredWords || []).join(', ') || 'not set'}`,
+    `Products/services: ${productsAndServices}`,
     `Testimonials/proof: ${(brand.testimonials || []).map((item) => `${item.author || 'customer'}: ${item.quote || ''}`).join('; ') || 'not set'}`,
     `Competitors: ${(brand.competitors || []).join('; ') || 'not set'}`,
     `Preferred hashtags: ${(brand.preferredHashtags || []).join(' ') || 'not set'}`
@@ -111,13 +120,17 @@ function buildImagePrompt({ brand, prompt, platform = 'facebook', aspectRatio = 
     : requestedType === 'video'
       ? 'Create a strong real-looking video cover/hero frame that can also work as a short-video thumbnail. Use realistic visual context and little or no text.'
       : 'Create a real-looking polished social media image. Prefer realistic lifestyle/product/service photography or high-quality commercial scene rendering. Do not make a plain text card, poster, infographic, UI mockup, or quote graphic unless the user explicitly asks for that.';
+  const productsAndServices = [...(brand.products || []), ...(brand.services || [])]
+    .map((item) => `${item.name || ''} ${item.price || ''} ${item.description || ''}`.trim())
+    .filter(Boolean)
+    .join('; ') || 'not set';
   return [
     prompt,
     mediaDirection,
     `Brand: ${brand.name}. Business type: ${brand.businessType || 'business'}.`,
     `Audience: ${brand.targetAudience || 'local customers'}. Tone: ${brand.tone || 'professional, clean, friendly'}.`,
     `Use brand colors subtly when possible: ${(brand.brandColors || []).join(', ') || 'clean commercial palette'}.`,
-    `Products/services: ${(brand.products || []).map((item) => `${item.name || ''} ${item.price || ''} ${item.description || ''}`.trim()).filter(Boolean).join('; ') || 'not set'}.`,
+    `Products/services: ${productsAndServices}.`,
     `Offers: ${(brand.offers || []).map((item) => `${item.title || ''} ${item.description || ''}`.trim()).filter(Boolean).join('; ') || 'not set'}.`,
     `Proof/testimonials: ${(brand.testimonials || []).map((item) => `${item.author || 'customer'}: ${item.quote || ''}`).join('; ') || 'not set'}.`,
     `Local style: ${brand.localStyle || 'not set'}. Font style: ${brand.fontStyle || 'not set'}.`,
@@ -145,6 +158,10 @@ async function generateImageAsset(input) {
 }
 
 function buildPrompt({ brand, platform, goal, contentType, sourceMedia }) {
+  const productsAndServices = [...(brand.products || []), ...(brand.services || [])]
+    .map((item) => `${item.name} ${item.price || ''} ${item.description || ''}`.trim())
+    .filter(Boolean)
+    .join('; ') || 'not set';
   return [
     'Generate one social media post as strict JSON.',
     `Brand: ${brand.name}`,
@@ -154,7 +171,7 @@ function buildPrompt({ brand, platform, goal, contentType, sourceMedia }) {
     `Audience: ${brand.targetAudience || 'not set'}`,
     `Tone: ${brand.tone || 'clean, friendly, local'}`,
     `CTA: ${brand.preferredCta || 'not set'}`,
-    `Products: ${(brand.products || []).map((item) => `${item.name} ${item.price || ''} ${item.description || ''}`).join('; ') || 'not set'}`,
+    `Products/services: ${productsAndServices}`,
     `Offers: ${(brand.offers || []).map((item) => `${item.title} ${item.description || ''}`).join('; ') || 'not set'}`,
     `Blocked words: ${(brand.blockedWords || []).join(', ') || 'none'}`,
     `Brand rules: ${(brand.brandRules || []).join(', ') || 'none'}`,
@@ -239,16 +256,46 @@ function buildScheduleSlots({ startDate, days = 7, postsPerDay = 1, preferredSlo
 }
 
 async function generatePostIdea(input) {
-  const fallback = input.sourceMedia ? mediaDrivenFallback(input) : fallbackPost(input);
-  const result = await generateJsonText({
-    prompt: buildPrompt(input),
-    fallback,
-    preferredProvider: input.provider || input.preferredProvider
+  const bundle = await generateContentBundle({
+    ...input,
+    outputType: input.outputType || 'single_post',
+    platforms: input.platforms || input.platform || 'facebook'
   });
-  if (!result.ok) {
-    return providerFallback(input, `local_fallback_${result.provider || 'ai'}_error`, result.message || 'Hosted AI unavailable.');
-  }
-  return normalizeGeneratedPost({ ...result.data, provider: result.provider || activeProvider('text') }, input);
+  const warningText = [
+    bundle.safetyNotes,
+    ...(bundle.warnings?.brandRuleWarnings || []),
+    ...(bundle.warnings?.blockedWordWarnings || []),
+    ...(bundle.warnings?.riskWarnings || [])
+  ].filter(Boolean).join(' ');
+  const normalized = normalizeGeneratedPost({
+    title: bundle.title,
+    caption: bundle.caption,
+    hashtags: bundle.hashtags,
+    callToAction: bundle.callToAction,
+    imageIdea: bundle.imageIdea,
+    imagePrompt: bundle.imagePrompt,
+    videoScript: bundle.videoScript,
+    description: bundle.description,
+    youtubeTags: bundle.youtubeTags,
+    platformVersion: `${bundle.controls?.platform || input.platform || 'social'} ${bundle.outputType || 'post'}`,
+    bestPostingTime: bundle.bestPostingTime,
+    contentScore: bundle.scores?.contentScore,
+    improvementSuggestion: bundle.improvementSuggestion,
+    safetyNotes: warningText || bundle.safetyNotes,
+    provider: bundle.provider || activeProvider('text')
+  }, input);
+  return {
+    ...normalized,
+    generatedBundle: bundle,
+    platformOutputs: bundle.platformOutputs || [],
+    campaignPlan: bundle.campaignPlan || [],
+    carouselSlides: bundle.carouselSlides || [],
+    videoScenes: bundle.videoScenes || [],
+    brandRuleWarnings: bundle.warnings?.brandRuleWarnings || [],
+    blockedWordWarnings: bundle.warnings?.blockedWordWarnings || [],
+    riskWarnings: bundle.warnings?.riskWarnings || [],
+    scores: bundle.scores || {}
+  };
 }
 
 

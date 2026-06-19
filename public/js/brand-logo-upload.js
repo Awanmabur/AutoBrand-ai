@@ -47,7 +47,7 @@
     const brandId = form.dataset.brandId || uploadScope.dataset.brandId || form.querySelector('[name="brand"]')?.value || '';
     const brandName = form.querySelector('[name="name"]')?.value || 'new-brand';
     const query = brandId ? `brand=${encodeURIComponent(brandId)}` : `brandName=${encodeURIComponent(brandName)}`;
-    const response = await fetch(`/media/signature?${query}`, {
+    const response = await fetch(`/dashboard/actions/media/signature?${query}`, {
       headers: { 'X-CSRF-Token': getCsrf(form) }
     });
     if (!response.ok) throw new Error('Could not prepare upload.');

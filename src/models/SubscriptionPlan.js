@@ -73,7 +73,7 @@ const subscriptionPlanSchema = new mongoose.Schema(
     description: { type: String, trim: true, default: '' },
     price: { type: Number, required: true, min: 0, default: 0 },
     currency: { type: String, uppercase: true, default: 'USD' },
-    billingInterval: { type: String, enum: ['trial', 'month', 'year', 'one_time', 'manual'], default: 'month' },
+    billingInterval: { type: String, enum: ['trial', 'month', 'year', 'one_time'], default: 'month' },
     trialDays: { type: Number, default: 0, min: 0 },
     features: { type: featureSchema, default: () => ({}) },
     featureList: [{ type: String }],

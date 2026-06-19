@@ -507,8 +507,7 @@ Credit examples:
 
 Payment providers:
 
-- Stripe
-- Flutterwave
+- Pesapal
 - Paystack
 - Mobile Money later
 
@@ -566,24 +565,17 @@ Core models:
 
 Core route groups:
 
-- `/auth`
-- `/dashboard`
-- `/brands`
-- `/posts`
-- `/ai`
-- `/campaigns`
-- `/calendar`
-- `/media`
-- `/templates`
-- `/videos`
-- `/avatars`
-- `/social`
-- `/analytics`
-- `/approvals`
-- `/team`
-- `/billing`
-- `/notifications`
-- `/admin`
+- `/auth` for login, registration, password recovery and Google sign-in.
+- `/dashboard/:page` for all signed-in product pages, for example `/dashboard/content-library`, `/dashboard/media`, `/dashboard/social`, `/dashboard/billing`, `/dashboard/settings`, and `/dashboard/plans`.
+- `/dashboard/actions/:module` for authenticated mutations, uploads, OAuth starts/callbacks and internal feature actions.
+- `/dashboard/billing/...` for checkout, payment detail pages, Pesapal callback and Pesapal IPN.
+- `/review/:token` for public client approval review links.
+- `/webhooks` is not exposed as a root feature page; integration webhooks are dashboard-scoped under `/dashboard/actions/webhooks`.
+
+Removed root feature routes:
+
+- Do not mount standalone product paths such as `/brands`, `/posts`, `/content-library`, `/calendar`, `/social`, `/media`, `/billing`, `/settings`, or `/admin`.
+- If a user opens one of those old paths, show a clear 404 explaining the correct dashboard route.
 
 Important routes:
 
@@ -593,28 +585,32 @@ Important routes:
 - `POST /auth/refresh`
 - `GET /auth/google`
 - `GET /auth/google/callback`
-- `GET /brands`
-- `POST /brands`
-- `GET /brands/:id`
-- `PATCH /brands/:id`
-- `DELETE /brands/:id`
-- `POST /ai/generate-post`
-- `POST /ai/generate-campaign`
-- `POST /ai/generate-hashtags`
-- `POST /ai/generate-video-script`
-- `POST /posts`
-- `PATCH /posts/:id`
-- `POST /posts/:id/schedule`
-- `POST /posts/:id/publish-now`
-- `POST /media/upload`
-- `POST /videos/template-render`
-- `POST /videos/clean-generate`
-- `POST /avatars/consent`
-- `POST /avatars/create`
-- `POST /avatars/:id/generate-video`
-- `GET /social/facebook/connect`
-- `GET /social/facebook/callback`
-- `GET /admin`
+- `GET /dashboard/overview`
+- `GET /dashboard/content-library`
+- `GET /dashboard/media`
+- `GET /dashboard/social`
+- `GET /dashboard/billing`
+- `GET /dashboard/plans`
+- `POST /dashboard/actions/brands`
+- `PUT /dashboard/actions/brands/:id`
+- `POST /dashboard/actions/ai/generate-post`
+- `POST /dashboard/actions/ai/generate-campaign`
+- `POST /dashboard/actions/ai/generate-hashtags`
+- `POST /dashboard/actions/ai/generate-video-script`
+- `GET /dashboard/actions/posts/new?embedded=1`
+- `POST /dashboard/actions/posts`
+- `PUT /dashboard/actions/posts/:id`
+- `POST /dashboard/actions/posts/:id/schedule`
+- `POST /dashboard/actions/posts/:id/publish-now`
+- `POST /dashboard/actions/media/upload`
+- `POST /dashboard/actions/videos/clean-generate`
+- `POST /dashboard/actions/avatars/:id/generate-video`
+- `GET /dashboard/actions/social/facebook/connect`
+- `GET /dashboard/actions/social/facebook/callback`
+- `POST /dashboard/actions/admin/plans`
+- `PUT /dashboard/actions/admin/plans/:id`
+- `GET /review/:token`
+- `POST /review/:token`
 
 ## 19. UI Direction
 
@@ -694,3 +690,35 @@ AutoBrand AI should not be just another content generator. It should be a brand 
 - It explains analytics.
 - It protects costs with credits and plan limits.
 - It supports agencies with approvals and multi-brand workflows.
+
+## 22. Production Billing And Pesapal Checkout Requirements
+
+The production payment flow must use Pesapal API 3.0 for self-service plan upgrades in supported markets.
+
+Required flow:
+
+1. Public pricing buttons route to `/start/:planSlug`.
+2. Guests are sent to account creation with the selected plan and a checkout `next` path.
+3. Logged-in users are sent directly to `/dashboard/billing/checkout/:planSlug`.
+4. Paid plan selection creates a pending subscription only.
+5. The checkout page creates a Pesapal hosted payment order.
+6. The user is redirected to Pesapal for mobile money or card payment.
+7. Callback and IPN handlers receive the Pesapal order identifiers.
+8. The app must call Pesapal transaction-status verification before marking payment as paid.
+9. Paid features unlock only after verified payment status is paid/completed.
+10. Failed, pending, cancelled and refunded payments must not activate the selected paid plan.
+
+Required environment variables:
+
+```env
+BILLING_PROVIDER=pesapal
+CHECKOUT_DEFAULT_PROVIDER=pesapal
+PESAPAL_ENVIRONMENT=sandbox
+PESAPAL_CONSUMER_KEY=
+PESAPAL_CONSUMER_SECRET=
+PESAPAL_IPN_ID=
+PESAPAL_IPN_URL=https://your-domain.com/dashboard/billing/pesapal/ipn
+PESAPAL_CALLBACK_URL=https://your-domain.com/dashboard/billing/pesapal/callback
+PESAPAL_CANCELLATION_URL=https://your-domain.com/dashboard/billing?cancelled=1
+PESAPAL_REDIRECT_MODE=TOP_WINDOW
+```

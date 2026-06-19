@@ -3,19 +3,29 @@ const Post = require('../../models/Post');
 const Media = require('../../models/Media');
 const Notification = require('../../models/Notification');
 const SocialAccount = require('../../models/SocialAccount');
+const UsageLog = require('../../models/UsageLog');
 const { enqueuePost } = require('../../services/schedulerService');
 const { publishPost } = require('../../services/publishingService');
-const { assertCanSchedulePost } = require('../../services/usageLimitService');
+const { spendCredits } = require('../../services/creditService');
+const {
+  SCHEDULED_POST_STATUSES,
+  assertCanCreateAutoPosts,
+  assertCanCreateHandoffPosts,
+  assertCanGenerateText,
+  assertCanSchedulePost
+} = require('../../services/usageLimitService');
 const { buildPlatformPreview } = require('../../services/platformPreviewService');
 const { generatePostIdea, generateImageAsset, buildCreativePackage, buildScheduleSlots } = require('../../services/aiContentService');
+const { creditsForGeneration, normalizeGenerationControls } = require('../../services/aiContentGeneration.service');
 const { createScheduledPostsFromBatch } = require('../../services/autoCampaignService');
 const { buildMediaInsights } = require('../../services/mediaInsightService');
 const { generateVideo } = require('../../services/ai.service');
 const { createPlatformVariations } = require('../../services/composer/platformVariation.service');
+const { validateComposerSubmission } = require('../../services/composer/composerPayloadValidation.service');
 const { resolveComposerMediaIntent, mediaIntentAllowsType } = require('../../services/composer/mediaIntent.service');
 
 const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp'];
-const postTypes = ['text', 'image', 'video', 'reel', 'story', 'carousel', 'article', 'campaign'];
+const postTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign'];
 const contentTypes = ['promo', 'educational', 'testimonial', 'offer', 'product', 'announcement', 'engagement', 'behind_the_scenes', 'proof', 'faq', 'launch'];
 const contentGoals = ['awareness', 'engagement', 'sales', 'traffic', 'lead_generation', 'community', 'customer_support', 'launch', 'event', 'other'];
 
@@ -147,6 +157,13 @@ function selectedMediaFromBody(body) {
   return toArray(body.media || body.mediaIds);
 }
 
+function idsFromBody(value) {
+  return toArray(value)
+    .flatMap((item) => String(item || '').split(/[\s,]+/))
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 
 function brandPrimaryOffer(brand) {
   const offer = brand.offers?.[0];
@@ -167,7 +184,7 @@ function applyBrandBrainDefaults(body, brand) {
   const wantsMedia = brand.autoPosting?.requireMedia !== false;
   if (wantsMedia && !selectedMediaFromBody(next).length && !next.externalMediaUrl) {
     const chosen = mediaMix.find((item) => ['video', 'slides', 'image'].includes(String(item).toLowerCase())) || 'image';
-    if (!next.type || next.type === 'text') next.type = chosen === 'video' ? 'video' : 'image';
+    if (!next.type) next.type = chosen === 'video' ? 'video' : 'image';
     next.generateImage = 'on';
     next.mediaHandoff = next.mediaHandoff || 'generate_openai_image';
     next.imageCount = next.imageCount || brand.autoPosting?.imagesPerPostMax || (chosen === 'slides' ? 3 : 1);
@@ -217,8 +234,8 @@ function buildCreativePlan(body, generated = null) {
     videoMode: body.videoMode || 'manual_upload',
     videoPrompt: body.videoPrompt || generated?.videoScript || '',
     videoScript: body.videoScript || generated?.videoScript || '',
-    imageProvider: body.imageProvider || 'manual_or_prompt',
-    videoProvider: body.videoProvider || 'manual_or_prompt',
+    imageProvider: body.imageProvider || 'prompt_or_default',
+    videoProvider: body.videoProvider || 'prompt_or_default',
     mediaHandoff: body.mediaHandoff || 'prepare_prompt',
     selectedOwnerMediaConsent: body.selectedOwnerMediaConsent === 'on',
     imageChecklist: packageData?.imageGenerationChecklist || [],
@@ -234,6 +251,16 @@ function buildCreativePlan(body, generated = null) {
     generatedAt: generated ? new Date() : null,
     generatedProvider: generated?.provider || null,
     generatedScore: generated?.contentScore || null,
+    generatedBundle: generated?.generatedBundle || null,
+    platformOutputs: generated?.platformOutputs || [],
+    campaignPlan: generated?.campaignPlan || [],
+    carouselSlides: generated?.carouselSlides || [],
+    videoScenes: generated?.videoScenes || [],
+    warnings: {
+      brandRuleWarnings: generated?.brandRuleWarnings || [],
+      blockedWordWarnings: generated?.blockedWordWarnings || [],
+      riskWarnings: generated?.riskWarnings || []
+    },
     improvementSuggestion: generated?.improvementSuggestion || null,
     safetyNotes: generated?.safetyNotes || null
   };
@@ -323,7 +350,7 @@ async function selectedOrDefaultAccounts({ body, userId, brand, platforms: platf
 
 function wantsGeneratedImage(body) {
   const requestedType = String(body.type || '').toLowerCase();
-  if (requestedType === 'text') return false;
+  if (['text', 'article', 'link', 'whatsapp_message'].includes(requestedType)) return false;
   if (requestedType === 'carousel') return true;
   if (requestedType === 'image') return true;
   if (requestedType === 'video') return false;
@@ -503,21 +530,18 @@ async function createExternalMedia({ req, brand, mediaIntent = null }) {
   return created;
 }
 
+function redirectWithDashboardMessage(res, path, message, status = 303) {
+  const query = message ? `?error=${encodeURIComponent(message)}` : '';
+  return res.redirect(status, `${path}${query}`);
+}
+
 async function newPost(req, res, next) {
   try {
-    const data = await loadPostComposerData(req.user._id, req.query.brand || '');
-    const activeBrand = data.brands.find((brand) => String(brand._id) === String(data.activeBrandId));
-    return res.render('posts/new', {
-      title: 'Create Post',
-      layout: req.query.embedded === '1' ? false : 'layouts/dashboard',
-      embedded: req.query.embedded === '1',
-      ...data,
-      form: defaultOneOffForm(activeBrand, data.activeBrandId),
-      generated: null,
-      preview: null,
-      error: null
-    });
+    return res.redirect(303, '/dashboard/quick-create');
   } catch (error) {
+    if (error.status === 402) {
+      return res.redirect(`/dashboard/billing?error=${encodeURIComponent(error.message)}`);
+    }
     return next(error);
   }
 }
@@ -526,14 +550,17 @@ async function createPost(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id, status: 'active' });
     if (!brand) {
-      const data = await loadPostComposerData(req.user._id, req.body.brand || '');
-      return res.status(422).render('posts/new', { title: 'Create Post', layout: 'layouts/dashboard', ...data, form: req.body, generated: null, preview: null, error: 'Choose a valid brand.' });
+      return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Choose a valid brand.');
     }
 
     req.body = normalizeMediaPreset(req.body);
     req.body = applyBrandBrainDefaults(req.body, brand);
     req.body = normalizeMediaPreset(req.body);
     req.body.mediaPreset = mediaPresetValue(req.body);
+    if (req.body.action === 'regenerate') {
+      req.body.creationMode = 'ai';
+      req.body.caption = '';
+    }
     const mediaIntent = req.body.__mediaIntent || resolveComposerMediaIntent(req.body).__mediaIntent;
     const externalMediaIds = await createExternalMedia({ req, brand, mediaIntent });
     let selectedMediaIds = selectedMediaFromBody(req.body).concat(externalMediaIds);
@@ -542,11 +569,21 @@ async function createPost(req, res, next) {
 
     let generated = null;
     if (req.body.creationMode !== 'manual' || wantsGeneratedImage(req.body) || req.body.type === 'video') {
+      await assertCanGenerateText(req.user);
       generated = await generatePostIdea({
         brand,
         platform: req.body.platform || 'facebook',
+        platforms: toArray(req.body.platforms || req.body.platform || 'facebook'),
         goal: [req.body.goal, req.body.offer, req.body.audience].filter(Boolean).join(' | '),
         contentType: req.body.contentType || 'promo',
+        outputType: req.body.outputType,
+        tone: req.body.toneOverride || req.body.tone,
+        audience: req.body.audience,
+        length: req.body.length,
+        emojiLevel: req.body.emojiLevel,
+        hashtagCount: req.body.hashtagCount,
+        ctaType: req.body.ctaStyle,
+        language: req.body.language,
         sourceMedia
       });
     }
@@ -589,35 +626,16 @@ async function createPost(req, res, next) {
 
     const hasVideoMedia = await mediaIdsHaveVideo(selectedMediaIds, req.user._id);
     if (requestedTypeForMedia === 'video' && !hasVideoMedia) {
-      const data = await loadPostComposerData(req.user._id, brand._id.toString());
-      return res.status(422).render('posts/new', {
-        title: 'Create Post',
-        layout: 'layouts/dashboard',
-        ...data,
-        form: req.body,
-        generated,
-        preview: null,
-        error: `Video generation failed: ${generatedVideo.warning || 'No MP4 video file was created.'}`
-      });
+      return redirectWithDashboardMessage(res, '/dashboard/quick-create', `Video generation failed: ${generatedVideo.warning || 'No MP4 video file was created.'}`);
     }
 
     if (wantsGeneratedImage(req.body) && generatedImages.errors.length && !generatedMediaIds.length && !generatedVideoIds.length && !selectedMediaIds.length) {
-      const data = await loadPostComposerData(req.user._id, brand._id.toString());
-      return res.status(422).render('posts/new', {
-        title: 'Create Post',
-        layout: 'layouts/dashboard',
-        ...data,
-        form: req.body,
-        generated,
-        preview: null,
-        error: `Image generation failed: ${firstGenerationError(generatedImages.errors)}`
-      });
+      return redirectWithDashboardMessage(res, '/dashboard/quick-create', `Image generation failed: ${firstGenerationError(generatedImages.errors)}`);
     }
 
     const caption = req.body.caption || generated?.caption;
     if (!caption) {
-      const data = await loadPostComposerData(req.user._id, brand._id.toString());
-      return res.status(422).render('posts/new', { title: 'Create Post', layout: 'layouts/dashboard', ...data, form: req.body, generated, preview: null, error: 'Write a caption or use AI generation.' });
+      return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Write a caption or use AI generation.');
     }
 
     const selectedPlatforms = [...new Set(toArray(req.body.platforms || req.body.platform || 'facebook'))];
@@ -649,7 +667,20 @@ async function createPost(req, res, next) {
       mediaCount: selectedMediaIds.length
     };
     const platformVariations = await createPlatformVariations({ baseContent, brand, platforms: selectedPlatforms, accounts: targetAccounts });
+    const selectedMediaDocs = selectedMediaIds.length
+      ? await Media.find({ _id: { $in: selectedMediaIds }, uploadedBy: req.user._id }).lean()
+      : [];
+    const composerWarnings = await validateComposerSubmission({
+      ...baseContent,
+      platform: primaryPlatform,
+      platforms: selectedPlatforms,
+      media: selectedMediaDocs,
+      link: req.body.link || ''
+    });
+    const validationWarnings = [...new Set(platformVariations.flatMap((item) => item.validationWarnings || []).concat(composerWarnings))];
     const average = (field) => Math.round((platformVariations.reduce((total, item) => total + Number(item[field] || 0), 0) / Math.max(platformVariations.length, 1)) || 0);
+    if (req.body.workflowMode === 'handoff') await assertCanCreateHandoffPosts(req.user);
+    if (req.body.workflowMode === 'auto' || req.body.autoPublishEnabled === 'on') await assertCanCreateAutoPosts(req.user);
     const post = await Post.create({
       brand: brand._id,
       platform: primaryPlatform,
@@ -678,7 +709,7 @@ async function createPost(req, res, next) {
       aiProvider: req.body.aiProvider || '',
       aiModel: req.body.aiModel || '',
       platformVariations,
-      validationWarnings: platformVariations.flatMap((item) => item.validationWarnings || []),
+      validationWarnings,
       contentScore: average('contentScore'),
       brandFitScore: average('brandFitScore'),
       riskScore: average('riskScore'),
@@ -689,18 +720,47 @@ async function createPost(req, res, next) {
       platformMetadata: {
         ...buildCreativePlan({ ...req.body, __brand: brand, __sourceMedia: sourceMedia }, generated),
         selectedPlatforms,
+        whatsappTo: req.body.whatsappTo || '',
         imageWarning: generatedImages.errors.join(' | '),
         videoWarning: generatedVideo.warning || ''
       },
       createdBy: req.user._id
     });
 
+    if (generated) {
+      const generationControls = normalizeGenerationControls({
+        ...req.body,
+        platforms: selectedPlatforms,
+        outputType: generated.generatedBundle?.outputType || req.body.outputType
+      });
+      const generationCredits = creditsForGeneration(generationControls);
+      await spendCredits({
+        user: req.user,
+        amount: generationCredits,
+        reason: `Composer ${generationControls.outputType} generation`,
+        referenceType: 'Post',
+        referenceId: post._id
+      });
+      await UsageLog.create({
+        user: req.user._id,
+        brand: brand._id,
+        action: 'ai_generate_content',
+        provider: generated.provider,
+        credits: generationCredits,
+        metadata: {
+          post: post._id,
+          controls: generationControls,
+          outputType: generationControls.outputType,
+          mediaGenerated: selectedMediaIds.length
+        }
+      });
+    }
+
     const action = req.body.action || 'save';
     if (action === 'schedule') {
       const scheduledAt = scheduleDateFromBody(req.body.scheduledAt);
       if (!scheduledAt) {
-        const data = await loadPostComposerData(req.user._id, brand._id.toString());
-        return res.status(422).render('posts/new', { title: 'Create Post', layout: 'layouts/dashboard', ...data, form: req.body, generated, preview: buildPlatformPreview(post), error: 'Choose a valid schedule date.' });
+        return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Choose a valid schedule date.');
       }
       await assertCanSchedulePost(req.user);
       post.status = post.approvalRequired ? 'pending_approval' : 'scheduled';
@@ -757,18 +817,7 @@ async function drafts(req, res, next) {
       { total: 0, draft: 0, scheduled: 0, publishing: 0, published: 0, failed: 0, cancelled: 0 }
     );
 
-    res.render('posts/drafts', {
-      title: 'Content Library',
-      layout: 'layouts/dashboard',
-      posts,
-      brands,
-      stats,
-      filters: {
-        status: req.query.status || '',
-        platform: req.query.platform || '',
-        brand: req.query.brand || ''
-      }
-    });
+    return res.redirect(303, '/dashboard/content-library');
   } catch (error) {
     next(error);
   }
@@ -777,22 +826,14 @@ async function drafts(req, res, next) {
 async function edit(req, res, next) {
   try {
     const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand').populate('media').populate('targetAccounts');
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const [media, socialAccounts] = await Promise.all([
       Media.find({ brand: post.brand._id, uploadedBy: req.user._id }).sort({ createdAt: -1 }),
       SocialAccount.find({ brand: post.brand._id, owner: req.user._id, platform: post.platform, status: { $in: ['connected', 'mock'] } }).sort({ accountName: 1 })
     ]);
 
-    return res.render('posts/edit', {
-      title: 'Edit draft',
-      layout: 'layouts/dashboard',
-      post,
-      media,
-      socialAccounts,
-      preview: buildPlatformPreview(post),
-      error: null
-    });
+    return res.redirect(303, `/dashboard/content-library?edit=${encodeURIComponent(String(post._id))}`);
   } catch (error) {
     return next(error);
   }
@@ -801,7 +842,7 @@ async function edit(req, res, next) {
 async function update(req, res, next) {
   try {
     const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'title')) post.title = req.body.title;
     if (Object.prototype.hasOwnProperty.call(req.body, 'description')) post.description = req.body.description;
@@ -822,8 +863,24 @@ async function update(req, res, next) {
       ...(post.platformMetadata || {}),
       imagePrompt: req.body.imagePrompt || post.platformMetadata?.imagePrompt,
       videoScript: req.body.videoScript || post.platformMetadata?.videoScript,
+      whatsappTo: req.body.whatsappTo || post.platformMetadata?.whatsappTo || '',
       editedAt: new Date()
     };
+    const validationMedia = post.media?.length
+      ? await Media.find({ _id: { $in: post.media }, uploadedBy: req.user._id }).lean()
+      : [];
+    post.validationWarnings = await validateComposerSubmission({
+      type: post.type,
+      platform: post.platform,
+      platforms: post.platforms?.length ? post.platforms : [post.platform],
+      caption: post.caption,
+      hashtags: post.hashtags,
+      firstComment: post.firstComment,
+      altText: post.altText,
+      thumbnail: post.thumbnail,
+      link: post.link,
+      media: validationMedia
+    });
     await post.save();
 
     return res.redirect('/dashboard/content-library');
@@ -835,27 +892,14 @@ async function update(req, res, next) {
 async function schedule(req, res, next) {
   try {
     const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const scheduledAt = scheduleDateFromBody(req.body.scheduledAt);
     if (!scheduledAt) {
-      const populated = await post.populate('brand');
-      const [media, socialAccounts] = await Promise.all([
-        Media.find({ brand: populated.brand._id, uploadedBy: req.user._id }).sort({ createdAt: -1 }),
-        SocialAccount.find({ brand: populated.brand._id, owner: req.user._id, platform: populated.platform, status: { $in: ['connected', 'mock'] } }).sort({ accountName: 1 })
-      ]);
-      return res.status(422).render('posts/edit', {
-        title: 'Edit draft',
-        layout: 'layouts/dashboard',
-        post: populated,
-        media,
-        socialAccounts,
-        preview: buildPlatformPreview(populated),
-        error: 'Choose a valid schedule date.'
-      });
+      return redirectWithDashboardMessage(res, '/dashboard/calendar', 'Choose a valid schedule date.');
     }
 
-    await assertCanSchedulePost(req.user);
+    await assertCanSchedulePost(req.user, SCHEDULED_POST_STATUSES.includes(post.status) ? 0 : 1);
     post.scheduledAt = scheduledAt;
     post.status = 'scheduled';
     await post.save();
@@ -876,10 +920,103 @@ async function schedule(req, res, next) {
   }
 }
 
+async function bulkReschedule(req, res, next) {
+  try {
+    const postIds = idsFromBody(req.body.postIds);
+    if (!postIds.length) {
+      return redirectWithDashboardMessage(res, '/dashboard/calendar', 'Select at least one post to reschedule.');
+    }
+
+    const dayOffset = Number(req.body.dayOffset || 0);
+    const hasOffset = Number.isFinite(dayOffset) && dayOffset !== 0;
+    const startAt = scheduleDateFromBody(req.body.scheduledAt, { allowDefault: false });
+    if (!hasOffset && !startAt) {
+      return redirectWithDashboardMessage(res, '/dashboard/calendar', 'Choose a start time or day offset for bulk reschedule.');
+    }
+
+    const spacingMinutes = Math.max(0, Math.min(1440, Number(req.body.spacingMinutes || 30)));
+    const posts = await Post.find({ _id: { $in: postIds }, createdBy: req.user._id }).sort({ scheduledAt: 1, createdAt: 1 });
+    const newlyScheduled = posts.filter((post) => !SCHEDULED_POST_STATUSES.includes(post.status)).length;
+    if (newlyScheduled) await assertCanSchedulePost(req.user, newlyScheduled);
+    let updated = 0;
+
+    for (let index = 0; index < posts.length; index += 1) {
+      const post = posts[index];
+      const current = post.scheduledAt || post.createdAt || nextDefaultScheduleDate();
+      const scheduledAt = hasOffset
+        ? new Date(new Date(current).getTime() + dayOffset * 24 * 60 * 60 * 1000)
+        : new Date(startAt.getTime() + index * spacingMinutes * 60 * 1000);
+      post.scheduledAt = scheduledAt;
+      post.status = 'scheduled';
+      if (post.errorMessage) post.errorMessage = '';
+      post.platformMetadata = {
+        ...(post.platformMetadata || {}),
+        bulkRescheduledAt: new Date(),
+        bulkRescheduleSource: hasOffset ? `${dayOffset} day offset` : 'shared start time'
+      };
+      await post.save();
+      await tryEnqueue(post, req.user._id);
+      updated += 1;
+    }
+
+    if (updated) {
+      await Notification.create({
+        user: req.user._id,
+        type: 'posts_bulk_rescheduled',
+        title: 'Posts rescheduled',
+        message: `${updated} post(s) were moved on the calendar.`,
+        entityType: 'Post'
+      });
+    }
+
+    return res.redirect(`/dashboard/calendar?bulk_rescheduled=${encodeURIComponent(String(updated))}`);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function retry(req, res, next) {
+  try {
+    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id, status: 'failed' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+
+    const scheduledAt = scheduleDateFromBody(req.body.scheduledAt, { allowDefault: false }) || new Date(Date.now() + 5 * 60 * 1000);
+    await assertCanSchedulePost(req.user);
+    post.status = 'scheduled';
+    post.scheduledAt = scheduledAt;
+    post.retryCount = Number(post.retryCount || 0) + 1;
+    post.errorMessage = '';
+    post.platformMetadata = {
+      ...(post.platformMetadata || {}),
+      manualRetryAt: new Date(),
+      retry: {
+        ...(post.platformMetadata?.retry || {}),
+        manual: true,
+        nextRetryAt: scheduledAt
+      }
+    };
+    await post.save();
+    await tryEnqueue(post, req.user._id);
+
+    await Notification.create({
+      user: req.user._id,
+      type: 'post_retry_scheduled',
+      title: 'Post retry scheduled',
+      message: `${post.title || post.platform} will retry shortly.`,
+      entityType: 'Post',
+      entityId: post._id
+    });
+
+    return res.redirect('/dashboard/calendar?retry_scheduled=1');
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function duplicate(req, res, next) {
   try {
     const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const copy = await Post.create({
       brand: post.brand,
@@ -907,7 +1044,7 @@ async function duplicate(req, res, next) {
 async function publishNow(req, res, next) {
   try {
     const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     post.status = 'publishing';
     post.scheduledAt = new Date();
@@ -923,7 +1060,7 @@ async function publishNow(req, res, next) {
 async function cancel(req, res, next) {
   try {
     const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     post.status = 'cancelled';
     await post.save();
@@ -944,16 +1081,7 @@ async function destroy(req, res, next) {
 
 async function handoff(req, res, next) {
   try {
-    const data = await loadPostComposerData(req.user._id, req.query.brand || '');
-    const activeBrand = data.brands.find((brand) => String(brand._id) === String(data.activeBrandId));
-    return res.render('posts/handoff', {
-      title: 'Auto Handoff',
-      layout: 'layouts/dashboard',
-      ...data,
-      form: defaultHandoffForm(activeBrand, data.activeBrandId),
-      createdPosts: [],
-      error: null
-    });
+    return res.redirect(303, '/dashboard/approvals');
   } catch (error) {
     return next(error);
   }
@@ -963,15 +1091,13 @@ async function createHandoff(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id, status: 'active' });
     if (!brand) {
-      const data = await loadPostComposerData(req.user._id, req.body.brand || '');
-      return res.status(422).render('posts/handoff', { title: 'Auto Handoff', layout: 'layouts/dashboard', ...data, form: req.body, createdPosts: [], error: 'Choose a valid brand.' });
+      return redirectWithDashboardMessage(res, '/dashboard/approvals', 'Choose a valid brand.');
     }
 
     const selectedPlatforms = toArray(req.body.platforms || req.body.platform || 'facebook');
     const targetAccounts = await selectedOrDefaultAccounts({ body: req.body, userId: req.user._id, brand, platforms: selectedPlatforms });
     if (!targetAccounts.length) {
-      const data = await loadPostComposerData(req.user._id, brand._id.toString());
-      return res.status(422).render('posts/handoff', { title: 'Auto Handoff', layout: 'layouts/dashboard', ...data, form: req.body, createdPosts: [], error: 'Connect at least one Facebook Page/account first. After that, AutoBrand will select it automatically.' });
+      return redirectWithDashboardMessage(res, '/dashboard/social', 'Connect at least one Facebook Page/account first.');
     }
 
     const contentMix = toArray(req.body.contentMix).length ? toArray(req.body.contentMix) : ['promo', 'educational', 'testimonial', 'offer', 'faq'];
@@ -982,6 +1108,9 @@ async function createHandoff(req, res, next) {
       : frequencyUnit === 'month'
         ? Number(req.body.postsPerMonth || 30)
         : Number(req.body.postsPerWeek || 7);
+    const requestedCount = Number.isFinite(count) ? Math.max(1, Math.min(90, count)) : 1;
+    await assertCanSchedulePost(req.user, requestedCount);
+    await assertCanCreateHandoffPosts(req.user, requestedCount);
 
     const result = await createScheduledPostsFromBatch({
       userId: req.user._id,
@@ -991,7 +1120,8 @@ async function createHandoff(req, res, next) {
       input: {
         platforms: selectedPlatforms,
         frequencyUnit,
-        count,
+        count: requestedCount,
+        workflowMode: 'handoff',
         startDate: req.body.startDate,
         preferredSlots: splitLines(req.body.preferredSlots || '').length ? splitLines(req.body.preferredSlots) : toArray(req.body.preferredSlots),
         contentMix,
@@ -1014,21 +1144,10 @@ async function createHandoff(req, res, next) {
       entityId: brand._id
     });
 
-    const data = await loadPostComposerData(req.user._id, brand._id.toString());
-    return res.render('posts/handoff', {
-      title: 'Auto Handoff',
-      layout: 'layouts/dashboard',
-      ...data,
-      form: req.body,
-      createdPosts: result.createdPosts,
-      strategySummary: result.strategySummary,
-      campaignTitle: result.campaignTitle,
-      providerMessage: result.message,
-      error: null
-    });
+    return res.redirect(303, `/dashboard/calendar?handoff_created=${encodeURIComponent(String(result.createdPosts.length))}`);
   } catch (error) {
     return next(error);
   }
 }
 
-module.exports = { newPost, createPost, handoff, createHandoff, drafts, edit, update, schedule, duplicate, publishNow, cancel, destroy };
+module.exports = { newPost, createPost, handoff, createHandoff, drafts, edit, update, schedule, bulkReschedule, retry, duplicate, publishNow, cancel, destroy };

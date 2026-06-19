@@ -23,7 +23,6 @@ const videoRoutes = require('./routes/videos');
 const mediaRoutes = require('./routes/media');
 const templateRoutes = require('./routes/templates');
 const postRoutes = require('./routes/posts');
-const calendarRoutes = require('./routes/calendar');
 const campaignRoutes = require('./routes/campaigns');
 const growthStudioRoutes = require('./routes/growthStudio');
 const socialRoutes = require('./routes/social');
@@ -31,7 +30,6 @@ const teamRoutes = require('./routes/team');
 const approvalRoutes = require('./routes/approvals');
 const notificationRoutes = require('./routes/notifications');
 const billingRoutes = require('./routes/billing');
-const analyticsRoutes = require('./routes/analytics');
 const avatarRoutes = require('./routes/avatars');
 const settingsRoutes = require('./routes/settings');
 const adminRoutes = require('./routes/admin');
@@ -86,80 +84,32 @@ function health(req, res) {
 app.get('/health', health);
 app.get('/healthz', health);
 
-function redirectToDashboardFeature(page) {
-  return (req, res, next) => {
-    if (!req.user) return res.redirect('/auth/login');
-    return res.redirect(303, `/dashboard/${page}`);
-  };
-}
-
-function redirectComposerToDashboard(req, res, next) {
-  if (req.query.embedded || req.get('X-Requested-With') === 'XMLHttpRequest') return next();
-  if (!req.user) return res.redirect('/auth/login');
-  return res.redirect(303, '/dashboard/quick-create');
-}
-
-app.get('/brands', redirectToDashboardFeature('brand-brain'));
-app.get('/ai', redirectToDashboardFeature('quick-create'));
-app.get('/videos', redirectToDashboardFeature('video-system'));
-app.get('/media', redirectToDashboardFeature('media'));
-app.get('/templates', redirectToDashboardFeature('video-system'));
-app.get('/posts', redirectToDashboardFeature('content-library'));
-app.get('/posts/drafts', redirectToDashboardFeature('content-library'));
-app.get('/posts/handoff', redirectToDashboardFeature('approvals'));
-app.get('/posts/new', redirectComposerToDashboard);
-app.get('/calendar', redirectToDashboardFeature('calendar'));
-app.get('/campaigns', redirectToDashboardFeature('campaigns'));
-app.get('/growth-studio', redirectToDashboardFeature('campaigns'));
-app.get('/social', redirectToDashboardFeature('social'));
-app.get('/approvals', redirectToDashboardFeature('approvals'));
-app.get('/team', redirectToDashboardFeature('team'));
-app.get('/roles', redirectToDashboardFeature('team'));
-app.get('/users', redirectToDashboardFeature('team'));
-app.get('/integrations', redirectToDashboardFeature('social'));
-app.get('/security', redirectToDashboardFeature('settings'));
-app.get('/whatsapp', redirectToDashboardFeature('social'));
-app.get('/notifications', redirectToDashboardFeature('notifications'));
-app.get('/billing', redirectToDashboardFeature('billing'));
-app.get('/analytics', redirectToDashboardFeature('analytics'));
-app.get('/avatars', redirectToDashboardFeature('avatar-video'));
-app.get('/settings', redirectToDashboardFeature('settings'));
-app.get('/admin', redirectToDashboardFeature('admin'));
-app.get(/^\/admin\/plans(.*)/, (req, res, next) => {
-  if (req.method !== 'GET') return next();
-  if (!req.user) return res.redirect('/auth/login');
-  const suffix = String(req.params[0] || '').replace(/^\/+/, '');
-  if (!suffix) return res.redirect(303, '/dashboard/plans');
-  if (suffix === 'new') return res.redirect(303, '/dashboard/plans?mode=create');
-  if (suffix.endsWith('/edit')) {
-    const id = suffix.replace(/\/edit$/, '');
-    return res.redirect(303, `/dashboard/plans?mode=edit&id=${encodeURIComponent(id)}`);
-  }
-  return res.redirect(303, `/dashboard/plans?view=${encodeURIComponent(suffix)}`);
-});
-
 app.use('/', publicRoutes);
 app.use('/auth', authRoutes);
+
+// Public callbacks that must not require an authenticated browser session.
+app.use('/dashboard/billing', billingRoutes);
+
+// Authenticated feature mutations and integration callbacks live under the dashboard namespace.
+// Do not expose duplicate root feature routes such as /posts, /media, /billing, or /admin.
+app.use('/dashboard/actions/brands', brandRoutes);
+app.use('/dashboard/actions/ai', aiRoutes);
+app.use('/dashboard/actions/videos', videoRoutes);
+app.use('/dashboard/actions/media', mediaRoutes);
+app.use('/dashboard/actions/templates', templateRoutes);
+app.use('/dashboard/actions/posts', postRoutes);
+app.use('/dashboard/actions/campaigns', campaignRoutes);
+app.use('/dashboard/actions/growth-studio', growthStudioRoutes);
+app.use('/dashboard/actions/social', socialRoutes);
+app.use('/dashboard/actions/team', teamRoutes);
+app.use('/dashboard/actions/approvals', approvalRoutes);
+app.use('/dashboard/actions/notifications', notificationRoutes);
+app.use('/dashboard/actions/avatars', avatarRoutes);
+app.use('/dashboard/actions/settings', settingsRoutes);
+app.use('/dashboard/actions/admin', adminRoutes);
+app.use('/dashboard/actions/webhooks', webhookRoutes);
+
 app.use('/dashboard', dashboardRoutes);
-app.use('/brands', brandRoutes);
-app.use('/ai', aiRoutes);
-app.use('/videos', videoRoutes);
-app.use('/media', mediaRoutes);
-app.use('/templates', templateRoutes);
-app.use('/posts', postRoutes);
-app.use('/calendar', calendarRoutes);
-app.use('/campaigns', campaignRoutes);
-app.use('/growth-studio', growthStudioRoutes);
-app.use('/social', socialRoutes);
-app.use('/team', teamRoutes);
-app.use('/approvals', approvalRoutes);
-app.use('/notifications', notificationRoutes);
-app.use('/billing', billingRoutes);
-app.use('/analytics', analyticsRoutes);
-app.use('/avatars', avatarRoutes);
-app.use('/settings', settingsRoutes);
-app.use('/admin', adminRoutes);
-app.use('/webhooks', webhookRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

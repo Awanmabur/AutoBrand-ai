@@ -52,6 +52,8 @@ const {
   isYouTubeConfigured,
   syncYouTubeChannel
 } = require('../../services/youtubeService');
+const { applySocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
+const { notifyAccountDisconnected } = require('../../services/notification.service');
 
 const socialPlatforms = [
   { key: 'facebook', name: 'Facebook Pages', shortName: 'Facebook', icon: 'f', description: 'Connect Pages through Facebook OAuth and publish directly.', active: true, kind: 'oauth', primaryAction: 'Connect Pages', hint: 'Opens Facebook, choose Pages, then returns here ready to publish.' },
@@ -176,22 +178,32 @@ async function socialViewData(req, { error = null } = {}) {
   };
 }
 
+function socialRedirectTarget(req, options = {}) {
+  const params = new URLSearchParams();
+  const error = options.error || req.query.facebook_error || req.query.google_business_error || req.query.pinterest_error || req.query.tiktok_error || req.query.threads_error || req.query.x_error || req.query.youtube_error || req.query.linkedin_error || '';
+  const notice = options.notice || req.query.notice || '';
+  if (error) params.set('error', error);
+  if (notice) params.set('notice', notice);
+  const query = params.toString();
+  return `/dashboard/social${query ? `?${query}` : ''}`;
+}
+
 async function renderSocialIndex(req, res, options = {}) {
-  return res.render('social/index', await socialViewData(req, options));
+  return res.redirect(303, socialRedirectTarget(req, options));
 }
 
 async function index(req, res, next) {
   try {
-    await renderSocialIndex(req, res);
+    return renderSocialIndex(req, res);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 }
 
 async function storeMock(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const platform = String(req.body.platform || '').trim();
     const accountId = normalizeAccountId(req.body.accountId);
     await assertCanConnectSocial(req.user, { brand: brand._id, platform, accountId });
@@ -221,19 +233,19 @@ async function storeMock(req, res, next) {
 async function manualApiConnect(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const platform = String(req.body.platform || '').trim();
     const allowed = allowedApiPlatforms();
     if (!allowed.includes(platform)) {
-      return res.status(422).render('social/index', await socialViewData(req, { error: 'Unsupported API channel selected.' }));
+      return res.redirect(303, socialRedirectTarget(req, { error: 'Unsupported API channel selected.' }));
     }
 
     const accountName = String(req.body.accountName || '').trim();
     const accountId = normalizeAccountId(req.body.accountId);
     const accessToken = String(req.body.accessToken || '').trim();
     if (!accountName || !accountId || !accessToken) {
-      return res.status(422).render('social/index', await socialViewData(req, { error: 'Account name, ID, and access token are required for API channel setup.' }));
+      return res.redirect(303, socialRedirectTarget(req, { error: 'Account name, ID, and access token are required for API channel setup.' }));
     }
 
     await assertCanConnectSocial(req.user, { brand: brand._id, platform, accountId });
@@ -263,7 +275,7 @@ async function manualApiConnect(req, res, next) {
 async function brandForConnect(req, res) {
   const brand = await Brand.findOne({ _id: req.query.brand, owner: req.user._id });
   if (!brand) {
-    res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     return null;
   }
   return brand;
@@ -278,7 +290,7 @@ async function oauthConnect(req, res, next, { buildAuthUrl, setupQuery, provider
     return res.redirect(authUrl);
   } catch (error) {
     if (error.name === providerErrorName) {
-      return res.status(422).render('social/index', await socialViewData(req, { error: error.message }));
+      return res.redirect(303, socialRedirectTarget(req, { error: error.message }));
     }
     return next(error);
   }
@@ -287,14 +299,10 @@ async function oauthConnect(req, res, next, { buildAuthUrl, setupQuery, provider
 async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn, providerErrorName, notice }) {
   try {
     if (req.query.error) {
-      return res.status(400).render('social/index', await socialViewData(req, {
-        error: req.query.error_description || req.query.error
-      }));
+      return res.redirect(303, socialRedirectTarget(req, { error: req.query.error_description || req.query.error }));
     }
     if (!req.query.code || !req.query.state) {
-      return res.status(400).render('social/index', await socialViewData(req, {
-        error: `${serviceName} did not return a valid authorization response. Start the connection again.`
-      }));
+      return res.redirect(303, socialRedirectTarget(req, { error: `${serviceName} did not return a valid authorization response. Start the connection again.` }));
     }
 
     const result = await exchangeFn({ code: req.query.code, state: req.query.state });
@@ -311,7 +319,7 @@ async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn
     }
 
     const brand = await Brand.findOne({ _id: firstAccount.brandId, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const normalized = accounts.map((account) => ({ ...account, platform: platform || account.platform }));
     const allowedAccounts = await filterAccountsByAvailableSlots(req, normalized);
@@ -328,7 +336,7 @@ async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn
     return res.redirect(`/dashboard/social?notice=${encodeURIComponent(notice)}&account=${primary._id}`);
   } catch (error) {
     if (error.name === providerErrorName) {
-      return res.status(400).render('social/index', await socialViewData(req, { error: error.message }));
+      return res.redirect(303, socialRedirectTarget(req, { error: error.message }));
     }
     return next(error);
   }
@@ -337,7 +345,7 @@ async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn
 async function syncAccount(req, res, next, { platform, syncFn, providerErrorName, syncedNotice, wrongNotice }) {
   try {
     const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!account) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (account.platform !== platform) return res.redirect(`/dashboard/social?notice=${wrongNotice}&account=${account._id}`);
 
     const info = await syncFn({ account });
@@ -361,7 +369,7 @@ async function syncAccount(req, res, next, { platform, syncFn, providerErrorName
 async function facebookConnect(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.query.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const authUrl = buildFacebookAuthUrl({ brandId: brand._id.toString(), userId: req.user._id.toString() });
     const setup = facebookConnectionChecklist();
     if (setup.configured && !setup.canStartOAuth) {
@@ -411,7 +419,7 @@ async function facebookCallback(req, res, next) {
 async function facebookPageToken(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const pageId = String(req.body.accountId || '').trim();
     await assertCanConnectSocial(req.user, { brand: brand._id, platform: 'facebook', accountId: pageId });
 
@@ -427,7 +435,7 @@ async function facebookPageToken(req, res, next) {
     return res.redirect('/dashboard/social');
   } catch (error) {
     if (error.name === 'FacebookProviderError') {
-      return res.status(422).render('social/index', await socialViewData(req, { error: error.message }));
+      return res.redirect(303, socialRedirectTarget(req, { error: error.message }));
     }
     return next(error);
   }
@@ -510,7 +518,7 @@ async function tiktokCallback(req, res, next) {
 async function tiktokSync(req, res, next) {
   try {
     const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!account) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (account.platform !== 'tiktok') return res.redirect(`/dashboard/social?notice=not_tiktok&account=${account._id}`);
     const info = await queryCreatorInfo({ account });
     const update = { lastSyncAt: new Date(), status: 'connected' };
@@ -639,22 +647,9 @@ async function linkedinSync(req, res, next) {
 
 async function showAccount(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id }).populate('brand');
-    if (!account) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
-    const platform = socialPlatforms.find((item) => item.key === account.platform) || {
-      key: account.platform,
-      name: account.platform,
-      shortName: account.platform,
-      icon: account.platform.slice(0, 1),
-      description: 'Connected publishing channel.'
-    };
-    return res.render('social/show', {
-      title: `${account.accountName} Channel`,
-      layout: 'layouts/dashboard',
-      account,
-      platform,
-      notice: req.query.notice || null
-    });
+    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    return res.redirect(303, `/dashboard/social?account=${encodeURIComponent(String(account._id))}`);
   } catch (error) {
     return next(error);
   }
@@ -663,7 +658,7 @@ async function showAccount(req, res, next) {
 async function updateAccount(req, res, next) {
   try {
     const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!account) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const accountName = String(req.body.accountName || '').trim();
     const accountId = normalizeAccountId(req.body.accountId) || account.accountId;
@@ -708,7 +703,12 @@ async function disconnect(req, res, next) {
       },
       { new: true }
     );
-    if (!account) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await notifyAccountDisconnected({
+      user: req.user,
+      account,
+      health: { status: 'disabled', message: `${account.accountName || account.platform} was disconnected.` }
+    });
     return res.redirect(`/dashboard/social?notice=disconnected&account=${account._id}`);
   } catch (error) {
     return next(error);
@@ -718,7 +718,7 @@ async function disconnect(req, res, next) {
 async function reconnect(req, res, next) {
   try {
     const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id }).populate('brand');
-    if (!account) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (account.platform === 'facebook' && isFacebookConfigured()) {
       const setup = facebookConnectionChecklist();
       if (!setup.canStartOAuth) return res.redirect('/dashboard/social?facebook_setup=required');
@@ -770,6 +770,20 @@ async function reconnect(req, res, next) {
   }
 }
 
+async function healthCheck(req, res, next) {
+  try {
+    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    const health = await applySocialAccountHealth(account);
+    if (health.status !== 'connected') {
+      await notifyAccountDisconnected({ user: req.user, account, health });
+    }
+    return res.redirect(`/dashboard/social?notice=${encodeURIComponent(`health_${health.status}`)}&account=${account._id}`);
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   disconnect,
   facebookCallback,
@@ -778,6 +792,7 @@ module.exports = {
   googleBusinessCallback,
   googleBusinessConnect,
   googleBusinessSync,
+  healthCheck,
   index,
   linkedinCallback,
   linkedinConnect,

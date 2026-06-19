@@ -5,46 +5,74 @@ const Post = require('../models/Post');
 const AiVideoJob = require('../models/AiVideoJob');
 const GrowthAsset = require('../models/GrowthAsset');
 const {
+  adCopyPack,
   brandAudit,
   campaignBrief,
+  carouselIdeaGenerator,
+  contentIdeas,
+  contentPlanAsset,
   competitorSnapshot,
   draftBatch,
+  draftsFromGrowthAsset,
+  hookGenerator,
   makeHashtags,
   offerAngles,
+  reelScriptGenerator,
+  whatsappPromoPack,
   videoStoryboard
 } = require('../services/growthStudioService');
 const { applyMediaToScenes, mediaContext } = require('../services/mediaInsightService');
+const { assertCanCreateVideo, assertPlanPageAccess } = require('../services/usageLimitService');
 
-async function index(req, res, next) {
-  try {
-    const [brands, media, assets, campaigns, videos] = await Promise.all([
-      Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-      Media.find({ uploadedBy: req.user._id, fileType: { $in: ['image', 'video'] } }).populate('brand').sort({ createdAt: -1 }).limit(40),
-      GrowthAsset.find({ owner: req.user._id }).populate('brand').sort({ createdAt: -1 }).limit(20),
-      Campaign.find({ createdBy: req.user._id }).populate('brand').sort({ createdAt: -1 }).limit(5),
-      AiVideoJob.find({ createdBy: req.user._id }).populate('brand').sort({ createdAt: -1 }).limit(5)
-    ]);
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/campaigns');
+}
 
-    res.render('growth-studio/index', {
-      title: 'Growth Studio',
-      layout: 'layouts/dashboard',
-      brands,
-      media,
-      assets,
-      campaigns,
-      videos,
-      message: req.query.created || null,
-      error: null
-    });
-  } catch (error) {
-    next(error);
+async function saveGrowthAsset({ req, brand, commonAsset, type, payload, campaignGoal, sourceMedia, mediaNote }) {
+  const asset = await GrowthAsset.create({ ...commonAsset, type, ...payload });
+  const saveTarget = String(req.body.saveTarget || 'asset');
+
+  if (saveTarget === 'drafts') {
+    const drafts = draftsFromGrowthAsset({ asset, brand, platforms: req.body.platforms }).map((draft) => ({
+      ...draft,
+      caption: `${draft.caption}${mediaNote || ''}`,
+      media: sourceMedia ? [sourceMedia._id] : [],
+      platformMetadata: {
+        ...(draft.platformMetadata || {}),
+        sourceMedia: sourceMedia?._id,
+        mediaPrompt: sourceMedia?.aiPrompt,
+        mediaInsights: sourceMedia?.aiInsights
+      },
+      createdBy: req.user._id
+    }));
+    if (drafts.length) await Post.insertMany(drafts);
+    return { redirect: '/dashboard/content-library?created=growth_drafts' };
   }
+
+  if (saveTarget === 'campaign') {
+    await Campaign.create({
+      ...campaignBrief({
+        brand,
+        campaignGoal: campaignGoal || payload.summary || asset.title,
+        platforms: req.body.platforms,
+        durationDays: type === 'monthly_content_plan' ? 30 : 7
+      }),
+      name: asset.title,
+      description: asset.summary,
+      brand: brand._id,
+      createdBy: req.user._id
+    });
+    return { redirect: '/dashboard/campaigns?created=growth_campaign' };
+  }
+
+  return { redirect: `/dashboard/campaigns?created=${encodeURIComponent(type)}` };
 }
 
 async function run(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await assertPlanPageAccess(req.user, 'campaigns', 'Growth Studio workflows');
 
     const campaignGoal = req.body.campaignGoal;
     const action = req.body.actionType;
@@ -74,6 +102,7 @@ async function run(req, res, next) {
     }
 
     if (action === 'video_storyboard') {
+      await assertCanCreateVideo(req.user);
       const storyboard = videoStoryboard({ brand, campaignGoal, platform: req.body.platforms, style: req.body.style });
       await AiVideoJob.create({
         ...storyboard,
@@ -86,30 +115,89 @@ async function run(req, res, next) {
     }
 
     if (action === 'brand_audit') {
-      await GrowthAsset.create({ ...commonAsset, type: 'brand_audit', ...brandAudit(brand) });
-      return res.redirect('/dashboard/campaigns?created=audit');
+      const result = await saveGrowthAsset({
+        req,
+        brand,
+        commonAsset,
+        type: 'brand_audit',
+        payload: brandAudit(brand),
+        campaignGoal,
+        sourceMedia,
+        mediaNote
+      });
+      return res.redirect(result.redirect);
     }
 
     if (action === 'competitor_snapshot') {
-      await GrowthAsset.create({ ...commonAsset, type: 'competitor_snapshot', ...competitorSnapshot(brand, campaignGoal) });
-      return res.redirect('/dashboard/campaigns?created=competitors');
+      const result = await saveGrowthAsset({
+        req,
+        brand,
+        commonAsset,
+        type: 'competitor_snapshot',
+        payload: competitorSnapshot(brand, campaignGoal),
+        campaignGoal,
+        sourceMedia,
+        mediaNote
+      });
+      return res.redirect(result.redirect);
     }
 
     if (action === 'offer_angles') {
-      await GrowthAsset.create({ ...commonAsset, type: 'offer_angles', ...offerAngles(brand, campaignGoal) });
-      return res.redirect('/dashboard/campaigns?created=angles');
+      const result = await saveGrowthAsset({
+        req,
+        brand,
+        commonAsset,
+        type: 'offer_angles',
+        payload: offerAngles(brand, campaignGoal),
+        campaignGoal,
+        sourceMedia,
+        mediaNote
+      });
+      return res.redirect(result.redirect);
     }
 
     if (action === 'hashtag_pack') {
       const hashtags = makeHashtags(brand, campaignGoal);
-      await GrowthAsset.create({
-        ...commonAsset,
+      const result = await saveGrowthAsset({
+        req,
+        brand,
+        commonAsset,
         type: 'hashtag_pack',
-        title: `${brand.name} hashtag pack`,
-        summary: `A reusable hashtag set for ${campaignGoal || brand.businessType || brand.name}.`,
-        sections: [{ heading: 'Hashtags', items: hashtags }]
+        payload: {
+          title: `${brand.name} hashtag pack`,
+          summary: `A reusable hashtag set for ${campaignGoal || brand.businessType || brand.name}.`,
+          sections: [{ heading: 'Hashtags', items: hashtags }]
+        },
+        campaignGoal,
+        sourceMedia,
+        mediaNote
       });
-      return res.redirect('/dashboard/campaigns?created=hashtags');
+      return res.redirect(result.redirect);
+    }
+
+    const growthActions = {
+      content_ideas: () => contentIdeas(brand, campaignGoal),
+      hook_generator: () => hookGenerator(brand, campaignGoal),
+      reel_script: () => reelScriptGenerator(brand, campaignGoal),
+      carousel_ideas: () => carouselIdeaGenerator(brand, campaignGoal),
+      weekly_content_plan: () => contentPlanAsset(brand, campaignGoal, req.body.platforms, 7),
+      monthly_content_plan: () => contentPlanAsset(brand, campaignGoal, req.body.platforms, 30),
+      whatsapp_promo_pack: () => whatsappPromoPack(brand, campaignGoal),
+      ad_copy_pack: () => adCopyPack(brand, campaignGoal)
+    };
+
+    if (growthActions[action]) {
+      const result = await saveGrowthAsset({
+        req,
+        brand,
+        commonAsset,
+        type: action,
+        payload: growthActions[action](),
+        campaignGoal,
+        sourceMedia,
+        mediaNote
+      });
+      return res.redirect(result.redirect);
     }
 
     return res.redirect('/dashboard/campaigns');

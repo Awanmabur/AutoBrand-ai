@@ -1,21 +1,29 @@
 (function () {
-  const form = document.querySelector('#cloudinary-upload-form');
-  const status = document.querySelector('#upload-status');
-
-  if (!form || !status) return;
-
   function mediaKind(mimeType) {
-    if (mimeType.startsWith('image/')) return 'image';
-    if (mimeType.startsWith('video/')) return 'video';
-    if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType === 'application/pdf') return 'document';
+    const type = mimeType || '';
+    if (type.startsWith('image/')) return 'image';
+    if (type.startsWith('video/')) return 'video';
+    if (type.startsWith('audio/')) return 'audio';
+    if (type === 'application/pdf') return 'document';
     return 'other';
+  }
+
+  function findForms(root) {
+    const scope = root || document;
+    const forms = [];
+    if (scope.matches?.('[data-cloudinary-upload-form], #cloudinary-upload-form')) forms.push(scope);
+    scope.querySelectorAll?.('[data-cloudinary-upload-form], #cloudinary-upload-form').forEach((form) => forms.push(form));
+    return forms;
+  }
+
+  function findStatus(form) {
+    return form.querySelector('[data-upload-status]') || document.querySelector('#upload-status');
   }
 
   async function saveAsset({ formData, uploaded, file }) {
     const body = new URLSearchParams();
-    body.set('_csrf', formData.get('_csrf'));
-    body.set('brand', formData.get('brand'));
+    body.set('_csrf', formData.get('_csrf') || '');
+    body.set('brand', formData.get('brand') || '');
     body.set('fileName', file.name);
     body.set('fileUrl', uploaded.secure_url);
     body.set('publicId', uploaded.public_id);
@@ -26,35 +34,42 @@
     body.set('tags', formData.get('tags') || '');
     if (formData.get('consentRequired')) body.set('consentRequired', 'on');
 
-    await fetch('/media/upload', {
+    const response = await fetch('/dashboard/actions/media/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body
     });
+
+    if (!response.ok) {
+      throw new Error('Upload saved to Cloudinary, but AutoBrand could not store it.');
+    }
   }
 
-  form.addEventListener('submit', async (event) => {
+  async function handleSubmit(event, form) {
     event.preventDefault();
-    status.textContent = 'Preparing upload...';
+    const status = findStatus(form);
+    if (status) status.textContent = 'Preparing upload...';
 
     const formData = new FormData(form);
     const file = formData.get('asset');
 
     if (!file || !file.name) {
-      status.textContent = 'Choose a file first.';
+      if (status) status.textContent = 'Choose a file first.';
       return;
     }
 
     try {
-      const signatureResponse = await fetch(`/media/signature?brand=${encodeURIComponent(formData.get('brand'))}`);
+      const brand = encodeURIComponent(formData.get('brand') || '');
+      const signatureResponse = await fetch(`/dashboard/actions/media/signature?brand=${brand}`);
+      if (!signatureResponse.ok) throw new Error('Could not prepare Cloudinary upload.');
       const signature = await signatureResponse.json();
 
       if (!signature.configured) {
-        status.textContent = 'Cloudinary is not configured. Add a URL below instead.';
+        if (status) status.textContent = 'Cloudinary is not configured. Add a URL below instead.';
         return;
       }
 
-      status.textContent = 'Uploading to Cloudinary...';
+      if (status) status.textContent = 'Uploading to Cloudinary...';
 
       const uploadData = new FormData();
       uploadData.set('file', file);
@@ -74,10 +89,27 @@
 
       const uploaded = await uploadResponse.json();
       await saveAsset({ formData, uploaded, file });
-      status.textContent = 'Upload complete. Refreshing...';
-      window.location.href = '/media';
+      if (status) status.textContent = 'Upload complete. Refreshing...';
+      window.location.href = '/dashboard/media';
     } catch (error) {
-      status.textContent = error.message || 'Upload failed.';
+      if (status) status.textContent = error.message || 'Upload failed.';
     }
-  });
+  }
+
+  function bindForm(form) {
+    if (!form || form.dataset.mediaUploadBound === 'true') return;
+    form.dataset.mediaUploadBound = 'true';
+    form.addEventListener('submit', (event) => handleSubmit(event, form));
+  }
+
+  function init(root) {
+    findForms(root).forEach(bindForm);
+  }
+
+  window.AutoBrandMediaUploads = { init };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => init(document));
+  } else {
+    init(document);
+  }
 })();

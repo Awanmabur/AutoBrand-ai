@@ -5,9 +5,13 @@ function engagementScore(item) {
   return Number(item.likes || 0) * 3
     + Number(item.comments || 0) * 4
     + Number(item.shares || 0) * 5
+    + Number(item.saves || 0) * 4
     + Number(item.clicks || 0) * 3
+    + Number(item.followersGained || 0) * 8
     + Number(item.views || 0) * 0.1
     + Number(item.reach || 0) * 0.05
+    + Number(item.impressions || 0) * 0.02
+    + Number(item.watchTimeSeconds || 0) * 0.015
     + Number(item.engagementRate || 0) * 10;
 }
 
@@ -30,11 +34,15 @@ function bestPostMemory(item) {
     platform: item.platform || post.platform || '',
     metrics: {
       views: item.views || 0,
+      impressions: item.impressions || 0,
+      watchTimeSeconds: item.watchTimeSeconds || 0,
       likes: item.likes || 0,
       comments: item.comments || 0,
       shares: item.shares || 0,
+      saves: item.saves || 0,
       clicks: item.clicks || 0,
       reach: item.reach || 0,
+      followersGained: item.followersGained || 0,
       engagementRate: item.engagementRate || 0,
       score: engagementScore(item),
       syncedAt: item.lastSyncedAt || item.updatedAt || new Date()

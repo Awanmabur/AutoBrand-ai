@@ -3,7 +3,7 @@
   <% if (!draftPosts.length) { %>
     <p class="form-error">Create a draft before requesting approval.</p>
   <% } else { %>
-    <form action="/approvals/request" method="post" class="form-grid">
+    <form action="/dashboard/actions/approvals/request" method="post" class="form-grid">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <label>Post
         <select name="post" required>
@@ -33,14 +33,14 @@
             <% }) %>
           </div>
         <% } %>
-        <form action="/approvals/<%= approval._id %>/comment" method="post" class="inline-form">
+        <form action="/dashboard/actions/approvals/<%= approval._id %>/comment" method="post" class="inline-form">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <input name="comment" placeholder="Add comment or change note" required>
           <button class="button ghost" type="submit">Comment</button>
         </form>
       </div>
       <div class="stack-actions">
-        <form action="/approvals/<%= approval._id %>/resolve" method="post" class="row-actions">
+        <form action="/dashboard/actions/approvals/<%= approval._id %>/resolve" method="post" class="row-actions">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <button class="button ghost" name="status" value="approved" type="submit">Approve</button>
           <button class="button ghost" name="status" value="changes_requested" type="submit">Request changes</button>

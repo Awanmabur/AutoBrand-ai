@@ -1,5 +1,31 @@
 const { buildErrorViewModel, defaultMessage, wantsJson } = require('../utils/errorResponse');
 
+const REMOVED_ROOT_ROUTES = {
+  brands: '/dashboard/brand-brain',
+  ai: '/dashboard/quick-create',
+  videos: '/dashboard/video-system',
+  templates: '/dashboard/video-system',
+  media: '/dashboard/media',
+  posts: '/dashboard/content-library',
+  'content-library': '/dashboard/content-library',
+  calendar: '/dashboard/calendar',
+  campaigns: '/dashboard/campaigns',
+  'growth-studio': '/dashboard/campaigns',
+  social: '/dashboard/social',
+  integrations: '/dashboard/social',
+  team: '/dashboard/team',
+  roles: '/dashboard/team',
+  users: '/dashboard/team',
+  approvals: '/dashboard/approvals',
+  analytics: '/dashboard/analytics',
+  notifications: '/dashboard/notifications',
+  billing: '/dashboard/billing',
+  avatars: '/dashboard/avatar-video',
+  settings: '/dashboard/settings',
+  security: '/dashboard/settings',
+  admin: '/dashboard/admin'
+};
+
 function statusFromError(error) {
   if (error?.code === 'EBADCSRFTOKEN') return 419;
   if (error?.statusCode) return Number(error.statusCode);
@@ -21,10 +47,13 @@ function renderError(error, req, res) {
     });
   }
 
-  const isDashboard = Boolean(req.user) || req.originalUrl?.startsWith('/dashboard') || req.originalUrl?.startsWith('/admin');
-  const view = isDashboard ? `dashboard/pages/errors/${safeStatus}` : `errors/${safeStatus}`;
-  const layout = isDashboard ? 'layouts/dashboard' : 'layouts/main';
-  return res.status(safeStatus).render(view, { ...model, layout });
+  const layout = req.user ? 'layouts/dashboard' : 'layouts/main';
+  return res.status(safeStatus).render('dashboard/pages/error', {
+    ...model,
+    layout,
+    statusCode: safeStatus,
+    title: model.errorTitle || `Error ${safeStatus}`
+  });
 }
 
 function errorMiddleware(error, req, res, next) {
@@ -34,11 +63,26 @@ function errorMiddleware(error, req, res, next) {
   return renderError(error, req, res);
 }
 
+function removedRootRouteTarget(path = '') {
+  const firstSegment = String(path).replace(/^\/+/, '').split('/')[0];
+  return REMOVED_ROOT_ROUTES[firstSegment] || '';
+}
+
 function notFoundMiddleware(req, res, next) {
-  const error = new Error('The page or resource you requested does not exist.');
+  const target = removedRootRouteTarget(req.path);
+  const error = new Error(target
+    ? `This standalone route has been removed. Use the dashboard route ${target} instead.`
+    : 'The page or resource you requested does not exist.');
   error.status = 404;
   error.expose = true;
+  if (target) {
+    error.title = 'Dashboard route required';
+    error.primaryActionHref = target;
+    error.primaryActionLabel = 'Open dashboard page';
+    error.secondaryActionHref = '/dashboard/overview';
+    error.secondaryActionLabel = 'Dashboard overview';
+  }
   return next(error);
 }
 
-module.exports = { errorMiddleware, notFoundMiddleware, renderError };
+module.exports = { errorMiddleware, notFoundMiddleware, renderError, removedRootRouteTarget };

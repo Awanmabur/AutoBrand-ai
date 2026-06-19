@@ -34,6 +34,7 @@ function escapeXml(value) {
 function dimensionsForRatio(ratio) {
   if (String(ratio).includes('16:9')) return { width: 1600, height: 900 };
   if (String(ratio).includes('9:16')) return { width: 1080, height: 1920 };
+  if (String(ratio).includes('4:5')) return { width: 1080, height: 1350 };
   return { width: 1200, height: 1200 };
 }
 
@@ -57,7 +58,15 @@ function assertSharp() {
   if (!sharp) throw new Error('sharp is required for media transforms. Run npm install, then try again.');
 }
 
-async function createResizeVariants(media, brand, ratios = ['9:16', '1:1', '16:9']) {
+function ratioLabel(ratio) {
+  if (ratio === '1:1') return 'Square crop';
+  if (ratio === '9:16') return 'Vertical 9:16 crop';
+  if (ratio === '4:5') return 'Portrait 4:5 crop';
+  if (ratio === '16:9') return 'Landscape 16:9 crop';
+  return `${ratio} resize`;
+}
+
+async function createResizeVariants(media, brand, ratios = ['1:1', '9:16', '4:5', '16:9']) {
   assertSharp();
   if (media.fileType !== 'image') throw new Error('Resize transforms only support image media.');
   await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
@@ -76,7 +85,7 @@ async function createResizeVariants(media, brand, ratios = ['9:16', '1:1', '16:9
     const stat = await fs.stat(absoluteOutput);
     created.push({
       kind: 'resize',
-      label: `${ratio} platform resize`,
+      label: ratioLabel(ratio),
       url: `/uploads/ai/${filename}`,
       prompt: `Resized ${media.fileName} for ${ratio} while preserving the key subject and brand space.`,
       status: 'ready',
@@ -86,6 +95,30 @@ async function createResizeVariants(media, brand, ratios = ['9:16', '1:1', '16:9
   }
 
   return created;
+}
+
+async function createCompressedVariant(media, brand, { width = 1400, quality = 78 } = {}) {
+  assertSharp();
+  if (media.fileType !== 'image') throw new Error('Compress transforms only support image media.');
+  await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
+  const input = await imageInput(media);
+  const filename = `${Date.now()}-${safeFilePart(media.fileName)}-compressed.jpg`;
+  const absoluteOutput = path.join(GENERATED_UPLOAD_DIR, filename);
+  await sharp(input)
+    .rotate()
+    .resize({ width: Number(width || 1400), withoutEnlargement: true })
+    .jpeg({ quality: Number(quality || 78), mozjpeg: true })
+    .toFile(absoluteOutput);
+  const stat = await fs.stat(absoluteOutput);
+  return {
+    kind: 'compress',
+    label: 'Compressed image',
+    url: `/uploads/ai/${filename}`,
+    prompt: `Compressed ${media.fileName} for faster uploads and smaller social assets.`,
+    status: 'ready',
+    metadata: { width: Number(width || 1400), quality: Number(quality || 78), bytes: stat.size, brand: brand?.name || '' },
+    createdAt: new Date()
+  };
 }
 
 async function createBrandedVariant(media, brand, { label = 'Brand style variant', prompt = '' } = {}) {
@@ -133,4 +166,4 @@ async function createBrandedVariant(media, brand, { label = 'Brand style variant
   };
 }
 
-module.exports = { createBrandedVariant, createResizeVariants };
+module.exports = { createBrandedVariant, createCompressedVariant, createResizeVariants };

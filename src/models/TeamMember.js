@@ -7,7 +7,7 @@ const teamMemberSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     email: { type: String, required: true, trim: true, lowercase: true },
     name: { type: String, trim: true },
-    role: { type: String, enum: ['admin', 'manager', 'content_creator', 'editor', 'reviewer', 'viewer'], default: 'viewer' },
+    role: { type: String, enum: ['owner', 'admin', 'manager', 'creator', 'approver', 'viewer', 'billing', 'content_creator', 'editor', 'reviewer'], default: 'viewer' },
     permissions: [{ type: String }],
     status: { type: String, enum: ['invited', 'active', 'removed'], default: 'invited' },
     inviteTokenHash: { type: String },

@@ -8,8 +8,14 @@
       <p><%= link.post.caption %></p>
       <% if (link.post.hashtags && link.post.hashtags.length) { %><p><%= link.post.hashtags.join(' ') %></p><% } %>
     </article>
+  <% } else if (link.campaign) { %>
+    <article class="item-card">
+      <h2><%= link.campaign.name %></h2>
+      <p><%= link.campaign.description || link.campaign.goal %></p>
+      <% if (link.campaign.platforms && link.campaign.platforms.length) { %><p><%= link.campaign.platforms.join(', ') %></p><% } %>
+    </article>
   <% } %>
-  <form action="/approvals/review/<%= token %>" method="post" class="auth-form">
+  <form action="/review/<%= token %>" method="post" class="auth-form">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <textarea name="decisionNote" rows="4" placeholder="Optional feedback"></textarea>
     <div class="row-actions">

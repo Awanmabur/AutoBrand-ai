@@ -1,7 +1,9 @@
 const crypto = require('crypto');
 const Brand = require('../models/Brand');
 const TeamMember = require('../models/TeamMember');
+const Notification = require('../models/Notification');
 const { assertCanInviteTeam } = require('../services/usageLimitService');
+const { normalizeTeamPermissions, normalizeTeamRole, permissionsForTeamRole } = require('../services/team/teamAccess.service');
 const env = require('../config/env');
 
 function hashToken(token) {
@@ -9,34 +11,17 @@ function hashToken(token) {
 }
 
 function normalizePermissions(value) {
-  return Array.isArray(value) ? value : value ? [value] : [];
+  return normalizeTeamPermissions(value);
 }
 
-async function index(req, res, next) {
-  try {
-    const [brands, members] = await Promise.all([
-      Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-      TeamMember.find({ invitedBy: req.user._id, status: { $ne: 'removed' } }).populate('brand').sort({ createdAt: -1 })
-    ]);
-
-    res.render('team/index', {
-      title: 'Team',
-      layout: 'layouts/dashboard',
-      brands,
-      members,
-      error: null,
-      accepted: req.query.accepted || null,
-      inviteUrl: inviteLink(req)
-    });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/team');
 }
 
 async function invite(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     await assertCanInviteTeam(req.user);
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -45,8 +30,8 @@ async function invite(req, res, next) {
       invitedBy: req.user._id,
       email: req.body.email,
       name: req.body.name,
-      role: req.body.role,
-      permissions: normalizePermissions(req.body.permissions),
+      role: normalizeTeamRole(req.body.role),
+      permissions: permissionsForTeamRole(req.body.role, req.body.permissions),
       inviteTokenHash: hashToken(token),
       inviteExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
     });
@@ -65,13 +50,21 @@ async function accept(req, res, next) {
       status: 'invited',
       inviteExpiresAt: { $gte: new Date() }
     });
-    if (!member) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!member) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     member.user = req.user._id;
     member.status = 'active';
     member.acceptedAt = new Date();
     member.inviteTokenHash = undefined;
     await member.save();
+    await Notification.create({
+      user: member.invitedBy,
+      type: 'team_invite_accepted',
+      title: 'Team invite accepted',
+      message: `${member.name || member.email} accepted the invitation.`,
+      entityType: 'TeamMember',
+      entityId: member._id
+    });
 
     res.redirect('/dashboard/team?accepted=1');
   } catch (error) {
@@ -82,10 +75,14 @@ async function accept(req, res, next) {
 async function update(req, res, next) {
   try {
     const member = await TeamMember.findOne({ _id: req.params.id, invitedBy: req.user._id, status: { $ne: 'removed' } });
-    if (!member) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!member) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
-    member.role = req.body.role || member.role;
-    if (req.body.permissions) member.permissions = normalizePermissions(req.body.permissions);
+    if (req.body.brand) {
+      const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+      if (brand) member.brand = brand._id;
+    }
+    member.role = req.body.role ? normalizeTeamRole(req.body.role) : member.role;
+    if (req.body.permissions || req.body.role) member.permissions = permissionsForTeamRole(member.role, req.body.permissions || member.permissions);
     await member.save();
 
     res.redirect('/dashboard/team');
@@ -104,7 +101,7 @@ async function remove(req, res, next) {
 }
 
 function inviteLink(req) {
-  return req.query.invite ? `${env.appUrl}/team/accept?token=${req.query.invite}` : null;
+  return req.query.invite ? `${env.appUrl}/dashboard/actions/team/accept?token=${req.query.invite}` : null;
 }
 
 module.exports = { accept, index, invite, inviteLink, remove, update };

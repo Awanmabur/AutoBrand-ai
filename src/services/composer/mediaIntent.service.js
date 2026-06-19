@@ -1,9 +1,9 @@
 const IMAGE_PRESETS = new Set(['image-1', 'image-2', 'image-3', 'image-4', 'image-5']);
 const CAROUSEL_PRESETS = new Set(['carousel-2', 'carousel-3', 'carousel-4', 'carousel-5']);
 
-const VIDEO_TYPES = new Set(['video', 'reel', 'short', 'short_video']);
+const VIDEO_TYPES = new Set(['video', 'reel', 'short', 'short_video', 'tiktok']);
 const IMAGE_TYPES = new Set(['image', 'story']);
-const TEXT_TYPES = new Set(['text', 'article']);
+const TEXT_TYPES = new Set(['text', 'article', 'link', 'whatsapp', 'whatsapp_message']);
 
 function clampCount(value, { min = 1, max = 5, fallback = 1 } = {}) {
   const number = Number(value);
@@ -16,9 +16,9 @@ function normalizePostType(value = '') {
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
-  if (VIDEO_TYPES.has(type)) return type === 'short' || type === 'short_video' ? 'reel' : type;
+  if (VIDEO_TYPES.has(type)) return type === 'short' || type === 'short_video' || type === 'tiktok' ? 'reel' : type;
   if (IMAGE_TYPES.has(type)) return type;
-  if (TEXT_TYPES.has(type)) return type;
+  if (TEXT_TYPES.has(type)) return type === 'whatsapp' ? 'whatsapp_message' : type;
   if (type === 'carousel' || type === 'campaign') return type;
   return 'image';
 }
@@ -91,9 +91,9 @@ function resolveComposerMediaIntent(body = {}) {
     next.imageCount = count;
     next.externalMediaType = next.externalMediaType === 'video' ? 'image' : (next.externalMediaType || 'image');
   } else if (TEXT_TYPES.has(type)) {
-    type = type === 'article' ? 'article' : 'text';
+    type = type === 'article' ? 'article' : type === 'link' ? 'link' : type === 'whatsapp_message' ? 'whatsapp_message' : 'text';
     mediaPreset = 'text';
-    mediaFormat = 'text_only';
+    mediaFormat = type === 'link' ? 'link_post' : type === 'whatsapp_message' ? 'whatsapp_message' : 'text_only';
     count = 0;
     allowedMediaTypes = [];
     next.generateImage = undefined;

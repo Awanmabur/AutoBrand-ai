@@ -2,7 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs/promises');
 const path = require('path');
-const sharp = require('sharp');
+let sharp = null;
+try { sharp = require('sharp'); } catch (error) { sharp = null; }
 const env = require('../src/config/env');
 const { generateImage, generateVideo, __private } = require('../src/services/aiProviderService');
 
@@ -80,7 +81,7 @@ test('generateVideo returns a provider error instead of falling back to an image
   }
 });
 
-test('prepareOpenAIVideoReferenceImage resizes uploaded images to the requested video dimensions', async () => {
+test('prepareOpenAIVideoReferenceImage resizes uploaded images to the requested video dimensions', { skip: !sharp ? 'sharp is not available in this local node_modules install' : false }, async () => {
   const input = await sharp({
     create: {
       width: 300,

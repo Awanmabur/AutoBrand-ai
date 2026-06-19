@@ -3,18 +3,44 @@ const RefreshToken = require('../models/RefreshToken');
 const { issueAuthTokens, rotateRefreshToken, setAuthCookies, clearAuthCookies } = require('../services/authService');
 const { hashToken } = require('../services/tokenService');
 const {
+  createEmailVerificationToken,
+  createPasswordResetToken,
+  normalizeEmail,
+  verificationUrl
+} = require('../services/account/account.service');
+const {
   isGoogleConfigured,
   createGoogleState,
   buildGoogleAuthUrl,
   exchangeCodeForProfile,
   GoogleOAuthNetworkError
 } = require('../services/googleAuthService');
-const crypto = require('crypto');
 const { getPublicPricingCards } = require('../services/pricing.service');
 const { attachSelectedPlanAfterSignup, resolveSignupPlan } = require('../services/signupPlan.service');
 
+function safeRedirectPath(value, fallback = '/dashboard') {
+  const raw = String(value || '').trim();
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('://')) return fallback;
+  return raw;
+}
+
+function appendQuery(url, params = {}) {
+  const [path, query = ''] = String(url || '').split('?');
+  const search = new URLSearchParams(query);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') search.set(key, value);
+  });
+  const suffix = search.toString();
+  return `${path}${suffix ? `?${suffix}` : ''}`;
+}
+
 function showLogin(req, res) {
-  res.render('auth/login', { title: 'Login', layout: 'layouts/auth', form: {}, error: null });
+  res.render('auth/login', {
+    title: 'Login',
+    layout: 'layouts/auth',
+    form: { next: safeRedirectPath(req.query.next, '') },
+    error: null
+  });
 }
 
 async function showRegister(req, res, next) {
@@ -22,55 +48,61 @@ async function showRegister(req, res, next) {
     const pricingPlans = await getPublicPricingCards();
     const selectedPlanSlug = req.query.plan || pricingPlans[0]?.slug || 'free-trial';
     const selectedPlan = pricingPlans.find((plan) => plan.slug === selectedPlanSlug) || pricingPlans[0];
-    res.render('auth/register', { title: 'Create account', layout: 'layouts/auth', form: { plan: selectedPlan?.slug }, error: null, pricingPlans, selectedPlan });
+    const nextPath = safeRedirectPath(req.query.next, selectedPlan?.checkoutUrl || '/dashboard');
+    res.render('auth/register', {
+      title: 'Create account',
+      layout: 'layouts/auth',
+      form: { plan: selectedPlan?.slug, next: nextPath },
+      error: null,
+      pricingPlans,
+      selectedPlan
+    });
   } catch (error) {
     next(error);
   }
-}
-
-function makePlainToken() {
-  return crypto.randomBytes(32).toString('hex');
 }
 
 async function register(req, res, next) {
   try {
     const { name, email, password } = req.body;
     const selectedPlan = await resolveSignupPlan(req.body.plan || 'free-trial');
-    const existingUser = await User.findOne({ email: String(email).toLowerCase().trim() });
+    const existingUser = await User.findOne({ email: normalizeEmail(email) });
+    const nextPath = safeRedirectPath(req.body.next, selectedPlan.checkoutUrl || '/dashboard');
 
     if (existingUser) {
       return res.status(422).render('auth/register', {
         title: 'Create account',
         layout: 'layouts/auth',
-        form: req.body,
+        form: { ...req.body, next: nextPath },
         pricingPlans: await getPublicPricingCards(),
         selectedPlan,
-        error: 'That email is already registered.'
+        error: 'That email is already registered. Log in instead to continue checkout.'
       });
     }
 
+    const isFreeOrTrial = selectedPlan.billingInterval === 'trial' || Number(selectedPlan.price || 0) <= 0;
     const user = new User({
       name,
-      email,
+      email: normalizeEmail(email),
       status: 'active',
       isVerified: false,
-      plan: selectedPlan.slug,
+      plan: isFreeOrTrial ? selectedPlan.slug : 'free-trial',
       selectedPlanSlug: selectedPlan.slug
     });
 
     await user.setPassword(password);
-    const verifyToken = makePlainToken();
-    user.emailVerificationTokenHash = hashToken(verifyToken);
-    user.emailVerificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    createEmailVerificationToken(user);
     await user.save();
-    const planAction = await attachSelectedPlanAfterSignup(user, selectedPlan.slug, { paymentConfigured: false });
 
-    return res.render('auth/check-email', {
-      title: 'Verify email',
-      layout: 'layouts/auth',
-      message: `Account created on the ${planAction.plan.name} plan. Email delivery is not connected yet, so use this development verification link.`,
-      actionUrl: `/auth/verify-email?token=${verifyToken}`
-    });
+    const planAction = await attachSelectedPlanAfterSignup(user, selectedPlan.slug);
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const tokens = await issueAuthTokens(user, req);
+    setAuthCookies(res, tokens);
+
+    const redirectUrl = appendQuery(nextPath || planAction.nextUrl || '/dashboard', { onboarding: 1 });
+    return res.redirect(redirectUrl);
   } catch (error) {
     return next(error);
   }
@@ -79,14 +111,15 @@ async function register(req, res, next) {
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email: String(email).toLowerCase().trim() });
+    const user = await User.findOne({ email: normalizeEmail(email) });
     const isValid = user ? await user.verifyPassword(password) : false;
+    const nextPath = safeRedirectPath(req.body.next || req.query.next, '/dashboard');
 
     if (!isValid || user.status === 'suspended') {
       return res.status(422).render('auth/login', {
         title: 'Login',
         layout: 'layouts/auth',
-        form: req.body,
+        form: { ...req.body, next: nextPath },
         error: 'Invalid email or password.'
       });
     }
@@ -96,7 +129,7 @@ async function login(req, res, next) {
 
     const tokens = await issueAuthTokens(user, req);
     setAuthCookies(res, tokens);
-    return res.redirect('/dashboard');
+    return res.redirect(nextPath);
   } catch (error) {
     return next(error);
   }
@@ -121,6 +154,15 @@ function googleStart(req, res) {
     });
   }
 
+  if (req.query.next) {
+    res.cookie('signupNextPath', safeRedirectPath(req.query.next, '/dashboard'), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 15 * 60 * 1000
+    });
+  }
+
   const state = createGoogleState();
   res.cookie('googleOAuthState', state, {
     httpOnly: true,
@@ -137,11 +179,13 @@ async function googleCallback(req, res, next) {
 
     const expectedState = req.cookies.googleOAuthState;
     const selectedPlanSlug = req.cookies.signupSelectedPlan;
+    const signupNextPath = safeRedirectPath(req.cookies.signupNextPath, '');
     res.clearCookie('googleOAuthState');
     res.clearCookie('signupSelectedPlan');
+    res.clearCookie('signupNextPath');
 
     if (!req.query.state || req.query.state !== expectedState) {
-      return res.status(403).render('errors/403', { message: 'Invalid Google OAuth state.' });
+      return res.status(403).render('dashboard/pages/error', { message: 'Invalid Google OAuth state.' });
     }
 
     if (!req.query.code) {
@@ -169,7 +213,7 @@ async function googleCallback(req, res, next) {
         avatar: profile.avatar,
         isVerified: profile.isVerified,
         status: 'active',
-        plan: selectedPlanSlug || 'free-trial',
+        plan: 'free-trial',
         selectedPlanSlug: selectedPlanSlug || ''
       });
     } else {
@@ -181,17 +225,20 @@ async function googleCallback(req, res, next) {
     }
 
     if (user.status === 'suspended') {
-      return res.status(403).render('errors/403', { message: 'This account is suspended.' });
+      return res.status(403).render('dashboard/pages/error', { message: 'This account is suspended.' });
     }
 
     user.lastLoginAt = new Date();
     await user.save();
 
-    let redirectUrl = '/dashboard';
+    let redirectUrl = signupNextPath || '/dashboard';
     if (selectedPlanSlug && isNewUser) {
-      const planAction = await attachSelectedPlanAfterSignup(user, selectedPlanSlug, { paymentConfigured: false });
-      redirectUrl = planAction.nextUrl || redirectUrl;
+      const planAction = await attachSelectedPlanAfterSignup(user, selectedPlanSlug);
+      redirectUrl = signupNextPath || planAction.nextUrl || redirectUrl;
+    } else if (selectedPlanSlug && signupNextPath) {
+      redirectUrl = signupNextPath;
     }
+    if (redirectUrl.startsWith('/dashboard/billing')) redirectUrl = appendQuery(redirectUrl, { onboarding: 1 });
 
     const tokens = await issueAuthTokens(user, req);
     setAuthCookies(res, tokens);
@@ -266,14 +313,12 @@ function showForgot(req, res) {
 
 async function forgot(req, res, next) {
   try {
-    const email = String(req.body.email || '').toLowerCase().trim();
+    const email = normalizeEmail(req.body.email);
     const user = await User.findOne({ email });
     let actionUrl = '/auth/login';
 
     if (user) {
-      const resetToken = makePlainToken();
-      user.passwordResetTokenHash = hashToken(resetToken);
-      user.passwordResetExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      const resetToken = createPasswordResetToken(user);
       await user.save();
       actionUrl = `/auth/reset-password?token=${resetToken}`;
     }
@@ -339,6 +384,21 @@ async function verifyEmail(req, res, next) {
       });
     }
 
+    if (user.pendingEmail) {
+      const existing = await User.findOne({ email: user.pendingEmail, _id: { $ne: user._id } });
+      if (existing) {
+        return res.status(409).render('auth/check-email', {
+          title: 'Verify email',
+          layout: 'layouts/auth',
+          message: 'That email address is already used by another account. Open settings and choose a different email.',
+          actionUrl: '/dashboard/settings'
+        });
+      }
+      user.email = user.pendingEmail;
+      user.pendingEmail = undefined;
+      user.emailChangeRequestedAt = undefined;
+    }
+
     user.isVerified = true;
     user.status = 'active';
     user.emailVerificationTokenHash = undefined;
@@ -346,6 +406,36 @@ async function verifyEmail(req, res, next) {
     await user.save();
 
     return res.redirect('/dashboard');
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function resendVerification(req, res, next) {
+  try {
+    if (!req.user) return res.redirect('/auth/login');
+    const user = await User.findById(req.user._id);
+    if (!user) return res.redirect('/auth/login');
+
+    if (user.isVerified && !user.pendingEmail) {
+      return res.render('auth/check-email', {
+        title: 'Email verified',
+        layout: 'layouts/auth',
+        message: 'Your account email is already verified.',
+        actionUrl: '/dashboard/settings'
+      });
+    }
+
+    const token = createEmailVerificationToken(user);
+    await user.save();
+
+    const targetEmail = user.pendingEmail || user.email;
+    return res.render('auth/check-email', {
+      title: 'Verify email',
+      layout: 'layouts/auth',
+      message: `A verification link has been prepared for ${targetEmail}. Email delivery is not connected yet, so development shows the link here.`,
+      actionUrl: verificationUrl(token)
+    });
   } catch (error) {
     return next(error);
   }
@@ -364,6 +454,7 @@ module.exports = {
   showReset,
   reset,
   verifyEmail,
+  resendVerification,
   googleStart,
   googleCallback
 };

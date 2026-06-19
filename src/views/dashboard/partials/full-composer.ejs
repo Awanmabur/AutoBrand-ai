@@ -19,7 +19,7 @@
   <% if (!brands.length) { %>
     <p class="form-error">Create a brand first before creating posts.</p>
   <% } %>
-  <form action="/posts" method="post" class="form-grid composer-form">
+  <form action="/dashboard/actions/posts" method="post" class="form-grid composer-form">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
     <label>Brand
@@ -53,6 +53,30 @@
       </select>
     </label>
 
+    <label>AI output
+      <select name="outputType">
+        <% [
+          ['single_post', 'Single social post'],
+          ['platform_captions', 'Platform-specific captions'],
+          ['7_day_campaign', '7-day campaign'],
+          ['30_day_content_calendar', '30-day content calendar'],
+          ['product_launch', 'Product launch campaign'],
+          ['event_promotion', 'Event promotion campaign'],
+          ['offer_sale', 'Offer/sale campaign'],
+          ['carousel_copy', 'Carousel copy'],
+          ['reel_script', 'Reel/TikTok/Shorts script'],
+          ['whatsapp_message', 'WhatsApp promo message'],
+          ['linkedin_post', 'LinkedIn professional post'],
+          ['facebook_post', 'Facebook post'],
+          ['instagram_caption', 'Instagram caption'],
+          ['x_post', 'X/Twitter post'],
+          ['youtube_shorts_description', 'YouTube Shorts description']
+        ].forEach(([value, label]) => { %>
+          <option value="<%= value %>" <%= (form.outputType || 'single_post') === value ? 'selected' : '' %>><%= label %></option>
+        <% }) %>
+      </select>
+    </label>
+
     <label class="checkbox-row"><input name="approvalRequired" type="checkbox" value="on" <%= form.approvalRequired === 'on' || form.approvalRequired === true ? 'checked' : '' %>> Require approval first</label>
     <label class="checkbox-row"><input name="publishAfterApproval" type="checkbox" value="on" <%= form.publishAfterApproval === 'on' || form.publishAfterApproval === true ? 'checked' : '' %>> Publish after approval</label>
 
@@ -62,9 +86,11 @@
 
     <label>Schedule time <input name="scheduledAt" type="datetime-local" value="<%= form.scheduledAt || '' %>"></label>
     <div class="composer-actions">
+      <button class="button ghost" type="submit" name="action" value="regenerate">Regenerate draft</button>
       <button class="button ghost" type="submit" name="action" value="save">Save draft</button>
       <button class="button ghost" type="submit" name="action" value="schedule">Schedule</button>
       <button class="button" type="submit" name="action" value="publish">Publish now</button>
+      <button class="button ghost" type="button" data-copy-composer-result>Copy result</button>
     </div>
 
     <details class="span-2 fieldset" open>
@@ -99,11 +125,12 @@
       <label>Post format
         <select name="type" data-post-type-select>
           <% postTypes.forEach((type) => { %>
-            <option value="<%= type %>" <%= (form.type || 'image') === type ? 'selected' : '' %>><%= type.replace(/_/g, ' ') %></option>
+            <option value="<%= type %>" <%= (form.type || 'image') === type ? 'selected' : '' %>><%= type === 'reel' ? 'reel / short / tiktok' : type === 'whatsapp_message' ? 'whatsapp message' : type.replace(/_/g, ' ') %></option>
           <% }) %>
         </select>
       </label>
-      <% const mediaPreset = form.mediaPreset || (form.type === 'carousel' ? `carousel-${Math.max(2, Math.min(5, Number(form.imageCount || 3)))}` : form.type === 'video' ? 'video' : form.type === 'text' ? 'text' : `image-${Math.max(1, Math.min(5, Number(form.imageCount || 1)))}`); %>
+      <% const textLikePostType = ['text', 'article', 'link', 'whatsapp_message'].includes(form.type || ''); %>
+      <% const mediaPreset = form.mediaPreset || (form.type === 'carousel' ? `carousel-${Math.max(2, Math.min(5, Number(form.imageCount || 3)))}` : ['video', 'reel'].includes(form.type || '') ? 'video' : textLikePostType ? 'text' : `image-${Math.max(1, Math.min(5, Number(form.imageCount || 1)))}`); %>
       <label>Media output
         <select name="mediaPreset" data-media-preset-select>
           <option value="image-1" data-output-kind="image" <%= mediaPreset === 'image-1' ? 'selected' : '' %>>1 image</option>
@@ -133,6 +160,22 @@
       </label>
       <label>Audience focus <input name="audience" value="<%= form.audience || '' %>"></label>
       <label>Tone override <input name="toneOverride" value="<%= form.toneOverride || '' %>" placeholder="friendly, bold, premium..."></label>
+      <label>Length
+        <select name="length">
+          <% ['short', 'medium', 'long'].forEach((length) => { %>
+            <option value="<%= length %>" <%= (form.length || 'medium') === length ? 'selected' : '' %>><%= length %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>Emoji level
+        <select name="emojiLevel">
+          <% ['none', 'low', 'medium', 'high'].forEach((level) => { %>
+            <option value="<%= level %>" <%= (form.emojiLevel || 'low') === level ? 'selected' : '' %>><%= level %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>Hashtag count <input name="hashtagCount" type="number" min="0" max="30" value="<%= form.hashtagCount || 6 %>"></label>
+      <label>Language <input name="language" value="<%= form.language || 'English' %>"></label>
       <label>CTA style
         <select name="ctaStyle">
           <% ['brand_default', 'soft', 'direct', 'urgent', 'educational', 'lead_magnet', 'book_call', 'shop_now'].forEach((style) => { %>
@@ -144,6 +187,7 @@
       <label class="span-2">Offer override <input name="offer" value="<%= form.offer || '' %>"></label>
       <label>Title <input name="title" value="<%= form.title || generated?.title || '' %>"></label>
       <label>Link <input name="link" value="<%= form.link || '' %>" placeholder="https://..."></label>
+      <label>WhatsApp recipient <input name="whatsappTo" value="<%= form.whatsappTo || '' %>" placeholder="+256700000000"></label>
       <label data-intent-group="video">Video title <input name="videoTitle" value="<%= form.videoTitle || '' %>"></label>
       <label data-intent-group="video">Thumbnail URL <input name="thumbnail" value="<%= form.thumbnail || '' %>" placeholder="https://..."></label>
       <label class="span-2" data-intent-group="video">Short video hook <input name="shortVideoHook" value="<%= form.shortVideoHook || '' %>" placeholder="First 3 seconds..."></label>
@@ -180,7 +224,7 @@
           <% const inferredMediaType = (/video\//i.test(item.mimeType || '') || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(item.fileUrl || '')) ? 'video' : (/image\//i.test(item.mimeType || '') || /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(item.fileUrl || '') ? 'image' : (item.fileType || 'image')); %>
           <label class="media-picker-card" data-brand="<%= item.brand._id %>" data-media-type="<%= inferredMediaType %>">
             <input name="media" type="checkbox" value="<%= item._id %>" <%= chosenMedia.includes(String(item._id)) ? 'checked' : '' %>>
-            <% if (inferredMediaType === 'image') { %><img src="<%= item.fileUrl %>" alt=""><% } else if (inferredMediaType === 'video') { %><video src="<%= item.fileUrl %>" controls preload="metadata" playsinline></video><% } else { %><span class="media-placeholder"><%= item.fileType %></span><% } %>
+            <% if (inferredMediaType === 'image') { %><img src="<%= item.fileUrl %>" alt="<%= item.fileName || 'Media asset' %>"><% } else if (inferredMediaType === 'video') { %><video src="<%= item.fileUrl %>" controls preload="metadata" playsinline></video><% } else { %><span class="media-placeholder"><%= item.fileType %></span><% } %>
             <span><%= item.fileName %> <small><%= inferredMediaType %></small></span>
           </label>
         <% }) %>

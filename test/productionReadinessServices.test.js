@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { calculateBrandScore } = require('../src/services/brandBrain/brandScore.service');
+const { buildBrandChecklist, buildBrandVoiceSummary, calculateBrandScore } = require('../src/services/brandBrain/brandScore.service');
 const { buildBrandContext, buildComposerDefaults } = require('../src/services/brandBrain/brandContext.service');
 const { getMissingFieldSuggestions, suggestContentPillars, suggestOffers } = require('../src/services/brandBrain/brandSuggestion.service');
 const { scoreContent } = require('../src/services/composer/contentScore.service');
@@ -13,6 +13,7 @@ const { DEFAULT_PLAN_MATRIX } = require('../src/services/subscription/defaultPla
 test('brand score reports missing fields and improves with richer data', () => {
   const emptyScore = calculateBrandScore({ name: 'Demo' });
   const richScore = calculateBrandScore({
+    name: 'Demo',
     logo: 'logo.png',
     favicon: 'favicon.ico',
     coverImage: 'cover.png',
@@ -45,12 +46,14 @@ test('brand score reports missing fields and improves with richer data', () => {
     pricingNotes: '$10/month',
     guarantees: ['support'],
     faqs: [{ question: 'How?', answer: 'Online' }],
+    testimonials: [{ author: 'Client', quote: 'It helped us publish faster.' }],
     competitors: ['Other app'],
     competitorLinks: [{ name: 'Other', url: 'https://other.example' }],
     differentiationNotes: 'Plan-aware AI',
     toneOfVoice: 'Friendly',
     writingStyle: 'Clear',
     bannedWords: ['cheap'],
+    keywords: ['social automation'],
     preferredWords: ['simple'],
     emojiUsage: 'light',
     hashtagStyle: 'few',
@@ -65,15 +68,20 @@ test('brand score reports missing fields and improves with richer data', () => {
     savedPrompts: [{ name: 'Caption', prompt: 'Write a caption' }],
     previousBestPosts: ['Launch post'],
     highPerformingTopics: ['automation'],
-    brandKnowledgeBase: ['Uses social scheduling']
+    brandKnowledgeBase: ['Uses social scheduling'],
+    preferredHashtags: ['#automation'],
+    socialLinks: [{ platform: 'facebook', url: 'https://facebook.com/demo' }]
   });
 
   assert.equal(emptyScore.score < richScore.score, true);
   assert.equal(richScore.score, 100);
   assert.equal(emptyScore.missingFields.includes('website'), true);
+
+  const checklist = buildBrandChecklist({ name: 'Demo', keywords: ['launch'] });
+  assert.equal(checklist.sections.some((section) => section.items.some((item) => item.key === 'keywords' && item.complete)), true);
 });
 
-test('brand context and defaults include voice, CTA and blocked words', () => {
+test('brand context and defaults include voice, CTA, keywords and blocked words', () => {
   const brand = {
     name: 'AutoBrand',
     website: 'https://example.com',
@@ -85,16 +93,22 @@ test('brand context and defaults include voice, CTA and blocked words', () => {
     approvalRequiredByDefault: true,
     bannedWords: ['spam'],
     blockedWords: ['guaranteed'],
+    keywords: ['automation'],
+    preferredWords: ['simple'],
     contentPillars: ['education']
   };
   const context = buildBrandContext(brand);
   const defaults = buildComposerDefaults(brand);
+  const summary = buildBrandVoiceSummary(brand);
 
   assert.match(context, /AutoBrand/);
   assert.match(context, /Marketing/);
+  assert.match(context, /automation/);
   assert.deepEqual(defaults.blockedWords, ['spam', 'guaranteed']);
+  assert.deepEqual(defaults.keywords, ['automation', 'simple']);
   assert.equal(defaults.approvalRequired, true);
   assert.equal(defaults.ctaStyle, 'soft');
+  assert.match(summary, /Helpful/);
 });
 
 test('brand suggestions return missing-field, pillar and offer ideas', () => {
@@ -138,6 +152,6 @@ test('plan display decorates default database plan matrix objects', () => {
   assert.equal(growth.isPopular, true);
   assert.equal(superadmin.limits.maxBrands, -1);
   assert.equal(decorated.priceLabel, '$10');
-  assert.equal(decorated.signupUrl, '/signup?plan=starter');
+  assert.equal(decorated.signupUrl, '/start/starter');
   assert.equal(limitText(-1), 'Unlimited');
 });

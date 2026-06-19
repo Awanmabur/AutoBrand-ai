@@ -1,34 +1,45 @@
 const Approval = require('../models/Approval');
 const ApprovalComment = require('../models/ApprovalComment');
 const Post = require('../models/Post');
+const Campaign = require('../models/Campaign');
 const Notification = require('../models/Notification');
-const { requestApproval: requestApprovalService, resolveApprovalToken, submitDecision } = require('../services/approvals/approval.service');
+const { requestApproval: requestApprovalService, requestCampaignApproval, resolveApprovalToken, submitDecision } = require('../services/approvals/approval.service');
+const { assertCanCreateApprovalLink } = require('../services/usageLimitService');
 
-async function index(req, res, next) {
-  try {
-    const [approvals, draftPosts] = await Promise.all([
-      Approval.find({ requestedBy: req.user._id }).populate({ path: 'post', populate: 'brand' }).sort({ createdAt: -1 }),
-      Post.find({ createdBy: req.user._id, status: { $in: ['draft', 'pending_approval', 'rejected'] } }).populate('brand').sort({ createdAt: -1 })
-    ]);
-
-    const comments = await ApprovalComment.find({ approval: { $in: approvals.map((approval) => approval._id) } }).sort({ createdAt: 1 });
-    const commentsByApproval = comments.reduce((acc, comment) => {
-      const key = comment.approval.toString();
-      acc[key] = acc[key] || [];
-      acc[key].push(comment);
-      return acc;
-    }, {});
-
-    res.render('approvals/index', { title: 'Approvals', layout: 'layouts/dashboard', approvals, draftPosts, commentsByApproval, error: null });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/approvals');
 }
 
 async function requestApproval(req, res, next) {
   try {
+    if (req.body.campaign) {
+      const campaign = await Campaign.findOne({ _id: req.body.campaign, createdBy: req.user._id });
+      if (!campaign) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+      await assertCanCreateApprovalLink(req.user);
+
+      await requestCampaignApproval({
+        campaign,
+        requestedBy: req.user,
+        reviewerEmail: req.body.reviewerEmail,
+        reviewerName: req.body.reviewerName,
+        note: req.body.note
+      });
+
+      await Notification.create({
+        user: req.user._id,
+        type: 'approval_requested',
+        title: 'Campaign approval requested',
+        message: `Approval requested for campaign ${campaign.name}.`,
+        entityType: 'Campaign',
+        entityId: campaign._id
+      });
+
+      return res.redirect('/dashboard/approvals');
+    }
+
     const post = await Post.findOne({ _id: req.body.post, createdBy: req.user._id });
-    if (!post) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await assertCanCreateApprovalLink(req.user);
 
     await requestApprovalService({
       post,
@@ -56,18 +67,32 @@ async function requestApproval(req, res, next) {
 
 async function resolve(req, res, next) {
   try {
-    const approval = await Approval.findOne({ _id: req.params.id, requestedBy: req.user._id }).populate('post');
-    if (!approval) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    const approval = await Approval.findOne({ _id: req.params.id, requestedBy: req.user._id }).populate('post campaign');
+    if (!approval) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     approval.status = req.body.status;
+    approval.decision = req.body.status;
     approval.resolvedAt = new Date();
     approval.note = req.body.note || approval.note;
+    approval.decisionNote = req.body.note || approval.decisionNote;
+    approval.history = [
+      ...(approval.history || []),
+      { status: req.body.status, note: req.body.note || req.body.comment || '', actorName: req.user.name, actorEmail: req.user.email, createdAt: new Date() }
+    ];
     await approval.save();
 
-    if (req.body.status === 'approved') approval.post.status = 'approved';
-    if (req.body.status === 'rejected') approval.post.status = 'rejected';
-    if (req.body.status === 'changes_requested') approval.post.status = 'draft';
-    await approval.post.save();
+    if (approval.post) {
+      if (req.body.status === 'approved') approval.post.status = approval.post.publishAfterApproval ? 'scheduled' : 'approved';
+      if (req.body.status === 'rejected') approval.post.status = 'rejected';
+      if (req.body.status === 'changes_requested') approval.post.status = 'draft';
+      await approval.post.save();
+    }
+    if (approval.campaign) {
+      if (req.body.status === 'approved') approval.campaign.status = 'approved';
+      if (req.body.status === 'rejected') approval.campaign.status = 'rejected';
+      if (req.body.status === 'changes_requested') approval.campaign.status = 'changes_requested';
+      await approval.campaign.save();
+    }
 
     if (req.body.comment) {
       await ApprovalComment.create({
@@ -82,7 +107,7 @@ async function resolve(req, res, next) {
       user: approval.requestedBy,
       type: 'approval_resolved',
       title: 'Approval updated',
-      message: `${approval.post.title || approval.post.platform} is now ${approval.status}.`,
+      message: `${approval.post?.title || approval.campaign?.name || 'Approval'} is now ${approval.status}.`,
       entityType: 'Approval',
       entityId: approval._id
     });
@@ -96,7 +121,7 @@ async function resolve(req, res, next) {
 async function comment(req, res, next) {
   try {
     const approval = await Approval.findOne({ _id: req.params.id, requestedBy: req.user._id });
-    if (!approval) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!approval) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     await ApprovalComment.create({
       approval: approval._id,
@@ -124,6 +149,16 @@ async function publicReview(req, res, next) {
 async function publicDecision(req, res, next) {
   try {
     const link = await submitDecision({ token: req.params.token, decision: req.body.decision, decisionNote: req.body.decisionNote });
+    if (link.approval?.requestedBy) {
+      await Notification.create({
+        user: link.approval.requestedBy,
+        type: req.body.decision === 'approved' ? 'approval_approved' : req.body.decision === 'rejected' ? 'approval_rejected' : 'approval_changes_requested',
+        title: 'Client review submitted',
+        message: `${link.post?.title || link.campaign?.name || 'Approval'} was ${req.body.decision.replace(/_/g, ' ')}.`,
+        entityType: 'Approval',
+        entityId: link.approval._id
+      });
+    }
     res.render('approvals/public-thanks', { title: 'Review submitted', layout: 'layouts/main', link });
   } catch (error) {
     next(error);

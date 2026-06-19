@@ -12,14 +12,21 @@ function extractHashtags(caption = '', hashtags = []) {
   return [...new Set([...fromCaption, ...(hashtags || []).map((tag) => String(tag).startsWith('#') ? tag : `#${tag}`)])];
 }
 
+function ruleMediaType(contentType) {
+  const type = String(contentType || 'text').toLowerCase();
+  if (type === 'link' || type === 'whatsapp_message') return 'text';
+  if (type === 'short' || type === 'short_video') return 'reel';
+  return type;
+}
+
 function validateAgainstRule(content = {}, rule = {}) {
   const warnings = [];
   const caption = content.caption || '';
   const hashtags = extractHashtags(caption, content.hashtags);
-  const contentType = content.type || content.contentType || 'text';
+  const contentType = ruleMediaType(content.type || content.contentType || 'text');
   if (rule.characterLimit && caption.length > rule.characterLimit) warnings.push(`${rule.displayName || rule.platform} caption is ${caption.length - rule.characterLimit} characters too long.`);
   if (rule.hashtagLimit >= 0 && hashtags.length > rule.hashtagLimit) warnings.push(`${rule.displayName || rule.platform} supports up to ${rule.hashtagLimit} hashtags.`);
-  if (rule.mediaTypes?.length && !rule.mediaTypes.includes(contentType) && !(contentType === 'short' && rule.mediaTypes.includes('video'))) warnings.push(`${rule.displayName || rule.platform} may not support ${contentType} posts.`);
+  if (rule.mediaTypes?.length && !rule.mediaTypes.includes(contentType) && !(contentType === 'reel' && rule.mediaTypes.includes('video'))) warnings.push(`${rule.displayName || rule.platform} may not support ${contentType} posts.`);
   if (content.firstComment && !rule.supportsFirstComment) warnings.push(`${rule.displayName || rule.platform} does not support first-comment publishing.`);
   if (content.altText && !rule.supportsAltText) warnings.push(`${rule.displayName || rule.platform} does not support alt text through this API.`);
   if (content.link && rule.supportsLinks === false) warnings.push(`${rule.displayName || rule.platform} captions do not support clickable links.`);

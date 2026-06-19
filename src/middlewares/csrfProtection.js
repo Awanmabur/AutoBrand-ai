@@ -21,7 +21,7 @@ function isValidToken(signedToken) {
 }
 
 function csrfProtection(req, res, next) {
-  if (req.path.startsWith('/api/') || req.path.includes('/webhook')) {
+  if (req.path.startsWith('/api/') || req.path.includes('/webhook') || req.path === '/dashboard/billing/pesapal/ipn') {
     return next();
   }
 

@@ -66,28 +66,29 @@ Common examples:
 
 ```text
 https://your-domain.com/auth/google/callback
-https://your-domain.com/social/facebook/callback
-https://your-domain.com/social/instagram/callback
-https://your-domain.com/social/linkedin/callback
-https://your-domain.com/social/tiktok/callback
-https://your-domain.com/social/youtube/callback
-https://your-domain.com/social/google-business/callback
-https://your-domain.com/social/pinterest/callback
-https://your-domain.com/social/x/callback
-https://your-domain.com/social/threads/callback
+https://your-domain.com/dashboard/actions/social/facebook/callback
+Use the Facebook/Meta callback at https://your-domain.com/dashboard/actions/social/facebook/callback for Facebook, Instagram, and WhatsApp discovery
+https://your-domain.com/dashboard/actions/social/linkedin/callback
+https://your-domain.com/dashboard/actions/social/tiktok/callback
+https://your-domain.com/dashboard/actions/social/youtube/callback
+https://your-domain.com/dashboard/actions/social/google-business/callback
+https://your-domain.com/dashboard/actions/social/pinterest/callback
+https://your-domain.com/dashboard/actions/social/x/callback
+https://your-domain.com/dashboard/actions/social/threads/callback
 ```
 
 Paste provider client IDs/secrets into `.env` only. Never commit `.env`.
 
 ## 5. Configure billing
 
-Use manual billing first if you have not configured a payment provider:
+Configure Pesapal before enabling paid self-service checkout:
 
 ```env
-BILLING_PROVIDER=manual
+BILLING_PROVIDER=pesapal
+CHECKOUT_DEFAULT_PROVIDER=pesapal
 ```
 
-For Stripe, PayPal, or Flutterwave, fill the provider keys in `.env`, configure webhook URLs in the payment provider dashboard, and verify webhook signatures before accepting automated subscription changes.
+Set the Pesapal consumer key/secret, IPN ID, IPN URL, and callback URL in `.env`. Do not enable paid plans until Pesapal sandbox/live verification succeeds.
 
 ## 6. Configure AI routing
 
@@ -164,3 +165,16 @@ Recommended next production steps:
 - Turn billing provider scaffolds into provider-specific SDK calls and webhook handlers.
 - Add analytics collection workers and dashboards.
 - Add provider health checks and alerting.
+
+## Pesapal deployment checklist
+
+1. Deploy the app on a public HTTPS domain.
+2. Set `APP_URL` and `PUBLIC_APP_URL` to that HTTPS domain.
+3. Register `https://your-domain.com/dashboard/billing/pesapal/ipn` in Pesapal and save the returned IPN ID.
+4. Set `BILLING_PROVIDER=pesapal` and `CHECKOUT_DEFAULT_PROVIDER=pesapal`.
+5. Add `PESAPAL_CONSUMER_KEY`, `PESAPAL_CONSUMER_SECRET`, and `PESAPAL_IPN_ID`.
+6. Set callback and cancellation URLs:
+   - `PESAPAL_CALLBACK_URL=https://your-domain.com/dashboard/billing/pesapal/callback`
+   - `PESAPAL_CANCELLATION_URL=https://your-domain.com/dashboard/billing?cancelled=1`
+7. Run a sandbox payment before switching to `PESAPAL_ENVIRONMENT=production`.
+8. Confirm that `/dashboard/billing/pesapal/ipn` returns a JSON response with status `200` after notification processing.

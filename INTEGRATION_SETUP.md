@@ -37,8 +37,8 @@ Google sign-up uses the server-side OAuth/OpenID Connect flow in `src/services/g
 
 ### Google Business Profile
 
-- Dashboard route: `/social/google-business/connect`
-- Callback route: `/social/google-business/callback`
+- Dashboard route: `/dashboard/actions/social/google-business/connect`
+- Callback route: `/dashboard/actions/social/google-business/callback`
 - Service file: `src/services/googleBusinessProfileService.js`
 - Publishing path: Google Business Profile posts route to `publishGoogleBusinessPost`.
 - Account model: each connected Google Business Profile location is saved as `businessAccountId|locationId`.
@@ -46,7 +46,7 @@ Google sign-up uses the server-side OAuth/OpenID Connect flow in `src/services/g
 ```bash
 GOOGLE_BUSINESS_CLIENT_ID=your_google_web_client_id
 GOOGLE_BUSINESS_CLIENT_SECRET=your_google_web_client_secret
-GOOGLE_BUSINESS_CALLBACK_URL=https://your-domain.example/social/google-business/callback
+GOOGLE_BUSINESS_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/google-business/callback
 GOOGLE_BUSINESS_SCOPES=https://www.googleapis.com/auth/business.manage
 ```
 
@@ -54,8 +54,8 @@ If `GOOGLE_BUSINESS_CLIENT_ID` and `GOOGLE_BUSINESS_CLIENT_SECRET` are blank, th
 
 ### Pinterest Boards
 
-- Dashboard route: `/social/pinterest/connect`
-- Callback route: `/social/pinterest/callback`
+- Dashboard route: `/dashboard/actions/social/pinterest/connect`
+- Callback route: `/dashboard/actions/social/pinterest/callback`
 - Service file: `src/services/pinterestService.js`
 - Publishing path: Pinterest posts route to `publishPinterestPin`.
 - Account model: each accessible board is saved as a separate publishing destination.
@@ -63,7 +63,7 @@ If `GOOGLE_BUSINESS_CLIENT_ID` and `GOOGLE_BUSINESS_CLIENT_SECRET` are blank, th
 ```bash
 PINTEREST_CLIENT_ID=your_pinterest_client_id
 PINTEREST_CLIENT_SECRET=your_pinterest_client_secret
-PINTEREST_CALLBACK_URL=https://your-domain.example/social/pinterest/callback
+PINTEREST_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/pinterest/callback
 PINTEREST_SCOPES=boards:read,pins:read,pins:write,user_accounts:read
 PINTEREST_CONTINUOUS_REFRESH=false
 ```
@@ -72,8 +72,8 @@ Pinterest publishing requires a public image URL on the post.
 
 ### X / Twitter
 
-- Dashboard route: `/social/x/connect`
-- Callback route: `/social/x/callback`
+- Dashboard route: `/dashboard/actions/social/x/connect`
+- Callback route: `/dashboard/actions/social/x/callback`
 - Service file: `src/services/xService.js`
 - Publishing path: X posts route to `publishXPost`.
 - OAuth flow: OAuth 2.0 Authorization Code with PKCE.
@@ -81,7 +81,7 @@ Pinterest publishing requires a public image URL on the post.
 ```bash
 X_CLIENT_ID=your_x_oauth2_client_id
 X_CLIENT_SECRET=your_x_oauth2_client_secret
-X_CALLBACK_URL=https://your-domain.example/social/x/callback
+X_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/x/callback
 X_SCOPES=tweet.read tweet.write users.read offline.access
 ```
 
@@ -90,7 +90,7 @@ Optional aliases are also supported:
 ```bash
 TWITTER_CLIENT_ID=your_x_oauth2_client_id
 TWITTER_CLIENT_SECRET=your_x_oauth2_client_secret
-TWITTER_CALLBACK_URL=https://your-domain.example/social/x/callback
+TWITTER_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/x/callback
 TWITTER_SCOPES=tweet.read tweet.write users.read offline.access
 ```
 
@@ -98,8 +98,8 @@ This build posts text updates through the X v2 tweet creation endpoint. Media up
 
 ### Threads
 
-- Dashboard route: `/social/threads/connect`
-- Callback route: `/social/threads/callback`
+- Dashboard route: `/dashboard/actions/social/threads/connect`
+- Callback route: `/dashboard/actions/social/threads/callback`
 - Service file: `src/services/threadsService.js`
 - Publishing path: Threads posts route to `publishThreadsPost`.
 - Publishing flow: create a Threads media/text container, then publish the container.
@@ -107,7 +107,7 @@ This build posts text updates through the X v2 tweet creation endpoint. Media up
 ```bash
 THREADS_APP_ID=your_threads_api_app_id
 THREADS_APP_SECRET=your_threads_api_app_secret
-THREADS_CALLBACK_URL=https://your-domain.example/social/threads/callback
+THREADS_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/threads/callback
 THREADS_SCOPES=threads_basic,threads_content_publish
 THREADS_GRAPH_VERSION=v1.0
 ```
@@ -123,7 +123,7 @@ LinkedIn profile/page publishing remains in place and was not downgraded.
 ```bash
 LINKEDIN_CLIENT_ID=your_linkedin_client_id
 LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
-LINKEDIN_CALLBACK_URL=https://your-domain.example/social/linkedin/callback
+LINKEDIN_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/linkedin/callback
 LINKEDIN_SCOPES=openid profile email w_member_social
 LINKEDIN_VERSION=202605
 ```
@@ -133,7 +133,7 @@ LINKEDIN_VERSION=202605
 ```bash
 TIKTOK_CLIENT_KEY=your_tiktok_client_key
 TIKTOK_CLIENT_SECRET=your_tiktok_client_secret
-TIKTOK_CALLBACK_URL=https://your-domain.example/social/tiktok/callback
+TIKTOK_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/tiktok/callback
 TIKTOK_SCOPES=user.info.basic,video.upload,video.publish
 ```
 
@@ -142,7 +142,7 @@ TIKTOK_SCOPES=user.info.basic,video.upload,video.publish
 ```bash
 YOUTUBE_CLIENT_ID=your_google_web_client_id
 YOUTUBE_CLIENT_SECRET=your_google_web_client_secret
-YOUTUBE_CALLBACK_URL=https://your-domain.example/social/youtube/callback
+YOUTUBE_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/youtube/callback
 YOUTUBE_SCOPES=https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly
 YOUTUBE_DEFAULT_PRIVACY=public
 ```
@@ -154,7 +154,7 @@ If YouTube variables are blank, the app falls back to `GOOGLE_CLIENT_ID` and `GO
 ```bash
 FACEBOOK_APP_ID=your_meta_app_id
 FACEBOOK_APP_SECRET=your_meta_app_secret
-FACEBOOK_CALLBACK_URL=https://your-domain.example/social/facebook/callback
+FACEBOOK_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/facebook/callback
 FACEBOOK_GRAPH_VERSION=v20.0
 FACEBOOK_LOGIN_CONFIG_ID=your_business_login_config_id
 FACEBOOK_ALLOW_CLASSIC_OAUTH=false
@@ -182,15 +182,15 @@ CLOUDINARY_API_SECRET=optional_cloudinary_secret
 
 ## Dashboard connection routes
 
-- Facebook/Instagram/WhatsApp discovery: `/social/facebook/connect`
-- Google Business Profile: `/social/google-business/connect`
-- LinkedIn: `/social/linkedin/connect`
-- Pinterest: `/social/pinterest/connect`
-- TikTok: `/social/tiktok/connect`
-- YouTube: `/social/youtube/connect`
-- X / Twitter: `/social/x/connect`
-- Threads: `/social/threads/connect`
-- Manual API token connection: `/social/api-connect` for manual Instagram and WhatsApp token setup
+- Facebook/Instagram/WhatsApp discovery: `/dashboard/actions/social/facebook/connect`
+- Google Business Profile: `/dashboard/actions/social/google-business/connect`
+- LinkedIn: `/dashboard/actions/social/linkedin/connect`
+- Pinterest: `/dashboard/actions/social/pinterest/connect`
+- TikTok: `/dashboard/actions/social/tiktok/connect`
+- YouTube: `/dashboard/actions/social/youtube/connect`
+- X / Twitter: `/dashboard/actions/social/x/connect`
+- Threads: `/dashboard/actions/social/threads/connect`
+- Manual API token connection: `/dashboard/actions/social/api-connect` for manual Instagram and WhatsApp token setup
 
 ## Files touched
 
@@ -205,8 +205,8 @@ CLOUDINARY_API_SECRET=optional_cloudinary_secret
 - `src/services/publishingService.js`
 - `src/services/threadsService.js`
 - `src/services/xService.js`
-- `src/views/social/index.ejs`
-- `src/views/social/show.ejs`
+- `src/views/dashboard/experience.ejs`
+- `public/js/dashboard-experience.js`
 - `test/moreSocialPlatformsService.test.js`
 
 ## Validation

@@ -22,38 +22,38 @@
           label: 'Overview',
           links: [
             { href: '/dashboard/overview', icon: 'home', label: 'Dashboard', badge: 'Home', active: currentPath === '/dashboard' || active(['/dashboard/overview']) },
-            { href: '/dashboard/quick-create', icon: 'plus', label: 'Full Composer', badge: 'AI', active: active(['/posts/new', '/dashboard/quick-create', '/ai']) },
-            { href: '/dashboard/brand-brain', icon: 'brain', label: 'Brand Brain', badge: 'Data', active: active(['/brands', '/dashboard/brand-brain']) },
-            { href: '/dashboard/content-library', icon: 'edit', label: 'Content Library', badge: 'Drafts', active: active(['/posts', '/dashboard/content-library']) && currentPath !== '/posts/new' }
+            { href: '/dashboard/quick-create', icon: 'plus', label: 'Full Composer', badge: 'AI', active: active(['/dashboard/quick-create', '/dashboard/actions/ai']) },
+            { href: '/dashboard/brand-brain', icon: 'brain', label: 'Brand Brain', badge: 'Data', active: active(['/dashboard/brand-brain', '/dashboard/actions/brands']) },
+            { href: '/dashboard/content-library', icon: 'edit', label: 'Content Library', badge: 'Drafts', active: active(['/dashboard/content-library', '/dashboard/actions/posts']) }
           ]
         },
         {
           label: 'Planning & Creative',
           links: [
-            { href: '/dashboard/campaigns', icon: 'grid', label: 'Campaigns & Growth', badge: 'Flow', active: active(['/campaigns', '/growth-studio', '/dashboard/campaigns']) },
-            { href: '/dashboard/media', icon: 'image', label: 'Media & Images', badge: 'Assets', active: active(['/media', '/dashboard/media']) },
-            { href: '/dashboard/video-system', icon: 'play', label: 'Video Studio', badge: 'Video', active: active(['/videos', '/templates', '/dashboard/video-system']) },
-            { href: '/dashboard/avatar-video', icon: 'avatar', label: 'Avatar Video', badge: 'Pro', active: active(['/avatars', '/dashboard/avatar-video']) }
+            { href: '/dashboard/campaigns', icon: 'grid', label: 'Campaigns & Growth', badge: 'Flow', active: active(['/dashboard/campaigns', '/dashboard/actions/campaigns', '/dashboard/actions/growth-studio']) },
+            { href: '/dashboard/media', icon: 'image', label: 'Media & Images', badge: 'Assets', active: active(['/dashboard/media', '/dashboard/actions/media']) },
+            { href: '/dashboard/video-system', icon: 'play', label: 'Video Studio', badge: 'Video', active: active(['/dashboard/video-system', '/dashboard/actions/videos', '/dashboard/actions/templates']) },
+            { href: '/dashboard/avatar-video', icon: 'avatar', label: 'Avatar Video', badge: 'Pro', active: active(['/dashboard/avatar-video', '/dashboard/actions/avatars']) }
           ]
         },
         {
           label: 'Publishing',
           links: [
-            { href: '/dashboard/calendar', icon: 'calendar', label: 'Calendar & Schedule', badge: 'Plan', active: active(['/calendar', '/dashboard/calendar']) },
-            { href: '/dashboard/social', icon: 'plug', label: 'Social Channels', badge: 'API', active: active(['/social', '/integrations', '/whatsapp', '/dashboard/social']) },
-            { href: '/dashboard/approvals', icon: 'check', label: 'Approvals & Handoff', badge: 'Review', active: active(['/approvals', '/posts/handoff', '/dashboard/approvals']) },
-            { href: '/dashboard/analytics', icon: 'chart', label: 'Analytics', badge: 'Live', active: active(['/analytics', '/dashboard/analytics']) },
-            { href: '/dashboard/notifications', icon: 'message', label: 'Notifications', badge: 'Inbox', active: active(['/notifications', '/dashboard/notifications']) }
+            { href: '/dashboard/calendar', icon: 'calendar', label: 'Calendar & Schedule', badge: 'Plan', active: active(['/dashboard/calendar', '/dashboard/actions/calendar']) },
+            { href: '/dashboard/social', icon: 'plug', label: 'Social Channels', badge: 'API', active: active(['/dashboard/social', '/dashboard/actions/social']) },
+            { href: '/dashboard/approvals', icon: 'check', label: 'Approvals & Handoff', badge: 'Review', active: active(['/dashboard/approvals', '/dashboard/actions/approvals', '/dashboard/actions/posts/handoff']) },
+            { href: '/dashboard/analytics', icon: 'chart', label: 'Analytics', badge: 'Live', active: active(['/dashboard/analytics', '/dashboard/actions/analytics']) },
+            { href: '/dashboard/notifications', icon: 'message', label: 'Notifications', badge: 'Inbox', active: active(['/dashboard/notifications', '/dashboard/actions/notifications']) }
           ]
         },
         {
           label: 'Admin',
           links: [
-            { href: '/dashboard/team', icon: 'users', label: 'Team & Roles', badge: 'RBAC', active: active(['/team', '/roles', '/users', '/dashboard/team']) },
-            { href: '/dashboard/billing', icon: 'card', label: 'Billing & Usage', badge: 'Plan', active: active(['/billing', '/dashboard/billing']) },
-            ...(canSeePlans ? [{ href: '/dashboard/plans', icon: 'card', label: 'Plan Management', badge: 'Plans', active: active(['/dashboard/plans', '/admin/plans']) }] : []),
-            { href: '/dashboard/settings', icon: 'settings', label: 'Settings & Security', badge: 'Config', active: active(['/settings', '/security', '/dashboard/settings']) },
-            ...(canSeeAdminTools ? [{ href: '/dashboard/admin', icon: 'shield', label: 'Admin', badge: 'Root', active: active(['/admin', '/dashboard/admin']) }] : [])
+            { href: '/dashboard/team', icon: 'users', label: 'Team & Roles', badge: 'RBAC', active: active(['/dashboard/team', '/dashboard/actions/team']) },
+            { href: '/dashboard/billing', icon: 'card', label: 'Billing & Usage', badge: 'Plan', active: active(['/dashboard/billing']) },
+            ...(canSeePlans ? [{ href: '/dashboard/plans', icon: 'card', label: 'Plan Management', badge: 'Plans', active: active(['/dashboard/plans', '/dashboard/actions/admin/plans']) }] : []),
+            { href: '/dashboard/settings', icon: 'settings', label: 'Settings & Security', badge: 'Config', active: active(['/dashboard/settings', '/dashboard/actions/settings']) },
+            ...(canSeeAdminTools ? [{ href: '/dashboard/admin', icon: 'shield', label: 'Admin', badge: 'Root', active: active(['/dashboard/admin', '/dashboard/actions/admin']) }] : [])
           ]
         }
       ];

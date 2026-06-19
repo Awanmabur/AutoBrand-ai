@@ -5,10 +5,11 @@
 
   function normalizeType(value) {
     const type = String(value || 'image').trim().toLowerCase().replace(/[\s-]+/g, '_');
-    if (type === 'short' || type === 'short_video') return 'reel';
+    if (type === 'short' || type === 'short_video' || type === 'tiktok') return 'reel';
+    if (type === 'whatsapp') return 'whatsapp_message';
     if (['video', 'reel'].includes(type)) return type;
     if (['image', 'story'].includes(type)) return type;
-    if (['text', 'article'].includes(type)) return type;
+    if (['text', 'article', 'link', 'whatsapp_message'].includes(type)) return type;
     if (['carousel', 'campaign'].includes(type)) return type;
     return 'image';
   }
@@ -50,8 +51,11 @@
       postTypeSelect.value = type;
       return;
     }
-    if (type === 'reel' && available.includes('video')) postTypeSelect.value = 'video';
+    if (type === 'reel' && available.includes('reel')) postTypeSelect.value = 'reel';
+    else if (type === 'reel' && available.includes('video')) postTypeSelect.value = 'video';
     else if (type === 'story' && available.includes('image')) postTypeSelect.value = 'image';
+    else if (type === 'whatsapp_message' && available.includes('text')) postTypeSelect.value = 'text';
+    else if (type === 'link' && available.includes('text')) postTypeSelect.value = 'text';
     else if (available.includes('image')) postTypeSelect.value = 'image';
   }
 
@@ -112,7 +116,7 @@
         if (preset.kind === 'video') type = 'video';
         else if (preset.kind === 'carousel') type = 'carousel';
         else if (preset.kind === 'text') type = 'text';
-        else if (['video', 'reel', 'carousel', 'text', 'article'].includes(type)) type = 'image';
+        else if (['video', 'reel', 'carousel', 'text', 'article', 'link', 'whatsapp_message'].includes(type)) type = 'image';
       }
 
       let allowedMediaTypes = ['image'];
@@ -139,12 +143,16 @@
         mediaLabel = `Carousel output: only image slides are shown. ${count} slides will be generated or selected.`;
         showImageTools = true;
         showVideoTools = false;
-      } else if (['text', 'article'].includes(type)) {
+      } else if (['text', 'article', 'link', 'whatsapp_message'].includes(type)) {
         selectedPreset = 'text';
         count = 0;
         allowedMediaTypes = [];
         allowedOptionKinds = ['text'];
-        mediaLabel = 'Text output: all upload, image, video and media override controls are hidden.';
+        mediaLabel = type === 'link'
+          ? 'Link output: media controls are hidden and the link field is required.'
+          : type === 'whatsapp_message'
+            ? 'WhatsApp output: media controls are hidden and WhatsApp copy rules are used.'
+            : 'Text output: all upload, image, video and media override controls are hidden.';
         showImageTools = false;
         showVideoTools = false;
       } else {

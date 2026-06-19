@@ -9,7 +9,7 @@
   <% if (!brands.length) { %>
     <p class="empty-state">Create a brand first before scheduling posts.</p>
   <% } else { %>
-    <form action="/posts" method="post" class="real-form-grid">
+    <form action="/dashboard/actions/posts" method="post" class="real-form-grid">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="creationMode" value="ai">
       <input type="hidden" name="generateImage" value="on">

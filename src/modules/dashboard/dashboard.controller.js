@@ -18,11 +18,16 @@ const VideoRender = require('../../models/VideoRender');
 const AvatarProfile = require('../../models/AvatarProfile');
 const ApiLog = require('../../models/ApiLog');
 const AuditLog = require('../../models/AuditLog');
+const UsageLog = require('../../models/UsageLog');
 const { getCurrentPlan, plainPlan } = require('../../services/subscription.service');
 const { buildFeatureAccess, resolveDashboardPageForAccess } = require('../../services/subscription/featureAccess.service');
 const { buildUsageDashboard } = require('../../services/usage.service');
 const { getPublicPricingCards } = require('../../services/pricing.service');
 const { updateBrandPerformanceMemoryForOwner } = require('../../services/analyticsMemoryService');
+const { buildBrandChecklist } = require('../../services/brandBrain/brandScore.service');
+const { suggestBestTimes } = require('../../services/scheduling/bestTime.service');
+const { capabilityList, evaluateSocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
+const { buildAnalyticsDashboard } = require('../../services/analytics/analyticsDashboard.service');
 
 const DASHBOARD_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TIME_ZONE || process.env.TZ || 'Africa/Kampala';
 
@@ -172,6 +177,15 @@ function recordId(record) {
   return record?._id?.toString?.() || (record?.id ? String(record.id) : '');
 }
 
+function entityId(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value._id?.toString) return value._id.toString();
+  if (value.id) return String(value.id);
+  if (value.toString && value.toString !== Object.prototype.toString) return value.toString();
+  return '';
+}
+
 function listPreview(values = [], limit = 6) {
   if (!Array.isArray(values)) return values || '';
   const cleaned = values
@@ -234,6 +248,7 @@ function card(title, description, tag, options = {}) {
     deleteAction: options.deleteAction || '',
     deleteLabel: options.deleteLabel || '',
     deleteMethod: options.deleteMethod || '',
+    archiveAction: options.archiveAction || '',
     mediaUrl: options.mediaUrl || '',
     mediaType: options.mediaType || '',
     mediaAlt: options.mediaAlt || safeTitle,
@@ -438,6 +453,7 @@ function serializeCalendarPost(post) {
     brandName: post.brand?.name || 'Missing brand',
     scheduledAt: post.scheduledAt ? new Date(post.scheduledAt).toISOString() : '',
     publishedAt: post.publishedAt ? new Date(post.publishedAt).toISOString() : '',
+    platformPostUrl: post.platformPostUrl || '',
     createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : '',
     dateKey: safeWhen ? dayKey(safeWhen) : '',
     dateLabel: safeWhen ? formatDate(safeWhen) : 'No date',
@@ -452,6 +468,7 @@ function serializeCalendarPost(post) {
       accountName: result.accountName || 'Account',
       status: result.status || 'published',
       platformPostId: result.platformPostId || '',
+      platformPostUrl: result.platformPostUrl || '',
       errorMessage: result.errorMessage || ''
     })),
     media: (post.media || []).map((asset) => ({
@@ -462,11 +479,15 @@ function serializeCalendarPost(post) {
       consentStatus: asset.consentStatus || ''
     })).filter((asset) => asset.url),
     mediaUrl: mediaUrlFromRecord(firstRenderableMedia(post.media || [])),
-    mediaType: mediaTypeFromRecord(firstRenderableMedia(post.media || []), post.type)
+    mediaType: mediaTypeFromRecord(firstRenderableMedia(post.media || []), post.type),
+    canRetry: post.status === 'failed',
+    canBulkReschedule: ['scheduled', 'failed', 'cancelled', 'draft'].includes(post.status || ''),
+    retryCount: post.retryCount || 0,
+    errorMessage: post.errorMessage || ''
   };
 }
 
-function buildCalendarMonthData(monthDate, posts = []) {
+function buildCalendarMonthData(monthDate, posts = [], options = {}) {
   const { year, month, monthIndex } = calendarMonthParts(monthDate);
   const first = calendarGridDate(year, monthIndex, 1);
   const last = calendarGridDate(year, monthIndex + 1, 0);
@@ -498,6 +519,10 @@ function buildCalendarMonthData(monthDate, posts = []) {
     monthLabel: monthLabel(calendarGridDate(year, monthIndex, 15)),
     monthValue: `${year}-${String(month).padStart(2, '0')}`,
     todayKey,
+    focusDay: options.focusDay || todayKey,
+    view: options.view || 'month',
+    timezone: DASHBOARD_TIME_ZONE,
+    bestTimeSuggestions: options.bestTimeSuggestions || [],
     previousMonth: monthValue(calendarGridDate(year, monthIndex - 1, 15)),
     nextMonth: monthValue(calendarGridDate(year, monthIndex + 1, 15)),
     weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -546,6 +571,7 @@ function platformLanguageText(platformLanguages = {}) {
 
 function brandRecord(brand) {
   const autoPosting = brand.autoPosting || {};
+  const checklist = buildBrandChecklist(brand);
   return {
     id: brand._id.toString(),
     name: brand.name,
@@ -559,6 +585,7 @@ function brandRecord(brand) {
     businessType: brand.businessType || '',
     description: brand.description || '',
     website: brand.website || '',
+    industry: brand.industry || '',
     location: brand.location || '',
     language: brand.language || 'English',
     targetAudience: brand.targetAudience || '',
@@ -571,14 +598,20 @@ function brandRecord(brand) {
     offers: brand.offers || [],
     socialLinks: brand.socialLinks || [],
     customerPainPoints: brand.customerPainPoints || [],
-    commonObjections: brand.commonObjections || [],
+    commonObjections: brand.customerObjections || [],
     testimonials: brand.testimonials || [],
     brandRules: brand.brandRules || [],
     goals: brand.goals || [],
     preferredHashtags: brand.preferredHashtags || [],
     blockedWords: brand.blockedWords || [],
+    keywords: brand.keywords || [],
+    preferredWords: brand.preferredWords || [],
+    faqs: brand.faqs || [],
     competitors: brand.competitors || [],
     brandColors: brand.brandColors || [],
+    brandCompletenessScore: checklist.score,
+    brandVoiceSummary: brand.brandVoiceSummary || '',
+    checklist,
     autoPosting: {
       enabled: Boolean(autoPosting.enabled),
       postsPerDay: autoPosting.postsPerDay || 1,
@@ -599,12 +632,16 @@ function brandRecord(brand) {
       offers: offerText(brand.offers),
       socialLinks: socialLinkText(brand.socialLinks),
       customerPainPoints: listText(brand.customerPainPoints),
-      commonObjections: listText(brand.commonObjections),
+      commonObjections: listText(brand.customerObjections),
       testimonials: testimonialText(brand.testimonials),
+      services: productText(brand.services),
+      faqs: (brand.faqs || []).map((faq) => [faq.question, faq.answer].filter(Boolean).join(' | ')).filter(Boolean).join('\n'),
       brandRules: listText(brand.brandRules),
       goals: listText(brand.goals),
       preferredHashtags: listText(brand.preferredHashtags),
       blockedWords: listText(brand.blockedWords),
+      keywords: listText(brand.keywords),
+      preferredWords: listText(brand.preferredWords),
       competitors: listText(brand.competitors),
       brandColors: listText(brand.brandColors),
       autoPreferredSlots: listText(autoPosting.preferredSlots),
@@ -682,6 +719,18 @@ function postCard(post, options = {}) {
   const postMedia = mediaListFromRecords(post.media || [], post.type);
   const postId = recordId(post);
   const when = post.scheduledAt || post.publishedAt || post.updatedAt || post.createdAt;
+  const defaultActions = postId ? [
+    { label: (post.status === 'published' ? 'Repost' : 'Publish now'), action: `/dashboard/actions/posts/${postId}/publish-now`, method: 'post', kind: 'publish' },
+    { label: 'Duplicate', action: `/dashboard/actions/posts/${postId}/duplicate`, method: 'post', kind: 'duplicate' },
+    { label: 'Schedule', action: `/dashboard/actions/posts/${postId}/schedule`, method: 'post', kind: 'schedule' },
+    { label: 'Cancel', action: `/dashboard/actions/posts/${postId}/cancel`, method: 'post', kind: 'cancel' }
+  ] : [];
+  const editAction = Object.prototype.hasOwnProperty.call(options, 'editAction') && options.editAction !== undefined
+    ? options.editAction
+    : postId ? `/dashboard/actions/posts/${postId}?_method=PUT` : '';
+  const deleteAction = Object.prototype.hasOwnProperty.call(options, 'deleteAction') && options.deleteAction !== undefined
+    ? options.deleteAction
+    : postId ? `/dashboard/actions/posts/${postId}?_method=DELETE` : '';
   return card(
     postTitle(post),
     options.description || `${postDescription(post)}${when ? ` · ${formatDateTime(when)}` : ''}`,
@@ -689,29 +738,25 @@ function postCard(post, options = {}) {
     {
       id: postId,
       kind: 'post',
-      href: '/dashboard/content-library',
-      editHref: '/dashboard/content-library',
-      editAction: postId ? `/posts/${postId}?_method=PUT` : '',
+      href: options.href || '/dashboard/content-library',
+      editHref: options.editHref || '/dashboard/content-library',
+      editAction,
       editMethod: 'post',
-      actions: postId ? [
-        { label: (post.status === 'published' ? 'Repost' : 'Publish now'), action: `/posts/${postId}/publish-now`, method: 'post', kind: 'publish' },
-        { label: 'Duplicate', action: `/posts/${postId}/duplicate`, method: 'post', kind: 'duplicate' },
-        { label: 'Schedule', action: `/posts/${postId}/schedule`, method: 'post', kind: 'schedule' },
-        { label: 'Cancel', action: `/posts/${postId}/cancel`, method: 'post', kind: 'cancel' }
-      ] : [],
-      deleteAction: postId ? `/posts/${postId}?_method=DELETE` : '',
+      actions: Array.isArray(options.actions) ? options.actions : defaultActions,
+      deleteAction,
       deleteLabel: 'Delete post',
       deleteMethod: 'post',
       editFields: [
         { name: 'title', label: 'Title', type: 'text', value: post.title || '', full: true },
         { name: 'caption', label: 'Caption', type: 'textarea', value: post.caption || '', rows: 5, full: true },
         { name: 'description', label: 'Description', type: 'textarea', value: post.description || '', rows: 3, full: true },
-        { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'whatsapp', 'twitter'] },
-        { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'avatar_video'] },
+        { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'whatsapp', 'x', 'threads', 'pinterest', 'google_business'] },
+        { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign', 'avatar_video'] },
         { name: 'status', label: 'Status', type: 'select', value: post.status || 'draft', options: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'] },
         { name: 'scheduledAt', label: 'Schedule time', type: 'datetime-local', value: dateTimeLocalValue(post.scheduledAt) },
         { name: 'hashtags', label: 'Hashtags', type: 'text', value: (post.hashtags || []).join(' '), full: true },
-        { name: 'link', label: 'Link', type: 'url', value: post.link || '', full: true }
+        { name: 'link', label: 'Link', type: 'url', value: post.link || '', full: true },
+        { name: 'whatsappTo', label: 'WhatsApp recipient', type: 'text', value: post.platformMetadata?.whatsappTo || '', full: true }
       ],
       mediaUrl: mediaUrlFromRecord(mediaAsset),
       mediaType: mediaTypeFromRecord(mediaAsset, post.type),
@@ -724,14 +769,30 @@ function postCard(post, options = {}) {
         Caption: post.caption,
         Description: post.description,
         Hashtags: post.hashtags,
+        'AI output type': post.platformMetadata?.controls?.outputType || post.platformMetadata?.generatedBundle?.outputType,
+        'Content score': post.contentScore,
+        'Brand fit score': post.brandFitScore,
+        'Risk score': post.riskScore,
+        'Composer warnings': post.validationWarnings,
+        'Brand warnings': post.platformMetadata?.warnings?.brandRuleWarnings,
+        'Blocked word warnings': post.platformMetadata?.warnings?.blockedWordWarnings,
+        'Platform outputs': (post.platformMetadata?.platformOutputs || []).map((item) => [item.platform, item.caption].filter(Boolean).join(' | ')),
+        'Campaign plan': (post.platformMetadata?.campaignPlan || []).map((item) => [item.day ? `Day ${item.day}` : '', item.platform, item.title, item.caption].filter(Boolean).join(' | ')),
+        'Carousel slides': (post.platformMetadata?.carouselSlides || []).map((item) => [item.slide ? `Slide ${item.slide}` : '', item.headline, item.body].filter(Boolean).join(' | ')),
+        'Video scenes': (post.platformMetadata?.videoScenes || []).map((item) => [item.order ? `Scene ${item.order}` : '', item.title, item.narration].filter(Boolean).join(' | ')),
         Link: post.link,
+        'WhatsApp recipient': post.platformMetadata?.whatsappTo,
+        'Public URL': post.platformPostUrl,
+        'Publish URLs': post.platformMetadata?.publishUrls,
+        'Publish blockers': post.platformMetadata?.publishReadiness?.blockers,
+        'Publish warnings': post.platformMetadata?.publishReadiness?.warnings,
         Status: titleCase(post.status),
         'Scheduled at': post.scheduledAt ? formatDateTime(post.scheduledAt) : '',
         'Published at': post.publishedAt ? formatDateTime(post.publishedAt) : '',
         'Created at': post.createdAt ? formatDateTime(post.createdAt) : '',
         'Updated at': post.updatedAt ? formatDateTime(post.updatedAt) : '',
         'Target accounts': (post.targetAccounts || []).map((account) => account.accountName || account.name || String(account)),
-        'Publish results': (post.publishResults || []).map((result) => [result.accountName, result.platform, result.status, result.errorMessage].filter(Boolean).join(' | ')),
+        'Publish results': (post.publishResults || []).map((result) => [result.accountName, result.platform, result.status, result.platformPostUrl, result.errorMessage].filter(Boolean).join(' | ')),
         Error: post.errorMessage,
         ...mediaDetails(post.media || [])
       }
@@ -759,6 +820,7 @@ function buildDashboardData({
   videoStatus,
   approvalStatus,
   analyticsTotals,
+  analyticsDashboard = {},
   notifications = [],
   growthAssets = [],
   calendarMonthData = buildCalendarMonthData(new Date(), []),
@@ -772,12 +834,23 @@ function buildDashboardData({
   auditLogs = [],
   failedPosts = [],
   allUsers = [],
+  adminUsers = [],
+  adminBrands = [],
+  adminSubscriptions = [],
+  adminPayments = [],
+  adminUsageLogs = [],
+  adminFailedPosts = [],
+  adminFailedVideoJobs = [],
+  adminSocialAccounts = [],
+  adminApiLogs = [],
+  adminAuditLogs = [],
   adminPlans = [],
   planSubscriptionCounts = {},
   currentPlan = null,
   featureAccess = null,
   usageDashboard = null,
-  publicPricingPlans = []
+  publicPricingPlans = [],
+  platformAdminView = false
 }) {
   socialAccounts = socialAccounts.filter(isRealSocialAccount);
   const userName = user.name || user.email || 'User';
@@ -799,11 +872,17 @@ function buildDashboardData({
   const videoJobTotal = sum(Object.values(videoStatus));
   const generatedAssets = sum(Object.values(postTypes)) + mediaTotal + videoJobTotal;
   const creditUsage = sum(videoJobs.map((job) => job.costCredits)) + generatedAssets;
-  const productCount = sum(brands.map((brand) => brand.products?.length || 0));
+  const productCount = sum(brands.map((brand) => (brand.products?.length || 0) + (brand.services?.length || 0)));
   const offerCount = sum(brands.map((brand) => brand.offers?.length || 0));
   const ruleCount = sum(brands.map((brand) => brand.brandRules?.length || 0));
   const proofCount = sum(brands.map((brand) => brand.testimonials?.length || 0));
+  const brandCompletionAverage = brands.length
+    ? Math.round(sum(brands.map((brand) => buildBrandChecklist(brand).score)) / brands.length)
+    : 0;
   const topPlatform = Object.entries(postPlatforms).sort((a, b) => b[1] - a[1])[0]?.[0] || 'facebook';
+  const analyticsView = analyticsDashboard || {};
+  const analyticsTotalMetrics = analyticsView.totals || analyticsTotals || {};
+  const analyticsBestPlatform = analyticsView.bestPlatform || topPlatform;
 
   const recentPostRows = recentPosts.map((post) =>
     row(postTitle(post), postDescription(post), titleCase(post.status))
@@ -813,6 +892,25 @@ function buildDashboardData({
   );
   const recentPostCards = recentPosts.map((post) => postCard(post));
   const scheduledPostCards = scheduledPosts.map((post) => postCard(post));
+  const analyticsRecordsForDashboard = Array.isArray(analyticsView.records) ? analyticsView.records : [];
+  const campaignAnalyticsSummary = (campaign) => {
+    const campaignId = recordId(campaign);
+    const records = analyticsRecordsForDashboard.filter((record) => entityId(record.campaign) === campaignId);
+    const impressions = sum(records.map((record) => record.impressions || 0));
+    const clicks = sum(records.map((record) => record.clicks || 0));
+    const followersGained = sum(records.map((record) => record.followersGained || 0));
+    const engagementBase = Math.max(1, impressions || sum(records.map((record) => record.reach || record.views || 0)));
+    const engagements = sum(records.map((record) =>
+      (record.likes || 0) + (record.comments || 0) + (record.shares || 0) + (record.saves || 0) + (record.clicks || 0)
+    ));
+    return {
+      records: records.length,
+      impressions,
+      clicks,
+      followersGained,
+      engagementRate: records.length ? Number(((engagements / engagementBase) * 100).toFixed(2)) : 0
+    };
+  };
   const campaignCards = campaigns.map((campaign) => card(
     campaign.name,
     truncate(campaign.description || campaign.goal || `${campaign.platforms?.join(', ') || 'Multi-platform'} campaign`),
@@ -822,89 +920,157 @@ function buildDashboardData({
       kind: 'campaign',
       href: '/dashboard/campaigns',
       editHref: '/dashboard/campaigns',
-      editAction: `/campaigns/${recordId(campaign)}/status`,
+      editAction: `/dashboard/actions/campaigns/${recordId(campaign)}/status`,
       editMethod: 'post',
+      actions: recordId(campaign) ? [
+        { label: 'Create drafts', action: `/dashboard/actions/campaigns/${recordId(campaign)}/create-drafts`, method: 'post', kind: 'draft' },
+        { label: 'Schedule', action: `/dashboard/actions/campaigns/${recordId(campaign)}/schedule`, method: 'post', kind: 'schedule' }
+      ] : [],
       editFields: [
         { name: 'status', label: 'Status', type: 'select', value: campaign.status || 'draft', options: ['draft', 'active', 'paused', 'completed', 'archived'] }
       ],
       details: {
         Brand: campaign.brand?.name || 'No brand',
         Goal: campaign.goal,
+        'Campaign type': campaign.aiPlan?.goalLabel || campaign.aiPlan?.campaignType,
         Description: campaign.description,
         Platforms: campaign.platforms,
         'Posting frequency': campaign.postingFrequency,
         'Start date': campaign.startDate ? formatDate(campaign.startDate) : '',
         'End date': campaign.endDate ? formatDate(campaign.endDate) : '',
         Status: titleCase(campaign.status),
+        Strategy: campaign.aiPlan?.strategy,
+        'AI output type': campaign.aiPlan?.generatedBundle?.outputType,
         'Content pillars': campaign.aiPlan?.contentPillars,
         'Suggested times': campaign.aiPlan?.suggestedTimes,
+        Hashtags: campaign.aiPlan?.hashtags,
+        Captions: (campaign.aiPlan?.captions || []).map((item) => [item.day ? `Day ${item.day}` : '', item.platform, item.caption].filter(Boolean).join(' | ')),
+        'Creative ideas': (campaign.aiPlan?.creativeIdeas || []).map((item) => [item.platform, item.format, item.title, item.description].filter(Boolean).join(' | ')),
+        'Video scripts': (campaign.aiPlan?.videoScripts || []).map((item) => [item.platform, item.title, item.hook, item.cta].filter(Boolean).join(' | ')),
+        'WhatsApp messages': (campaign.aiPlan?.whatsappMessages || []).map((item) => [item.title, item.message].filter(Boolean).join(' | ')),
+        '7-day plan': (campaign.aiPlan?.weeklyPlan || []).map((idea) => [idea.day ? `Day ${idea.day}` : '', idea.platform, idea.title].filter(Boolean).join(' | ')),
+        '30-day plan': (campaign.aiPlan?.monthlyPlan || []).map((idea) => [idea.day ? `Day ${idea.day}` : '', idea.platform, idea.title].filter(Boolean).join(' | ')),
         'Post ideas': (campaign.aiPlan?.postIdeas || []).map((idea) => [idea.day ? `Day ${idea.day}` : '', idea.platform, idea.title, idea.caption].filter(Boolean).join(' | ')),
+        'Carousel slides': (campaign.aiPlan?.carouselSlides || []).map((item) => [item.slide ? `Slide ${item.slide}` : '', item.headline, item.body].filter(Boolean).join(' | ')),
+        'Video scenes': (campaign.aiPlan?.videoScenes || []).map((item) => [item.order ? `Scene ${item.order}` : '', item.title, item.narration].filter(Boolean).join(' | ')),
+        Analytics: campaignAnalyticsSummary(campaign),
         'Updated at': campaign.updatedAt ? formatDateTime(campaign.updatedAt) : ''
       }
     }
   ));
-  const brandCards = brands.map((brand) => card(
-    brand.name,
-    truncate(brand.description || brand.targetAudience || `${brand.businessType || 'Brand'} profile with saved AI memory.`),
-    brand.status === 'active' ? 'Active' : titleCase(brand.status),
-    {
-      id: recordId(brand),
-      kind: 'brand',
-      href: '/dashboard/brand-brain',
-      editHref: '/dashboard/brand-brain',
-      editAction: `/brands/${recordId(brand)}?_method=PUT`,
-      editMethod: 'post',
-      editFields: [
-        { name: 'name', label: 'Brand name', type: 'text', value: brand.name || '', required: true },
-        { name: 'businessType', label: 'Business type', type: 'text', value: brand.businessType || '' },
-        { name: 'description', label: 'Description', type: 'textarea', value: brand.description || '', rows: 4, full: true },
-        { name: 'website', label: 'Website', type: 'url', value: brand.website || '' },
-        { name: 'location', label: 'Location', type: 'text', value: brand.location || '' },
-        { name: 'targetAudience', label: 'Target audience', type: 'textarea', value: brand.targetAudience || '', rows: 3, full: true },
-        { name: 'tone', label: 'Tone of voice', type: 'text', value: brand.tone || '' },
-        { name: 'preferredCta', label: 'CTA style', type: 'text', value: brand.preferredCta || '' },
-        { name: 'brandColors', label: 'Brand colors', type: 'textarea', value: listText(brand.brandColors), rows: 3, full: true },
-        { name: 'blockedWords', label: 'Blocked words', type: 'textarea', value: listText(brand.blockedWords), rows: 3, full: true }
-      ],
-      mediaUrl: brand.logo || '',
-      mediaType: brand.logo ? 'image' : '',
-      details: {
-        'Business type': brand.businessType,
-        Description: brand.description,
-        Website: brand.website,
-        Location: brand.location,
-        Language: brand.language,
-        Audience: brand.targetAudience,
-        Tone: brand.tone,
-        'Preferred CTA': brand.preferredCta,
-        Products: brand.products,
-        Offers: brand.offers,
-        Goals: brand.goals,
-        'Brand rules': brand.brandRules,
-        'Preferred hashtags': brand.preferredHashtags,
-        'Blocked words': brand.blockedWords,
-        Competitors: brand.competitors,
-        'Auto posting': autoPostingSummary(brand),
-        'Updated at': brand.updatedAt ? formatDateTime(brand.updatedAt) : ''
+  const brandCards = brands.map((brand) => {
+    const checklist = buildBrandChecklist(brand);
+    return card(
+      brand.name,
+      truncate(brand.description || brand.targetAudience || `${brand.businessType || 'Brand'} profile with saved AI memory.`),
+      `${checklist.score}% complete`,
+      {
+        id: recordId(brand),
+        kind: 'brand',
+        href: '/dashboard/brand-brain',
+        editHref: '/dashboard/brand-brain',
+        editAction: `/dashboard/actions/brands/${recordId(brand)}?_method=PUT`,
+        editMethod: 'post',
+        editFields: [
+          { name: 'name', label: 'Brand name', type: 'text', value: brand.name || '', required: true },
+          { name: 'businessType', label: 'Business type', type: 'text', value: brand.businessType || '' },
+          { name: 'industry', label: 'Industry', type: 'text', value: brand.industry || '' },
+          { name: 'description', label: 'Description', type: 'textarea', value: brand.description || '', rows: 4, full: true },
+          { name: 'website', label: 'Website', type: 'url', value: brand.website || '' },
+          { name: 'location', label: 'Location', type: 'text', value: brand.location || '' },
+          { name: 'targetAudience', label: 'Target audience', type: 'textarea', value: brand.targetAudience || '', rows: 3, full: true },
+          { name: 'tone', label: 'Tone of voice', type: 'text', value: brand.tone || '' },
+          { name: 'preferredCta', label: 'CTA style', type: 'text', value: brand.preferredCta || '' },
+          { name: 'keywords', label: 'Keywords', type: 'textarea', value: listText(brand.keywords), rows: 3, full: true },
+          { name: 'brandColors', label: 'Brand colors', type: 'textarea', value: listText(brand.brandColors), rows: 3, full: true },
+          { name: 'blockedWords', label: 'Blocked words', type: 'textarea', value: listText(brand.blockedWords), rows: 3, full: true }
+        ],
+        mediaUrl: brand.logo || '',
+        mediaType: brand.logo ? 'image' : '',
+        details: {
+          Completion: `${checklist.complete}/${checklist.total} items (${checklist.score}%)`,
+          'Next checklist items': checklist.nextItems.map((item) => item.label),
+          'Business type': brand.businessType,
+          Industry: brand.industry,
+          Description: brand.description,
+          Website: brand.website,
+          Location: brand.location,
+          Language: brand.language,
+          Audience: brand.targetAudience,
+          Tone: brand.tone,
+          'Preferred CTA': brand.preferredCta,
+          Keywords: brand.keywords,
+          Products: brand.products,
+          Services: brand.services,
+          Offers: brand.offers,
+          FAQs: brand.faqs,
+          Goals: brand.goals,
+          'Brand rules': brand.brandRules,
+          'Preferred hashtags': brand.preferredHashtags,
+          'Blocked words': brand.blockedWords,
+          Competitors: brand.competitors,
+          'Auto posting': autoPostingSummary(brand),
+          'Updated at': brand.updatedAt ? formatDateTime(brand.updatedAt) : ''
+        }
       }
-    }
-  ));
-  const socialCards = socialAccounts.map((account) => card(
-    account.accountName,
-    `${titleCase(account.platform)} · ${account.brand?.name || 'Workspace account'} · ${account.permissions?.length || 0} permissions`,
-    titleCase(account.status),
-    {
+    );
+  });
+  const adminBrandCards = platformAdminView
+    ? adminBrands.map((brand) => {
+      const checklist = buildBrandChecklist(brand);
+      return card(
+        brand.name,
+        `${brand.owner?.email || 'No owner email'} · ${brand.businessType || brand.industry || 'Brand'} · ${brand.status || 'active'}`,
+        `${checklist.score}% complete`,
+        {
+          id: recordId(brand),
+          kind: 'admin_brand',
+          href: '/dashboard/admin',
+          editHref: '/dashboard/admin',
+          mediaUrl: brand.logo || brand.coverImage || '',
+          mediaType: brand.logo || brand.coverImage ? 'image' : '',
+          details: {
+            Owner: brand.owner?.email || entityId(brand.owner),
+            'Owner name': brand.owner?.name,
+            Slug: brand.slug,
+            Status: titleCase(brand.status),
+            Completion: `${checklist.complete}/${checklist.total} items (${checklist.score}%)`,
+            'Business type': brand.businessType,
+            Industry: brand.industry,
+            Website: brand.website,
+            Location: brand.location,
+            Audience: brand.targetAudience,
+            Products: brand.products,
+            Services: brand.services,
+            Offers: brand.offers,
+            'Auto posting': autoPostingSummary(brand),
+            'Created at': brand.createdAt ? formatDateTime(brand.createdAt) : '',
+            'Updated at': brand.updatedAt ? formatDateTime(brand.updatedAt) : ''
+          }
+        }
+      );
+    })
+    : [];
+  const socialCards = socialAccounts.map((account) => {
+    const health = evaluateSocialAccountHealth(account);
+    const capabilities = capabilityList(health.capabilities);
+    return card(
+      account.accountName,
+      `${titleCase(account.platform)} - ${account.brand?.name || 'Workspace account'} - ${health.label}`,
+      health.label,
+      {
       id: recordId(account),
       kind: 'social_account',
       href: '/dashboard/social',
       editHref: '/dashboard/social',
-      editAction: `/social/${recordId(account)}/update`,
+      editAction: `/dashboard/actions/social/${recordId(account)}/update`,
       editMethod: 'post',
       actions: recordId(account) ? [
-        { label: 'Reconnect', action: `/social/${recordId(account)}/reconnect`, method: 'post', kind: 'reconnect' },
-        { label: 'Disconnect', action: `/social/${recordId(account)}/disconnect`, method: 'post', kind: 'disconnect', destructive: true }
+        { label: 'Check health', action: `/dashboard/actions/social/${recordId(account)}/health-check`, method: 'post', kind: 'health' },
+        { label: 'Reconnect', action: `/dashboard/actions/social/${recordId(account)}/reconnect`, method: 'post', kind: 'reconnect' },
+        { label: 'Disconnect', action: `/dashboard/actions/social/${recordId(account)}/disconnect`, method: 'post', kind: 'disconnect', destructive: true }
       ] : [],
-      deleteAction: recordId(account) ? `/social/${recordId(account)}/disconnect` : '',
+      deleteAction: recordId(account) ? `/dashboard/actions/social/${recordId(account)}/disconnect` : '',
       deleteLabel: 'Disconnect',
       deleteMethod: 'post',
       editFields: [
@@ -921,15 +1087,23 @@ function buildDashboardData({
         'Account ID': account.accountId,
         Permissions: account.permissions,
         Status: titleCase(account.status),
+        Health: health.label,
+        'Health message': health.message,
+        'Missing permissions': health.missingPermissions,
+        Capabilities: capabilities,
+        'Last publish error': account.lastPublishError,
+        'Provider approval note': account.providerMeta?.lastPublish?.approvalMessage,
         'Token expires': account.tokenExpiresAt ? formatDateTime(account.tokenExpiresAt) : '',
+        'Last health check': account.lastHealthCheckAt ? formatDateTime(account.lastHealthCheckAt) : '',
         'Last sync': account.lastSyncAt ? formatDateTime(account.lastSyncAt) : '',
         'Updated at': account.updatedAt ? formatDateTime(account.updatedAt) : ''
       }
-    }
-  ));
+      }
+    );
+  });
   const approvalCards = approvals.map((approval) => card(
-    postTitle(approval.post || {}),
-    approval.note || `${approval.reviewerEmail || 'Reviewer'} needs to review ${approval.post?.brand?.name || 'this post'}.`,
+    approval.post ? postTitle(approval.post || {}) : approval.campaign?.name || 'Campaign approval',
+    approval.note || `${approval.reviewerEmail || 'Reviewer'} needs to review ${approval.post?.brand?.name || approval.campaign?.name || 'this item'}.`,
     titleCase(approval.status),
     {
       id: recordId(approval),
@@ -940,9 +1114,15 @@ function buildDashboardData({
       mediaType: mediaTypeFromRecord(firstRenderableMedia(approval.post?.media || []), approval.post?.type),
       details: {
         Post: postTitle(approval.post || {}),
-        Brand: approval.post?.brand?.name || '',
+        Campaign: approval.campaign?.name || '',
+        'Target type': titleCase(approval.targetType || (approval.campaign ? 'campaign' : 'post')),
+        Brand: approval.post?.brand?.name || approval.campaign?.brand?.name || '',
         Reviewer: approval.reviewerEmail,
         Note: approval.note,
+        Decision: titleCase(approval.decision),
+        'Decision note': approval.decisionNote,
+        'Expires at': approval.expiresAt ? formatDateTime(approval.expiresAt) : '',
+        History: (approval.history || []).map((item) => [formatDateTime(item.createdAt), item.actorName || item.actorEmail, item.status, item.note].filter(Boolean).join(' | ')),
         Status: titleCase(approval.status),
         'Resolved at': approval.resolvedAt ? formatDateTime(approval.resolvedAt) : '',
         'Requested at': approval.createdAt ? formatDateTime(approval.createdAt) : ''
@@ -959,17 +1139,19 @@ function buildDashboardData({
       href: '/dashboard/media',
       editHref: '/dashboard/media',
       actions: recordId(asset) ? [
-        { label: 'Create draft', action: `/media/${recordId(asset)}/create-draft`, method: 'post', kind: 'draft' }
+        { label: 'Create draft', action: `/dashboard/actions/media/${recordId(asset)}/create-draft`, method: 'post', kind: 'draft' }
       ] : [],
-      deleteAction: recordId(asset) ? `/media/${recordId(asset)}?_method=DELETE` : '',
+      deleteAction: recordId(asset) ? `/dashboard/actions/media/${recordId(asset)}?_method=DELETE` : '',
       deleteLabel: 'Delete media',
       deleteMethod: 'post',
+      archiveAction: recordId(asset) ? `/dashboard/actions/media/${recordId(asset)}/archive` : '',
       mediaUrl: mediaUrlFromRecord(asset),
       mediaType: mediaTypeFromRecord(asset),
       mediaAlt: asset.fileName,
       details: {
         Brand: asset.brand?.name || 'Brand asset',
         Type: titleCase(asset.fileType),
+        Status: titleCase(asset.status || 'active'),
         URL: asset.fileUrl,
         'Public ID': asset.publicId,
         MIME: asset.mimeType,
@@ -998,10 +1180,15 @@ function buildDashboardData({
         kind: 'ai_video_job',
         href: '/dashboard/video-system',
         editHref: '/dashboard/video-system',
-        editAction: `/videos/${recordId(job)}/status`,
+        editAction: `/dashboard/actions/videos/${recordId(job)}/status`,
         editMethod: 'post',
+        actions: recordId(job) ? [
+          { label: 'Save media', action: `/dashboard/actions/videos/${recordId(job)}/save-media`, method: 'post', kind: 'media' },
+          { label: 'Create post', action: `/dashboard/actions/videos/${recordId(job)}/create-post`, method: 'post', kind: 'draft' },
+          { label: 'Cancel', action: `/dashboard/actions/videos/${recordId(job)}/cancel`, method: 'post', kind: 'cancel', destructive: true }
+        ] : [],
         editFields: [
-          { name: 'status', label: 'Status', type: 'select', value: job.status || 'planning', options: ['planning', 'queued', 'rendering', 'completed', 'failed', 'cancelled'] },
+          { name: 'status', label: 'Status', type: 'select', value: job.status || 'planning', options: ['queued', 'planning', 'processing', 'generating', 'rendered', 'ready', 'failed', 'cancelled'] },
           { name: 'outputUrl', label: 'Output URL', type: 'url', value: job.outputUrl || '', full: true },
           { name: 'errorMessage', label: 'Error message', type: 'textarea', value: job.errorMessage || '', rows: 3, full: true }
         ],
@@ -1016,7 +1203,13 @@ function buildDashboardData({
           Duration: `${job.durationSeconds || 0}s`,
           Status: titleCase(job.status),
           'Output URL': job.outputUrl,
+          Script: job.script,
+          Subtitles: (job.subtitles || []).map((subtitle) => `${subtitle.startSeconds || 0}-${subtitle.endSeconds || 0}s | ${subtitle.text}`),
+          'Thumbnail prompt': job.thumbnailPrompt,
+          'Thumbnail URL': job.thumbnailUrl,
+          'Output media': entityId(job.outputMedia),
           Scenes: (job.scenePlan || []).map((scene) => [scene.order, scene.title, scene.status, scene.outputUrl].filter(Boolean).join(' | ')),
+          Workflow: job.metadata?.workflow,
           Credits: job.costCredits,
           Error: job.errorMessage,
           'Updated at': job.updatedAt ? formatDateTime(job.updatedAt) : ''
@@ -1034,11 +1227,17 @@ function buildDashboardData({
       kind: 'notification',
       href: '/dashboard/notifications',
       editHref: '/dashboard/notifications',
+      actions: !notification.readAt && recordId(notification) ? [
+        { label: 'Mark read', action: `/dashboard/actions/notifications/${recordId(notification)}/read`, method: 'post', kind: 'read' }
+      ] : [],
       details: {
         Type: titleCase(notification.type),
+        Severity: titleCase(notification.severity || 'info'),
         Message: notification.message || notification.body,
         'Entity type': notification.entityType,
         'Entity ID': notification.entityId,
+        Action: notification.actionUrl,
+        Metadata: notification.metadata,
         Read: notification.readAt ? formatDateTime(notification.readAt) : 'Unread',
         'Created at': notification.createdAt ? formatDateTime(notification.createdAt) : ''
       }
@@ -1072,13 +1271,14 @@ function buildDashboardData({
       kind: 'team_member',
       href: '/dashboard/team',
       editHref: '/dashboard/team',
-      editAction: `/team/${recordId(member)}`,
+      editAction: `/dashboard/actions/team/${recordId(member)}`,
       editMethod: 'post',
       editFields: [
-        { name: 'role', label: 'Role', type: 'select', value: member.role || 'content_creator', options: ['admin', 'manager', 'content_creator', 'editor', 'reviewer', 'viewer'] },
+        { name: 'role', label: 'Role', type: 'select', value: member.role || 'viewer', options: ['owner', 'admin', 'manager', 'creator', 'approver', 'viewer', 'billing'] },
+        { name: 'brand', label: 'Brand access', type: 'select', value: recordId(member.brand), options: brands.map((brand) => ({ value: recordId(brand), label: brand.name })) },
         { name: 'permissions', label: 'Permissions', type: 'text', value: (member.permissions || []).join(', '), full: true }
       ],
-      deleteAction: recordId(member) ? `/team/${recordId(member)}/remove` : '',
+      deleteAction: recordId(member) ? `/dashboard/actions/team/${recordId(member)}/remove` : '',
       deleteLabel: 'Remove member',
       deleteMethod: 'post',
       details: {
@@ -1095,12 +1295,13 @@ function buildDashboardData({
     }
   ));
   const roleDashboardCards = [
-    { role: 'super_admin', label: 'Super admin', summary: 'All platform, users, billing, security and admin operations.' },
-    { role: 'agency_owner', label: 'Agency owner', summary: 'All client brand, team, billing, publishing and reporting workspaces.' },
-    { role: 'brand_owner', label: 'Brand owner', summary: 'Full brand workspace with users, billing, social, content and approvals.' },
-    { role: 'content_creator', label: 'Content creator', summary: 'Create, edit, schedule, media, campaign and analytics workflows.' },
-    { role: 'client_reviewer', label: 'Client reviewer', summary: 'Approvals, calendar, content review, analytics and notifications.' },
-    { role: 'team_member', label: 'Team member', summary: 'Assigned production and review workflows based on permissions.' }
+    { role: 'owner', label: 'Owner', summary: 'All campaign, billing, team, approval and workspace controls.' },
+    { role: 'admin', label: 'Admin', summary: 'Manage brand, team, content, scheduling, approvals and analytics.' },
+    { role: 'manager', label: 'Manager', summary: 'Coordinate content, schedule, approvals and campaign performance.' },
+    { role: 'creator', label: 'Creator', summary: 'Create and edit content, media, campaigns and scheduled drafts.' },
+    { role: 'approver', label: 'Approver', summary: 'Review posts and campaigns, request changes, and approve work.' },
+    { role: 'viewer', label: 'Viewer', summary: 'Read-only content and analytics visibility.' },
+    { role: 'billing', label: 'Billing', summary: 'Plan, subscription and payment access.' }
   ].map((roleInfo) => card(roleInfo.label, roleInfo.summary, roleInfo.role === dashboardRole(user.role) ? 'Current role' : 'Role view', {
     kind: 'role_profile',
     href: '/dashboard/team',
@@ -1128,33 +1329,53 @@ function buildDashboardData({
       'Created at': user.createdAt ? formatDateTime(user.createdAt) : ''
     }
   });
-  const adminUserCards = dashboardRole(user.role) === 'super_admin' && allUsers.length
-    ? allUsers.map((workspaceUser) => card(workspaceUser.name || workspaceUser.email || 'User', `${workspaceUser.email || 'No email'} · ${titleCase(workspaceUser.role || 'brand_owner')} · ${titleCase(workspaceUser.plan || 'free')} plan`, titleCase(workspaceUser.status || 'active'), {
+  const adminUserRecords = platformAdminView ? (adminUsers.length ? adminUsers : allUsers) : allUsers;
+  const adminUserCards = adminUserRecords.length
+    ? adminUserRecords.map((workspaceUser) => {
+      const workspaceUserId = recordId(workspaceUser);
+      const isActive = (workspaceUser.status || 'active') === 'active';
+      return card(workspaceUser.name || workspaceUser.email || 'User', `${workspaceUser.email || 'No email'} · ${titleCase(workspaceUser.role || 'brand_owner')} · ${titleCase(workspaceUser.plan || 'free')} plan`, titleCase(workspaceUser.status || 'active'), {
         id: recordId(workspaceUser),
         kind: 'user',
-        href: '/dashboard/team',
-        editHref: '/dashboard/team',
-        editAction: `/admin/users/${recordId(workspaceUser)}/status`,
+        href: '/dashboard/admin',
+        editHref: '/dashboard/admin',
+        editAction: `/dashboard/actions/admin/users/${workspaceUserId}/status`,
         editMethod: 'post',
+        actions: workspaceUserId ? [
+          {
+            label: isActive ? 'Disable user' : 'Enable user',
+            action: `/dashboard/actions/admin/users/${workspaceUserId}/status`,
+            method: 'post',
+            kind: isActive ? 'disable' : 'enable',
+            destructive: isActive,
+            hiddenFields: { status: isActive ? 'suspended' : 'active' }
+          }
+        ] : [],
         editFields: [
           { name: 'status', label: 'Status', type: 'select', value: workspaceUser.status || 'active', options: ['active', 'suspended', 'pending'] }
         ],
         details: {
+          ID: workspaceUserId,
           Name: workspaceUser.name,
           Email: workspaceUser.email,
           Role: titleCase(workspaceUser.role),
           Plan: titleCase(workspaceUser.plan),
           Status: titleCase(workspaceUser.status),
           Verified: workspaceUser.isVerified ? 'Yes' : 'No',
+          'Pending email': workspaceUser.pendingEmail,
+          'Last login': workspaceUser.lastLoginAt ? formatDateTime(workspaceUser.lastLoginAt) : '',
           'Created at': workspaceUser.createdAt ? formatDateTime(workspaceUser.createdAt) : ''
         }
-      }))
+      });
+    })
     : [];
   const workspaceUserCards = adminUserCards.length ? adminUserCards : [ownerUserCard, ...teamCards];
 
-  const subscriptionCards = subscriptions.map((subscription) => card(
+  const subscriptionRecords = platformAdminView && adminSubscriptions.length ? adminSubscriptions : subscriptions;
+  const paymentRecords = platformAdminView && adminPayments.length ? adminPayments : payments;
+  const subscriptionCards = subscriptionRecords.map((subscription) => card(
     `${titleCase(subscription.plan)} subscription`,
-    `${titleCase(subscription.provider || 'manual')} · ${subscription.currentPeriodEnd ? `renews ${formatDate(subscription.currentPeriodEnd)}` : 'period not set'}`,
+    `${subscription.user?.email ? `${subscription.user.email} · ` : ''}${titleCase(subscription.provider || 'pesapal')} · ${subscription.currentPeriodEnd ? `renews ${formatDate(subscription.currentPeriodEnd)}` : 'period not set'}`,
     titleCase(subscription.status || 'active'),
     {
       id: recordId(subscription),
@@ -1162,7 +1383,9 @@ function buildDashboardData({
       href: '/dashboard/billing',
       editHref: '/dashboard/billing',
       details: {
+        User: subscription.user?.email || entityId(subscription.user),
         Plan: titleCase(subscription.plan),
+        'Plan record': subscription.planRef?.name || entityId(subscription.planRef),
         Provider: titleCase(subscription.provider),
         Status: titleCase(subscription.status),
         'Current period start': subscription.currentPeriodStart ? formatDateTime(subscription.currentPeriodStart) : '',
@@ -1172,19 +1395,20 @@ function buildDashboardData({
       }
     }
   ));
-  const paymentCards = payments.map((payment) => card(
+  const paymentCards = paymentRecords.map((payment) => card(
     `${payment.currency || 'USD'} ${Number(payment.amount || 0).toLocaleString()}`,
-    `${titleCase(payment.provider || 'payment')} · ${payment.reference || 'no reference'} · ${formatDate(payment.createdAt)}`,
+    `${payment.user?.email ? `${payment.user.email} · ` : ''}${titleCase(payment.provider || 'payment')} · ${payment.reference || 'no reference'} · ${formatDate(payment.createdAt)}`,
     titleCase(payment.status || 'pending'),
     {
       id: recordId(payment),
       kind: 'payment',
       href: '/dashboard/billing',
       editHref: '/dashboard/billing',
-      actions: payment.status !== 'paid' && user.role === 'super_admin'
-        ? [{ label: 'Mark paid', action: `/admin/payments/${recordId(payment)}/mark-paid`, method: 'post', kind: 'billing' }]
+      actions: payment.status !== 'paid' && payment.checkoutUrl
+        ? [{ label: 'Open Pesapal checkout', href: payment.checkoutUrl, kind: 'billing' }]
         : [],
       details: {
+        User: payment.user?.email || entityId(payment.user),
         Provider: titleCase(payment.provider),
         Amount: Number(payment.amount || 0).toLocaleString(),
         Currency: payment.currency,
@@ -1250,6 +1474,10 @@ function buildDashboardData({
       kind: 'avatar_profile',
       href: '/dashboard/avatar-video',
       editHref: '/dashboard/avatar-video',
+      actions: recordId(avatar) ? [
+        { label: 'Generate video', action: `/dashboard/actions/avatars/${recordId(avatar)}/generate-video`, method: 'post', kind: 'video' },
+        { label: 'Revoke', action: `/dashboard/actions/avatars/${recordId(avatar)}/revoke`, method: 'post', kind: 'revoke', destructive: true }
+      ] : [],
       mediaUrl: mediaUrlFromRecord(avatar.sourceMedia),
       mediaType: mediaTypeFromRecord(avatar.sourceMedia),
       details: {
@@ -1259,15 +1487,21 @@ function buildDashboardData({
         Status: titleCase(avatar.status),
         'Ownership confirmed': avatar.ownershipConfirmed ? 'Yes' : 'No',
         'Allowed use': titleCase(avatar.allowedUse),
+        'Default script': avatar.defaultScript,
+        'Last video job': entityId(avatar.lastVideoJob),
+        'Provider notes': avatar.providerNotes,
         'Consent version': avatar.consentVersion,
         'Consented at': avatar.consentedAt ? formatDateTime(avatar.consentedAt) : '',
         'Updated at': avatar.updatedAt ? formatDateTime(avatar.updatedAt) : ''
       }
     }
   ));
-  const apiLogCards = apiLogs.map((log) => card(
+  const apiLogRecords = platformAdminView && adminApiLogs.length ? adminApiLogs : apiLogs;
+  const auditLogRecords = platformAdminView && adminAuditLogs.length ? adminAuditLogs : auditLogs;
+  const failedPostRecords = platformAdminView && adminFailedPosts.length ? adminFailedPosts : failedPosts;
+  const apiLogCards = apiLogRecords.map((log) => card(
     `${titleCase(log.provider)} ${titleCase(log.action)}`,
-    `${log.message || 'API request'} · ${log.statusCode || 'no status code'} · ${timeAgo(log.createdAt)}`,
+    `${log.user?.email ? `${log.user.email} · ` : ''}${log.message || 'API request'} · ${log.statusCode || 'no status code'} · ${timeAgo(log.createdAt)}`,
     titleCase(log.status || 'success'),
     {
       id: recordId(log),
@@ -1275,6 +1509,7 @@ function buildDashboardData({
       href: '/dashboard/admin',
       editHref: '/dashboard/admin',
       details: {
+        User: log.user?.email || entityId(log.user),
         Provider: titleCase(log.provider),
         Action: titleCase(log.action),
         Status: titleCase(log.status),
@@ -1284,9 +1519,9 @@ function buildDashboardData({
       }
     }
   ));
-  const auditLogCards = auditLogs.map((log) => card(
+  const auditLogCards = auditLogRecords.map((log) => card(
     titleCase(log.action || 'Audit event'),
-    `${log.entityType || 'Workspace'}${log.ipAddress ? ` · ${log.ipAddress}` : ''} · ${timeAgo(log.createdAt)}`,
+    `${log.user?.email ? `${log.user.email} · ` : ''}${log.entityType || 'Workspace'}${log.ipAddress ? ` · ${log.ipAddress}` : ''} · ${timeAgo(log.createdAt)}`,
     'Audit',
     {
       id: recordId(log),
@@ -1294,6 +1529,7 @@ function buildDashboardData({
       href: '/dashboard/admin',
       editHref: '/dashboard/admin',
       details: {
+        User: log.user?.email || entityId(log.user),
         Action: titleCase(log.action),
         'Entity type': log.entityType,
         'Entity ID': log.entityId,
@@ -1303,11 +1539,69 @@ function buildDashboardData({
       }
     }
   ));
-  const failedPostCards = failedPosts.map((post) => postCard(post, {
-    description: `${postDescription(post)} · ${truncate(post.errorMessage || 'No error message saved', 72)}`
-  }));
+  const failedPostCards = failedPostRecords.map((post) => {
+    const postId = recordId(post);
+    return postCard(post, {
+      description: `${postDescription(post)} · ${truncate(post.errorMessage || 'No error message saved', 72)}`,
+      href: platformAdminView ? '/dashboard/admin' : '/dashboard/content-library',
+      editHref: platformAdminView ? '/dashboard/admin' : '/dashboard/content-library',
+      editAction: platformAdminView ? '' : undefined,
+      deleteAction: platformAdminView ? '' : undefined,
+      actions: platformAdminView && postId ? [
+        { label: 'Retry post', action: `/dashboard/actions/admin/posts/${postId}/retry`, method: 'post', kind: 'retry' }
+      ] : undefined
+    });
+  });
+  const failedJobCards = (platformAdminView ? adminFailedVideoJobs : videoJobs.filter((job) => job.status === 'failed')).map((job) => card(
+    job.prompt ? truncate(job.prompt, 48) : `${titleCase(job.mode)} video job`,
+    `${job.createdBy?.email ? `${job.createdBy.email} · ` : ''}${job.brand?.name || 'Brand'} · ${job.provider || 'provider'} · ${truncate(job.errorMessage || 'No error saved', 72)}`,
+    titleCase(job.status || 'failed'),
+    {
+      id: recordId(job),
+      kind: 'failed_ai_video_job',
+      href: '/dashboard/admin',
+      editHref: '/dashboard/admin',
+      actions: recordId(job) ? [
+        { label: 'Retry job', action: `/dashboard/actions/admin/jobs/${recordId(job)}/retry`, method: 'post', kind: 'retry' }
+      ] : [],
+      details: {
+        User: job.createdBy?.email || entityId(job.createdBy),
+        Brand: job.brand?.name || entityId(job.brand),
+        Provider: job.provider,
+        Mode: titleCase(job.mode),
+        Status: titleCase(job.status),
+        Prompt: job.prompt,
+        Error: job.errorMessage,
+        'Output URL': job.outputUrl,
+        'Provider job ID': job.providerJobId,
+        Credits: job.costCredits,
+        Metadata: job.metadata,
+        'Updated at': job.updatedAt ? formatDateTime(job.updatedAt) : ''
+      }
+    }
+  ));
+  const aiUsageCards = (platformAdminView ? adminUsageLogs : []).map((log) => card(
+    `${titleCase(log.action || 'AI usage')} · ${compactNumber(log.credits || 0)} credits`,
+    `${log.user?.email || 'Unknown user'} · ${log.brand?.name || 'No brand'} · ${titleCase(log.provider || 'provider pending')}`,
+    'AI usage',
+    {
+      id: recordId(log),
+      kind: 'ai_usage',
+      href: '/dashboard/admin',
+      editHref: '/dashboard/admin',
+      details: {
+        User: log.user?.email || entityId(log.user),
+        Brand: log.brand?.name || entityId(log.brand),
+        Action: titleCase(log.action),
+        Provider: titleCase(log.provider),
+        Credits: log.credits,
+        Metadata: log.metadata,
+        'Created at': log.createdAt ? formatDateTime(log.createdAt) : ''
+      }
+    }
+  ));
   const usageCards = (usageDashboard?.cards || []).map((usage) => card(
-    titleCase(usage.limitName || usage.metric),
+    usage.label || titleCase(usage.limitName || usage.metric),
     usage.unlimited ? `${usage.used} used · unlimited on this plan` : `${usage.used} used of ${usage.limit}`,
     usage.warn ? 'Upgrade soon' : 'Usage',
     {
@@ -1362,31 +1656,108 @@ function buildDashboardData({
     actionLabel: 'Open plans',
     details: { Source: 'SubscriptionPlan database', Access: 'Superadmin, Billing Admin, or plans.view permission', Sync: 'Landing, signup, checkout, billing, limits, and feature gates' }
   });
+  const adminSocialAccountCards = platformAdminView
+    ? adminSocialAccounts.map((account) => {
+      const health = evaluateSocialAccountHealth(account);
+      return card(
+        account.accountName || titleCase(account.platform),
+        `${account.owner?.email || 'Unknown owner'} · ${account.brand?.name || 'No brand'} · ${health.label}`,
+        titleCase(account.status || 'connected'),
+        {
+          id: recordId(account),
+          kind: 'connected_account',
+          href: '/dashboard/admin',
+          editHref: '/dashboard/admin',
+          details: {
+            Owner: account.owner?.email || entityId(account.owner),
+            Brand: account.brand?.name || entityId(account.brand),
+            Platform: titleCase(account.platform),
+            'Account ID': account.accountId,
+            Status: titleCase(account.status),
+            Health: health.label,
+            'Health message': health.message,
+            Permissions: account.permissions,
+            'Missing permissions': health.missingPermissions,
+            'Token expires': account.tokenExpiresAt ? formatDateTime(account.tokenExpiresAt) : '',
+            'Last health check': account.lastHealthCheckAt ? formatDateTime(account.lastHealthCheckAt) : '',
+            'Last sync': account.lastSyncAt ? formatDateTime(account.lastSyncAt) : ''
+          }
+        }
+      );
+    })
+    : [];
+  const latestProviderLogs = [];
+  const providerLogIds = new Set();
+  for (const log of apiLogRecords) {
+    const key = `${log.provider || 'provider'}:${log.action || 'check'}`;
+    if (providerLogIds.has(key)) continue;
+    providerLogIds.add(key);
+    latestProviderLogs.push(log);
+  }
+  const providerReadinessCards = platformAdminView
+    ? (latestProviderLogs.length ? latestProviderLogs.map((log) => card(
+        `${titleCase(log.provider || 'Provider')} readiness`,
+        `${titleCase(log.action || 'health check')} · ${log.message || 'No message saved'} · ${timeAgo(log.createdAt)}`,
+        titleCase(log.status || 'unknown'),
+        {
+          id: recordId(log),
+          kind: 'provider_readiness',
+          href: '/dashboard/admin',
+          editHref: '/dashboard/settings',
+          details: {
+            Provider: titleCase(log.provider),
+            Action: titleCase(log.action),
+            Status: titleCase(log.status),
+            'Status code': log.statusCode,
+            'Duration ms': log.durationMs,
+            Message: log.message,
+            Metadata: log.metadata,
+            'Checked at': log.createdAt ? formatDateTime(log.createdAt) : ''
+          }
+        }
+      )) : [
+        card('Provider readiness', 'Run diagnostics from Settings to record OpenAI, Cloudinary, Redis, Google and Meta readiness.', 'Not checked', {
+          kind: 'provider_readiness',
+          href: '/dashboard/settings',
+          editHref: '/dashboard/settings',
+          actionHref: '/dashboard/settings',
+          actionLabel: 'Open settings',
+          details: { Source: 'ApiLog health_check/config_check records', Status: 'No provider checks have been recorded yet' }
+        })
+      ])
+    : [];
   const adminCards = [
     planManagementCard,
     ...adminPlanCards,
+    ...adminBrandCards,
     ...workspaceUserCards,
+    ...subscriptionCards,
     ...paymentCards,
+    ...aiUsageCards,
     ...failedPostCards,
+    ...failedJobCards,
+    ...adminSocialAccountCards,
+    ...providerReadinessCards,
     ...apiLogCards,
     ...auditLogCards
   ];
   const socialAlertCards = socialAccounts
-    .filter((account) => ['expired', 'needs_reconnect', 'failed', 'disconnected'].includes(account.status))
-    .map((account) => card(account.accountName, tokenStatusDescription(account), titleCase(account.status), {
+    .map((account) => ({ account, health: evaluateSocialAccountHealth(account) }))
+    .filter(({ health }) => health.status !== 'connected')
+    .map(({ account, health }) => card(account.accountName, `${tokenStatusDescription(account)} - ${health.message}`, health.label, {
       id: recordId(account), kind: 'social_account', href: '/dashboard/social', editHref: '/dashboard/social',
-      details: { Brand: account.brand?.name || '', Platform: titleCase(account.platform), Status: titleCase(account.status), 'Token expires': account.tokenExpiresAt ? formatDateTime(account.tokenExpiresAt) : '', 'Last sync': account.lastSyncAt ? formatDateTime(account.lastSyncAt) : '' }
+      details: { Brand: account.brand?.name || '', Platform: titleCase(account.platform), Status: titleCase(account.status), Health: health.label, 'Health message': health.message, 'Missing permissions': health.missingPermissions, 'Token expires': account.tokenExpiresAt ? formatDateTime(account.tokenExpiresAt) : '', 'Last sync': account.lastSyncAt ? formatDateTime(account.lastSyncAt) : '' }
     }));
   const securityCards = [
     card('Account status', `${user.email || userName} · ${titleCase(user.status || 'active')} · verified ${user.isVerified ? 'yes' : 'no'}`, titleCase(user.role || 'owner'), {
-      kind: 'account', href: '/dashboard/settings', editHref: '/dashboard/settings', details: { Name: userName, Email: user.email, Role: titleCase(user.role || 'owner'), Plan: planName, Verified: user.isVerified ? 'Yes' : 'No', Status: titleCase(user.status || 'active') }
+      kind: 'account', href: '/dashboard/settings', editHref: '/dashboard/settings', details: { Name: userName, Email: user.email, 'Pending email': user.pendingEmail || '', Role: titleCase(user.role || 'owner'), Plan: planName, Verified: user.isVerified ? 'Yes' : 'No', Status: titleCase(user.status || 'active'), 'Deletion request': user.accountDeletionStatus === 'requested' ? 'Requested' : '' }
     }),
     ...socialAlertCards,
     ...auditLogCards.slice(0, 4)
   ];
   const settingCards = [
     card('Profile', `${userName} · ${user.email || 'no email'} · ${planName} plan`, titleCase(user.status || 'active'), {
-      kind: 'profile', href: '/dashboard/settings', editHref: '/dashboard/settings', details: { Name: userName, Email: user.email, Plan: planName, Status: titleCase(user.status || 'active') }
+      kind: 'profile', href: '/dashboard/settings', editHref: '/dashboard/settings', details: { Name: userName, Email: user.email, 'Pending email': user.pendingEmail || '', Plan: planName, Status: titleCase(user.status || 'active'), 'Deletion request': user.accountDeletionStatus === 'requested' ? 'Requested' : '' }
     }),
     ...brandCards
   ];
@@ -1437,19 +1808,38 @@ function buildDashboardData({
         audience: brand.targetAudience || '',
         preferredCta: brand.preferredCta || ''
       })),
-      brandRecords: brands.map(brandRecord),
-      socialAccounts: socialAccounts.map((account) => ({
-        id: account._id.toString(),
-        brandId: account.brand?._id?.toString() || '',
-        brandName: account.brand?.name || '',
-        platform: account.platform,
-        accountName: account.accountName,
-        accountId: account.accountId || '',
-        permissions: account.permissions || [],
-        status: account.status,
-        lastSyncAt: account.lastSyncAt,
-        tokenExpiresAt: account.tokenExpiresAt
+      posts: recentPosts.map((post) => ({
+        id: post._id.toString(),
+        title: postTitle(post),
+        brandName: post.brand?.name || '',
+        status: post.status || '',
+        platform: post.platform || ''
       })),
+      campaigns: campaigns.map((campaign) => ({
+        id: campaign._id.toString(),
+        name: campaign.name,
+        brandName: campaign.brand?.name || '',
+        status: campaign.status || ''
+      })),
+      brandRecords: brands.map(brandRecord),
+      socialAccounts: socialAccounts.map((account) => {
+        const health = evaluateSocialAccountHealth(account);
+        return {
+          id: account._id.toString(),
+          brandId: account.brand?._id?.toString() || '',
+          brandName: account.brand?.name || '',
+          platform: account.platform,
+          accountName: account.accountName,
+          accountId: account.accountId || '',
+          permissions: account.permissions || [],
+          status: account.status,
+          health,
+          capabilities: health.capabilities,
+          lastSyncAt: account.lastSyncAt,
+          lastHealthCheckAt: account.lastHealthCheckAt,
+          tokenExpiresAt: account.tokenExpiresAt
+        };
+      }),
       media: media.map((asset) => ({
         id: asset._id.toString(),
         brandId: asset.brand?._id?.toString() || '',
@@ -1458,7 +1848,10 @@ function buildDashboardData({
         fileType: asset.fileType,
         mimeType: asset.mimeType || '',
         fileUrl: asset.fileUrl,
-        consentStatus: asset.consentStatus
+        consentStatus: asset.consentStatus,
+        status: asset.status || 'active',
+        folder: asset.folder || '',
+        tags: asset.tags || []
       })),
       teamMembers: teamMembers.map((member) => ({
         id: member._id.toString(),
@@ -1514,7 +1907,7 @@ function buildDashboardData({
         billingInterval: planRecord.billingInterval || '',
         isTrial: Boolean(planRecord.isTrial),
         isPopular: Boolean(planRecord.isPopular),
-        checkoutUrl: planRecord.checkoutUrl || `/billing/checkout/${encodeURIComponent(planRecord.slug || '')}`,
+        checkoutUrl: planRecord.checkoutUrl || `/dashboard/billing/checkout/${encodeURIComponent(planRecord.slug || '')}`,
         featureList: planRecord.featureList || [],
         limitList: planRecord.limitList || []
       })),
@@ -1525,6 +1918,13 @@ function buildDashboardData({
       name: userName,
       firstName: userName.split(/\s+/)[0],
       initials: initials(userName).toUpperCase(),
+      email: user.email || '',
+      pendingEmail: user.pendingEmail || '',
+      avatar: user.avatar || '',
+      isVerified: Boolean(user.isVerified),
+      status: user.status || 'active',
+      accountDeletionStatus: user.accountDeletionStatus || 'none',
+      accountDeletionRequestedAt: user.accountDeletionRequestedAt || '',
       role: titleCase(user.role || 'brand_owner'),
       plan: planName,
       planSlug: plan
@@ -1638,8 +2038,8 @@ function buildDashboardData({
       'brand-brain': {
         stats: [
           [compactNumber(brands.length), 'Brand kits', 'Saved profiles'],
-          [compactNumber(productCount), 'Products', 'Offer library'],
-          [compactNumber(ruleCount), 'Tone rules', 'Voice memory'],
+          [`${brandCompletionAverage}%`, 'Avg completion', 'Checklist'],
+          [compactNumber(productCount), 'Products/services', 'Offer library'],
           [compactNumber(proofCount), 'Proof points', 'Testimonials']
         ],
         cards: brandCards,
@@ -1745,7 +2145,7 @@ function buildDashboardData({
       'video-system': {
         stats: [
           [compactNumber(videoJobTotal), 'Video jobs', 'AI generation'],
-          [compactNumber(videoStatus.ready || 0), 'Ready videos', 'Exports'],
+          [compactNumber((videoStatus.rendered || 0) + (videoStatus.ready || 0)), 'Rendered videos', 'Exports'],
           [compactNumber(videoStatus.failed || 0), 'Failed videos', 'Needs retry'],
           [compactNumber(videoMediaCount), 'Video files', 'Media library']
         ],
@@ -1756,8 +2156,8 @@ function buildDashboardData({
       },
       'avatar-video': {
         stats: [
-          [compactNumber(videoStatus.ready || 0), 'Ready', 'Generated'],
-          [compactNumber(videoStatus.generating || 0), 'Generating', 'In progress'],
+          [compactNumber((videoStatus.rendered || 0) + (videoStatus.ready || 0)), 'Ready', 'Generated'],
+          [compactNumber((videoStatus.processing || 0) + (videoStatus.generating || 0)), 'Processing', 'In progress'],
           [compactNumber(videoStatus.failed || 0), 'Failed', 'Retry'],
           [planName, 'Plan', 'Current']
         ],
@@ -1839,19 +2239,20 @@ function buildDashboardData({
       },
       analytics: {
         stats: [
-          [compactNumber(analyticsTotals.reach), 'Reach', 'Synced analytics'],
-          [analyticsTotals.engagementRate ? `${analyticsTotals.engagementRate.toFixed(1)}%` : '0%', 'Engagement', 'Average'],
-          [compactNumber(analyticsTotals.clicks), 'Clicks', 'Tracked'],
-          [titleCase(topPlatform), 'Top format', 'By posts']
+          [compactNumber(analyticsTotalMetrics.impressions), 'Impressions', analyticsView.hasMockData ? 'Live + dev data' : 'Synced analytics'],
+          [compactNumber(analyticsTotalMetrics.reach), 'Reach', 'Audience'],
+          [analyticsTotalMetrics.engagementRate ? `${Number(analyticsTotalMetrics.engagementRate).toFixed(2)}%` : '0%', 'Engagement', 'Average'],
+          [titleCase(analyticsBestPlatform), 'Best platform', analyticsView.bestTime ? `Best time ${analyticsView.bestTime}` : 'By engagement']
         ],
-        cards: [
-          card('Views', `${compactNumber(analyticsTotals.views)} total views recorded from connected analytics.`, 'Views'),
-          card('Likes', `${compactNumber(analyticsTotals.likes)} likes across synced posts.`, 'Likes'),
-          card('Comments', `${compactNumber(analyticsTotals.comments)} comments captured.`, 'Comments'),
-          card('Shares', `${compactNumber(analyticsTotals.shares)} shares tracked.`, 'Shares'),
-          card('Clicks', `${compactNumber(analyticsTotals.clicks)} click actions recorded.`, 'Clicks'),
-          card('Reach', `${compactNumber(analyticsTotals.reach)} people reached across synced accounts.`, 'Reach')
-        ]
+        cards: analyticsView.cards?.length ? analyticsView.cards : [
+          card('Analytics empty state', 'Publish posts or connect platform analytics permissions to start tracking performance.', 'Analytics')
+        ],
+        rows: analyticsView.rows || [],
+        tableRows: analyticsView.rows || [],
+        charts: analyticsView.charts || {},
+        recommendations: analyticsView.recommendations || [],
+        exportUrl: analyticsView.exportUrl || '/dashboard/analytics/export.csv',
+        form: true
       },
       notifications: {
         stats: [
@@ -1867,10 +2268,10 @@ function buildDashboardData({
       },
       admin: {
         stats: [
-          [compactNumber(brands.length), 'Brands', 'Workspace'],
-          [compactNumber(sum(Object.values(postStatus))), 'Posts', 'Content'],
-          [compactNumber(failedCount), 'Failed posts', 'Retry'],
-          [compactNumber(videoJobTotal), 'Video jobs', 'Queue']
+          [compactNumber(platformAdminView ? adminBrands.length : brands.length), 'Brands', platformAdminView ? 'Platform' : 'Workspace'],
+          [compactNumber(platformAdminView ? adminUserRecords.length : workspaceUserCards.length), 'Users', 'Accounts'],
+          [compactNumber(paymentRecords.length), 'Payments', 'Billing'],
+          [compactNumber((platformAdminView ? failedPostRecords.length : failedCount) + failedJobCards.length), 'Failures', 'Retry']
         ],
         cards: adminCards,
         rows: adminCards,
@@ -1936,9 +2337,14 @@ async function index(req, res, next) {
     const requestedPage = resolveDashboardPageForAccess({ page: req.params.page, featureAccess });
     const userId = req.user._id;
     const selectedCalendarMonth = parseMonthValue(req.query.month);
+    const requestedCalendarView = String(req.query.view || 'month').toLowerCase();
+    const calendarView = ['month', 'week', 'day', 'list'].includes(requestedCalendarView) ? requestedCalendarView : 'month';
+    const focusDay = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || '')) ? String(req.query.day) : dayKey(new Date());
     const calendarStart = startOfMonth(selectedCalendarMonth);
     const calendarEnd = endOfMonth(selectedCalendarMonth);
     const shouldLoadPlans = canViewPlanManagement(req.user);
+    const canViewPlatformAdmin = requestedPage === 'admin' && Boolean(featureAccess?.capabilities?.canManageAdmin);
+    const shouldLoadAdminPlans = shouldLoadPlans || canViewPlatformAdmin;
 
     await updateBrandPerformanceMemoryForOwner(userId);
 
@@ -1973,6 +2379,15 @@ async function index(req, res, next) {
       auditLogs,
       failedPosts,
       allUsers,
+      adminBrands,
+      adminSubscriptions,
+      adminPayments,
+      adminUsageLogs,
+      adminFailedPosts,
+      adminFailedVideoJobs,
+      adminSocialAccounts,
+      adminApiLogs,
+      adminAuditLogs,
       adminPlans,
       planCountRows,
       publicPricingPlans
@@ -1980,10 +2395,10 @@ async function index(req, res, next) {
       Brand.find({ owner: userId, status: 'active' }).sort({ updatedAt: -1 }).limit(12).lean(),
       Campaign.find({ createdBy: userId, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
       SocialAccount.find({ owner: userId }).populate('brand').sort({ updatedAt: -1 }).limit(16).lean(),
-      Approval.find({ requestedBy: userId }).populate({ path: 'post', populate: [{ path: 'brand' }, { path: 'media' }, { path: 'targetAccounts' }] }).sort({ updatedAt: -1 }).limit(12).lean(),
+      Approval.find({ requestedBy: userId }).populate({ path: 'post', populate: [{ path: 'brand' }, { path: 'media' }, { path: 'targetAccounts' }] }).populate({ path: 'campaign', populate: { path: 'brand' } }).sort({ updatedAt: -1 }).limit(12).lean(),
       Post.find({ createdBy: userId }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(12).lean(),
       Post.find({ createdBy: userId, status: 'scheduled' }).populate('brand').populate('media').populate('targetAccounts').sort({ scheduledAt: 1 }).limit(12).lean(),
-      Media.find({ uploadedBy: userId }).populate('brand').sort({ updatedAt: -1 }).limit(80).lean(),
+      Media.find({ uploadedBy: userId, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(80).lean(),
       AiVideoJob.find({ createdBy: userId }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
       Notification.countDocuments({ user: userId, readAt: null }),
       Post.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
@@ -1991,7 +2406,7 @@ async function index(req, res, next) {
       Post.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$platform', count: { $sum: 1 } } }]),
       SocialAccount.aggregate([{ $match: { owner: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Campaign.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Media.aggregate([{ $match: { uploadedBy: userId } }, { $group: { _id: '$fileType', count: { $sum: 1 } } }]),
+      Media.aggregate([{ $match: { uploadedBy: userId, status: { $ne: 'archived' } } }, { $group: { _id: '$fileType', count: { $sum: 1 } } }]),
       AiVideoJob.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Approval.aggregate([{ $match: { requestedBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Notification.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
@@ -2020,9 +2435,18 @@ async function index(req, res, next) {
       ApiLog.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
       AuditLog.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
       Post.find({ createdBy: userId, status: 'failed' }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(12).lean(),
-      req.user.role === 'super_admin' ? User.find().sort({ createdAt: -1 }).limit(24).lean() : Promise.resolve([]),
-      shouldLoadPlans ? SubscriptionPlan.find().sort({ sortOrder: 1, createdAt: 1 }).lean() : Promise.resolve([]),
-      shouldLoadPlans ? Subscription.aggregate([{ $group: { _id: '$planRef', count: { $sum: 1 } } }]) : Promise.resolve([]),
+      canViewPlatformAdmin ? User.find().sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? Brand.find().populate('owner').sort({ updatedAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? Subscription.find().populate('user').populate('planRef').sort({ updatedAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? Payment.find().populate('user').sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? UsageLog.find().populate('user').populate('brand').sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? Post.find({ status: 'failed' }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(24).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? AiVideoJob.find({ status: 'failed' }).populate('brand').populate('createdBy').sort({ updatedAt: -1 }).limit(24).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? SocialAccount.find().populate('brand').populate('owner').sort({ updatedAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? ApiLog.find().populate('user').sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? AuditLog.find().populate('user').sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      shouldLoadAdminPlans ? SubscriptionPlan.find().sort({ sortOrder: 1, createdAt: 1 }).lean() : Promise.resolve([]),
+      shouldLoadAdminPlans ? Subscription.aggregate([{ $group: { _id: '$planRef', count: { $sum: 1 } } }]) : Promise.resolve([]),
       getPublicPricingCards()
     ]);
 
@@ -2033,23 +2457,29 @@ async function index(req, res, next) {
     }, {});
 
     const brandIds = brands.map((brand) => brand._id);
-    const [analyticsTotals = {}] = brandIds.length
-      ? await Analytics.aggregate([
-          { $match: { brand: { $in: brandIds } } },
-          {
-            $group: {
-              _id: null,
-              views: { $sum: '$views' },
-              likes: { $sum: '$likes' },
-              comments: { $sum: '$comments' },
-              shares: { $sum: '$shares' },
-              clicks: { $sum: '$clicks' },
-              reach: { $sum: '$reach' },
-              engagementRate: { $avg: '$engagementRate' }
-            }
-          }
-        ])
-      : [{}];
+    const analyticsRecords = brandIds.length
+      ? await Analytics.find({ brand: { $in: brandIds } })
+          .populate('brand')
+          .populate('campaign')
+          .populate('post')
+          .populate('account')
+          .sort({ metricDate: -1, updatedAt: -1 })
+          .limit(500)
+          .lean()
+      : [];
+    const analyticsPosts = [
+      ...recentPosts,
+      ...scheduledPosts,
+      ...calendarPosts,
+      ...failedPosts
+    ];
+    const analyticsDashboard = buildAnalyticsDashboard({
+      analyticsRecords,
+      posts: analyticsPosts,
+      campaigns,
+      socialAccounts
+    });
+    const analyticsTotals = analyticsDashboard.totals || {};
 
     const dashboardData = buildDashboardData({
       user: req.user,
@@ -2071,9 +2501,24 @@ async function index(req, res, next) {
       videoStatus: countMap(videoStatusRows),
       approvalStatus: countMap(approvalStatusRows),
       analyticsTotals,
+      analyticsDashboard,
       notifications,
       growthAssets,
-      calendarMonthData: buildCalendarMonthData(selectedCalendarMonth, calendarPosts),
+      calendarMonthData: buildCalendarMonthData(selectedCalendarMonth, calendarPosts, {
+        view: calendarView,
+        focusDay,
+        bestTimeSuggestions: brands.slice(0, 4).flatMap((brand) => {
+          const platforms = Array.isArray(brand.autoPosting?.platforms) && brand.autoPosting.platforms.length
+            ? brand.autoPosting.platforms
+            : ['facebook', 'instagram', 'whatsapp'];
+          return platforms.slice(0, 2).flatMap((platform) => suggestBestTimes({ brand, platform, limit: 1 }).map((suggestion) => ({
+            ...suggestion,
+            brandId: brand._id?.toString?.() || '',
+            brandName: brand.name || 'Brand',
+            platform
+          })));
+        }).slice(0, 6)
+      }),
       teamMembers,
       subscriptions,
       payments,
@@ -2084,12 +2529,22 @@ async function index(req, res, next) {
       auditLogs,
       failedPosts,
       allUsers,
+      adminBrands,
+      adminSubscriptions,
+      adminPayments,
+      adminUsageLogs,
+      adminFailedPosts,
+      adminFailedVideoJobs,
+      adminSocialAccounts,
+      adminApiLogs,
+      adminAuditLogs,
       adminPlans,
       planSubscriptionCounts,
       currentPlan,
       featureAccess,
       usageDashboard,
-      publicPricingPlans
+      publicPricingPlans,
+      platformAdminView: canViewPlatformAdmin
     });
     dashboardData.initialPage = requestedPage;
     dashboardData.csrfToken = req.csrfToken ? req.csrfToken() : '';

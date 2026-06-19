@@ -19,7 +19,7 @@ async function main() {
     user.plan = 'superadmin';
     await user.save();
   }
-  await activatePlanForUser(user, 'superadmin', { paymentProvider: 'manual', metadata: { seeded: true } });
+  await activatePlanForUser(user, 'superadmin', { paymentProvider: 'free', metadata: { seeded: true } });
   console.log(`Superadmin ready: ${email}`);
   process.exit(0);
 }

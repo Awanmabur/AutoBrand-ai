@@ -1,5 +1,7 @@
 const AdminRole = require('../models/AdminRole');
+const TeamMember = require('../models/TeamMember');
 const AppError = require('../utils/AppError');
+const { permissionsForTeamRole } = require('../services/team/teamAccess.service');
 
 const ROLE_PERMISSIONS = {
   super_admin: ['*'],
@@ -10,9 +12,9 @@ const ROLE_PERMISSIONS = {
   content_moderator: ['content.view', 'content.moderate', 'approvals.view', 'approvals.manage'],
   support_agent: ['users.view', 'billing.view', 'approvals.view'],
   analyst: ['analytics.view', 'audit.view'],
-  agency_owner: ['billing.view', 'content.view', 'approvals.manage', 'handoff.manage', 'auto_mode.manage'],
-  brand_owner: ['billing.view', 'content.view', 'approvals.manage', 'handoff.manage'],
-  team_owner: ['billing.view', 'content.view', 'approvals.manage', 'handoff.manage'],
+  agency_owner: ['team.manage', 'billing.view', 'content.view', 'content.create', 'content.edit', 'approvals.manage', 'handoff.manage', 'auto_mode.manage'],
+  brand_owner: ['team.manage', 'billing.view', 'content.view', 'content.create', 'content.edit', 'approvals.manage', 'handoff.manage'],
+  team_owner: ['team.manage', 'billing.view', 'content.view', 'content.create', 'content.edit', 'approvals.manage', 'handoff.manage'],
   team_member: ['content.view'],
   content_creator: ['content.view'],
   client_reviewer: ['approvals.view']
@@ -23,11 +25,16 @@ async function getPermissions(user) {
   const direct = Array.isArray(user.permissions) ? user.permissions : [];
   const rolePermissions = ROLE_PERMISSIONS[user.role] || [];
   let adminRolePermissions = [];
+  let teamPermissions = [];
   if (user.adminRole) {
     const role = await AdminRole.findById(user.adminRole);
     if (role?.isActive) adminRolePermissions = role.permissions || [];
   }
-  return [...new Set([...rolePermissions, ...direct, ...adminRolePermissions])];
+  if (user._id) {
+    const memberships = await TeamMember.find({ user: user._id, status: 'active' }).select('role permissions').lean();
+    teamPermissions = memberships.flatMap((member) => permissionsForTeamRole(member.role, member.permissions));
+  }
+  return [...new Set([...rolePermissions, ...direct, ...adminRolePermissions, ...teamPermissions])];
 }
 
 function hasPermission(permissions, permission) {

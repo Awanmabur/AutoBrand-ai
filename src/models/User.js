@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    pendingEmail: { type: String, lowercase: true, trim: true },
     passwordHash: { type: String },
     googleId: { type: String },
     avatar: { type: String },
@@ -22,7 +23,11 @@ const userSchema = new mongoose.Schema(
     passwordResetTokenHash: { type: String },
     passwordResetExpiresAt: { type: Date },
     emailVerificationTokenHash: { type: String },
-    emailVerificationExpiresAt: { type: Date }
+    emailVerificationExpiresAt: { type: Date },
+    emailChangeRequestedAt: { type: Date },
+    accountDeletionStatus: { type: String, enum: ['none', 'requested', 'cancelled', 'completed'], default: 'none', index: true },
+    accountDeletionRequestedAt: { type: Date },
+    accountDeletionReason: { type: String, maxlength: 1000 }
   },
   { timestamps: true }
 );
@@ -41,10 +46,12 @@ userSchema.methods.safeProfile = function safeProfile() {
     id: this._id.toString(),
     name: this.name,
     email: this.email,
+    pendingEmail: this.pendingEmail,
     role: this.role,
     plan: this.plan,
     status: this.status,
-    isVerified: this.isVerified
+    isVerified: this.isVerified,
+    accountDeletionStatus: this.accountDeletionStatus
   };
 };
 

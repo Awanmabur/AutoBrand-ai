@@ -13,7 +13,7 @@ function decoratePlanForDisplay(plan) {
   const featureList = objectValue(plan, 'featureList') || [];
   const slug = objectValue(plan, 'slug');
   const isTrial = billingInterval === 'trial' || price === 0;
-  const intervalLabel = billingInterval === 'trial' ? 'trial' : billingInterval === 'year' ? 'yr' : billingInterval === 'one_time' ? 'once' : billingInterval === 'manual' ? 'manual' : 'mo';
+  const intervalLabel = billingInterval === 'trial' ? 'trial' : billingInterval === 'year' ? 'yr' : billingInterval === 'one_time' ? 'once' : 'mo';
   const displayFeatures = featureList.length ? featureList : buildFeatureList(limits, features);
   return {
     id: objectValue(plan, '_id')?.toString?.() || slug,
@@ -36,8 +36,9 @@ function decoratePlanForDisplay(plan) {
     featureList: displayFeatures,
     limitList: buildLimitList(limits),
     comparison: buildComparisonRows(limits, features, aiConfig),
-    signupUrl: `/signup?plan=${encodeURIComponent(slug)}`,
-    checkoutUrl: `/billing/checkout/${encodeURIComponent(slug)}`,
+    signupUrl: `/start/${encodeURIComponent(slug)}`,
+    loginUrl: `/auth/login?next=${encodeURIComponent(`/dashboard/billing/checkout/${slug}`)}`,
+    checkoutUrl: `/dashboard/billing/checkout/${encodeURIComponent(slug)}`,
     viewUrl: `/pricing/${encodeURIComponent(slug)}`
   };
 }

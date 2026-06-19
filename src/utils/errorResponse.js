@@ -37,6 +37,10 @@ function wantsJson(req) {
 function buildErrorViewModel({ error, status, req }) {
   const requestId = req.id || req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const title = error?.title || defaultTitle(status);
+  const primaryActionHref = error?.primaryActionHref || (req.user ? '/dashboard/overview' : '/');
+  const primaryActionLabel = error?.primaryActionLabel || (req.user ? 'Back to dashboard' : 'Back home');
+  const secondaryActionHref = error?.secondaryActionHref || (req.user ? '/dashboard/settings' : '/auth/login');
+  const secondaryActionLabel = error?.secondaryActionLabel || (req.user ? 'Open settings' : 'Sign in');
   return {
     title,
     errorCode: status,
@@ -44,10 +48,10 @@ function buildErrorViewModel({ error, status, req }) {
     errorMessage: safeErrorMessage(error, status),
     requestId,
     timestamp: new Date().toISOString(),
-    primaryActionHref: req.user ? '/dashboard/overview' : '/',
-    primaryActionLabel: req.user ? 'Back to dashboard' : 'Back home',
-    secondaryActionHref: req.user ? '/settings' : '/auth/login',
-    secondaryActionLabel: req.user ? 'Open settings' : 'Sign in',
+    primaryActionHref,
+    primaryActionLabel,
+    secondaryActionHref,
+    secondaryActionLabel,
     supportHref: 'mailto:support@example.com',
     details: process.env.NODE_ENV === 'production' ? undefined : error?.stack
   };

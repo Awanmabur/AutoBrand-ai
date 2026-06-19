@@ -4,30 +4,28 @@ const AiVideoJob = require('../models/AiVideoJob');
 const Brand = require('../models/Brand');
 const Media = require('../models/Media');
 const { spendCredits } = require('../services/creditService');
+const { assertCanCreateAvatarVideo, assertCanUseStorage } = require('../services/usageLimitService');
+const { notifyVideoRendered } = require('../services/notification.service');
+const {
+  buildAvatarScenePlan,
+  buildAvatarScript,
+  enrichAvatarVideoJob,
+  mockAvatarVideoResult
+} = require('../services/avatarVideoWorkflow.service');
 
-async function index(req, res, next) {
-  try {
-    const [brands, media, avatars] = await Promise.all([
-      Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-      Media.find({ uploadedBy: req.user._id, fileType: { $in: ['image', 'video'] } }).sort({ createdAt: -1 }),
-      AvatarProfile.find({ owner: req.user._id, status: { $ne: 'deleted' } }).populate('brand').populate('sourceMedia').sort({ createdAt: -1 })
-    ]);
-
-    res.render('avatars/index', { title: 'Avatars', layout: 'layouts/dashboard', brands, media, avatars });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/avatar-video');
 }
 
 async function store(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const sourceMedia = req.body.sourceMedia
       ? await Media.findOne({ _id: req.body.sourceMedia, uploadedBy: req.user._id, brand: brand._id })
       : null;
     if (sourceMedia?.consentRequired && sourceMedia.consentStatus !== 'accepted') {
-      return res.status(403).render('errors/403', { layout: 'layouts/dashboard', message: 'Accept media consent before using it for avatar/clone workflows.' });
+      return res.status(403).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main', message: 'Accept media consent before using it for avatar/clone workflows.' });
     }
 
     const avatar = await AvatarProfile.create({
@@ -35,10 +33,15 @@ async function store(req, res, next) {
       brand: brand._id,
       name: req.body.name,
       sourceMedia: sourceMedia?._id || undefined,
+      trainingMedia: sourceMedia ? [sourceMedia._id] : [],
+      provider: req.body.provider || 'mock_avatar_provider',
+      providerAvatarId: sourceMedia ? `mock_avatar_profile_${sourceMedia._id}` : undefined,
       status: req.body.ownershipConfirmed === 'on' ? 'consented' : 'draft',
       ownershipConfirmed: req.body.ownershipConfirmed === 'on',
       consentedAt: req.body.ownershipConfirmed === 'on' ? new Date() : undefined,
-      allowedUse: req.body.allowedUse || 'brand_content'
+      allowedUse: req.body.allowedUse || 'brand_content',
+      defaultScript: req.body.defaultScript || '',
+      providerNotes: req.body.ownershipConfirmed === 'on' ? 'Mock avatar profile ready for demo rendering.' : 'Consent is required before rendering.'
     });
 
     if (avatar.ownershipConfirmed) {
@@ -61,32 +64,39 @@ async function store(req, res, next) {
 
 async function generateVideo(req, res, next) {
   try {
-    const avatar = await AvatarProfile.findOne({ _id: req.params.id, owner: req.user._id, status: { $ne: 'deleted' } }).populate('brand');
-    if (!avatar) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
-    if (!avatar.ownershipConfirmed) return res.status(403).render('errors/403', { layout: 'layouts/dashboard', message: 'Avatar consent is required.' });
+    const avatar = await AvatarProfile.findOne({ _id: req.params.id, owner: req.user._id, status: { $ne: 'deleted' } }).populate('brand').populate('sourceMedia');
+    if (!avatar) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    if (!avatar.ownershipConfirmed) return res.status(403).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main', message: 'Avatar consent is required.' });
+    await assertCanCreateAvatarVideo(req.user);
 
+    const script = buildAvatarScript({ avatar, brand: avatar.brand, prompt: req.body.script });
+    const scenePlan = buildAvatarScenePlan({
+      avatar,
+      brand: avatar.brand,
+      script,
+      durationSeconds: req.body.durationSeconds || 30
+    });
     const job = await AiVideoJob.create({
       brand: avatar.brand._id,
       createdBy: req.user._id,
       mode: 'avatar_video',
-      provider: 'pending_avatar_provider',
-      prompt: req.body.script,
+      provider: req.body.provider || 'mock_avatar_provider',
+      prompt: script,
+      script,
       aspectRatio: req.body.aspectRatio || '9:16',
       durationSeconds: Number(req.body.durationSeconds || 30),
-      status: 'planning',
+      status: 'processing',
       costCredits: 200,
-      sourceMedia: avatar.sourceMedia ? [avatar.sourceMedia] : [],
-      scenePlan: [
-        {
-          order: 1,
-          title: `${avatar.name} presenter`,
-          visualPrompt: `Talking avatar video for ${avatar.brand.name}. Visible AI-generated disclosure and brand outro required.`,
-          narration: req.body.script,
-          durationSeconds: Number(req.body.durationSeconds || 30),
-          status: 'planned'
-        }
-      ]
+      sourceMedia: avatar.sourceMedia ? [avatar.sourceMedia._id || avatar.sourceMedia] : [],
+      scenePlan
     });
+    const result = mockAvatarVideoResult({ job, avatar, brand: avatar.brand });
+    job.provider = result.provider;
+    job.providerJobId = result.providerJobId;
+    job.status = 'rendered';
+    job.outputUrl = result.outputUrl;
+    enrichAvatarVideoJob(job, { avatar, brand: avatar.brand });
+    await assertCanUseStorage(req.user, result.size || 0);
 
     await spendCredits({
       user: req.user,
@@ -96,7 +106,37 @@ async function generateVideo(req, res, next) {
       referenceId: job._id
     });
 
-    avatar.status = avatar.status === 'consented' ? 'training' : avatar.status;
+    const media = await Media.create({
+      brand: avatar.brand._id,
+      uploadedBy: req.user._id,
+      fileName: result.fileName || `${avatar.name} avatar video.mp4`,
+      fileUrl: result.outputUrl,
+      publicId: result.providerJobId,
+      fileType: 'video',
+      mimeType: 'video/mp4',
+      size: result.size || 0,
+      folder: 'mock-avatar-video',
+      tags: ['avatar', 'mock', 'generated', 'video'],
+      aiPrompt: script,
+      aiInsights: {
+        summary: `Mock avatar video for ${avatar.name}.`,
+        safetyNotes: ['Demo avatar output. Use a real approved avatar provider before production publishing.'],
+        reuseInstructions: ['Attach this video to an avatar post draft for review.'],
+        generatedFrom: 'mock_avatar_provider',
+        subtitles: job.subtitles,
+        thumbnailPrompt: job.thumbnailPrompt,
+        generatedAt: new Date()
+      }
+    });
+    job.outputMedia = media._id;
+    await job.save();
+    await notifyVideoRendered({ user: req.user, job, brand: avatar.brand, avatar: true });
+
+    avatar.status = 'ready';
+    avatar.lastVideoJob = job._id;
+    avatar.provider = result.provider;
+    avatar.providerAvatarId = avatar.providerAvatarId || `mock_avatar_profile_${avatar._id}`;
+    avatar.providerNotes = result.message;
     await avatar.save();
 
     res.redirect('/dashboard/video-system');
@@ -108,7 +148,7 @@ async function generateVideo(req, res, next) {
 async function revoke(req, res, next) {
   try {
     const avatar = await AvatarProfile.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!avatar) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!avatar) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     avatar.status = 'deleted';
     avatar.deletedAt = new Date();

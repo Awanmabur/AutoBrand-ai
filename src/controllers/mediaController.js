@@ -4,7 +4,8 @@ const Post = require('../models/Post');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { createUploadSignature } = require('../services/cloudinaryService');
 const { buildMediaInsights } = require('../services/mediaInsightService');
-const { createBrandedVariant, createResizeVariants } = require('../services/mediaTransformService');
+const { createBrandedVariant, createCompressedVariant, createResizeVariants } = require('../services/mediaTransformService');
+const { assertCanUseStorage } = require('../services/usageLimitService');
 
 function mediaKind(mimeType) {
   if (mimeType.startsWith('image/')) return 'image';
@@ -14,30 +15,8 @@ function mediaKind(mimeType) {
   return 'other';
 }
 
-async function index(req, res, next) {
-  try {
-    const filter = { uploadedBy: req.user._id };
-    if (req.query.brand) filter.brand = req.query.brand;
-    if (req.query.type) filter.fileType = req.query.type;
-    if (req.query.q) filter.fileName = new RegExp(req.query.q, 'i');
-
-    const [brands, media] = await Promise.all([
-      Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-      Media.find(filter).populate('brand').sort({ createdAt: -1 }).limit(80)
-    ]);
-
-    res.render('media/index', {
-      title: 'Media Library',
-      layout: 'layouts/dashboard',
-      brands,
-      media,
-      filters: req.query,
-      error: null,
-      cloudinaryReady: isCloudinaryConfigured()
-    });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/media');
 }
 
 async function destroy(req, res, next) {
@@ -49,29 +28,30 @@ async function destroy(req, res, next) {
   }
 }
 
+async function archive(req, res, next) {
+  try {
+    const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id });
+    if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    media.status = 'archived';
+    await media.save();
+    return res.redirect('/dashboard/media');
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function store(req, res, next) {
   try {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (!req.body.fileUrl) {
-      const [brands, media] = await Promise.all([
-        Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-        Media.find({ uploadedBy: req.user._id }).populate('brand').sort({ createdAt: -1 }).limit(60)
-      ]);
-
-      return res.status(422).render('media/index', {
-        title: 'Media Library',
-        layout: 'layouts/dashboard',
-        brands,
-        media,
-        filters: {},
-        cloudinaryReady: isCloudinaryConfigured(),
-        error: 'Add a media URL to save.'
-      });
+      return res.redirect('/dashboard/media?error=Add%20a%20media%20URL%20to%20save');
     }
 
     const mimeType = req.body.mimeType || 'application/octet-stream';
+    const size = Number(req.body.size || 0);
+    await assertCanUseStorage(req.user, size);
 
     const media = await Media.create({
       brand: brand._id,
@@ -81,7 +61,7 @@ async function store(req, res, next) {
       publicId: req.body.publicId || req.body.fileUrl,
       fileType: req.body.fileType || mediaKind(mimeType),
       mimeType,
-      size: Number(req.body.size || 0),
+      size,
       folder: req.body.folder || 'external',
       tags: String(req.body.tags || '')
         .split(',')
@@ -119,7 +99,7 @@ async function signature(req, res, next) {
 async function creativeAction(req, res, next) {
   try {
     const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id }).populate('brand');
-    if (!media) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (req.body.actionType === 'accept_consent') {
       media.consentStatus = 'accepted';
@@ -153,6 +133,29 @@ async function creativeAction(req, res, next) {
       media.variants.push(...variants);
     }
 
+    if (req.body.actionType === 'crop_square') {
+      media.variants.push(...await createResizeVariants(media, media.brand, ['1:1']));
+    }
+
+    if (req.body.actionType === 'crop_vertical') {
+      media.variants.push(...await createResizeVariants(media, media.brand, ['9:16']));
+    }
+
+    if (req.body.actionType === 'crop_portrait') {
+      media.variants.push(...await createResizeVariants(media, media.brand, ['4:5']));
+    }
+
+    if (req.body.actionType === 'crop_landscape') {
+      media.variants.push(...await createResizeVariants(media, media.brand, ['16:9']));
+    }
+
+    if (req.body.actionType === 'compress') {
+      media.variants.push(await createCompressedVariant(media, media.brand, {
+        width: req.body.width || 1400,
+        quality: req.body.quality || 78
+      }));
+    }
+
     if (req.body.actionType === 'variant') {
       const variant = await createBrandedVariant(media, media.brand, {
         label: req.body.label || 'Brand style variant',
@@ -171,7 +174,7 @@ async function creativeAction(req, res, next) {
 async function createDraft(req, res, next) {
   try {
     const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id }).populate('brand');
-    if (!media) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (!media.aiInsights?.summary) {
       media.aiInsights = buildMediaInsights(media, media.brand);
@@ -205,4 +208,4 @@ async function createDraft(req, res, next) {
   }
 }
 
-module.exports = { createDraft, creativeAction, destroy, index, signature, store };
+module.exports = { archive, createDraft, creativeAction, destroy, index, signature, store };

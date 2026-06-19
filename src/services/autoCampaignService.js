@@ -88,8 +88,9 @@ function platformRules(platform) {
 }
 
 function buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, customerGoal, strengthTarget }) {
-  const products = (brand.products || []).map((item) => `${item.name || ''} ${item.price || ''} ${item.description || ''}`.trim()).filter(Boolean).join('; ') || 'not set';
+  const products = [...(brand.products || []), ...(brand.services || [])].map((item) => `${item.name || ''} ${item.price || ''} ${item.description || ''}`.trim()).filter(Boolean).join('; ') || 'not set';
   const offers = (brand.offers || []).map((item) => `${item.title || ''}: ${item.description || ''}`.trim()).filter(Boolean).join('; ') || 'not set';
+  const objections = brand.customerObjections || brand.commonObjections || [];
   return [
     'You are the senior growth marketer and creative director for this social media automation app.',
     'Create a ready-to-schedule campaign batch as strict JSON only. No markdown.',
@@ -106,7 +107,8 @@ function buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, custo
     `Products/services: ${products}`,
     `Offers: ${offers}`,
     `Pain points: ${(brand.customerPainPoints || []).join('; ') || 'not set'}`,
-    `Objections: ${(brand.commonObjections || []).join('; ') || 'not set'}`,
+    `Objections: ${objections.join('; ') || 'not set'}`,
+    `Keywords: ${(brand.keywords || []).join(', ') || 'not set'}`,
     `Testimonials/proof: ${(brand.testimonials || []).map((item) => `${item.author || 'customer'}: ${item.quote || ''}`).join('; ') || 'not set'}`,
     `Brand rules: ${(brand.brandRules || []).join('; ') || 'no unsafe claims, no fake guarantees'}`,
     `Blocked words: ${(brand.blockedWords || []).join(', ') || 'none'}`,
@@ -353,6 +355,7 @@ async function createScheduledPostsFromBatch({ userId, brand, targetAccounts, in
       brand: brand._id,
       platform: plan.platform || 'facebook',
       type,
+      workflowMode: input.workflowMode || 'auto',
       title: plan.title || `${brand.name} auto post ${index + 1}`,
       description: plan.description || '',
       caption: plan.caption,

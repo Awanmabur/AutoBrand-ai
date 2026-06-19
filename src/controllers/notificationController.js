@@ -1,12 +1,7 @@
 const Notification = require('../models/Notification');
 
-async function index(req, res, next) {
-  try {
-    const notifications = await Notification.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(80);
-    res.render('notifications/index', { title: 'Notifications', layout: 'layouts/dashboard', notifications });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/notifications');
 }
 
 async function markAllRead(req, res, next) {
@@ -18,4 +13,13 @@ async function markAllRead(req, res, next) {
   }
 }
 
-module.exports = { index, markAllRead };
+async function markRead(req, res, next) {
+  try {
+    await Notification.updateOne({ _id: req.params.id, user: req.user._id }, { readAt: new Date() });
+    res.redirect('/dashboard/notifications');
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { index, markAllRead, markRead };

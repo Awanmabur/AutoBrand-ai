@@ -339,7 +339,7 @@ Working:
 
 Still incomplete:
 
-- Stripe/Flutterwave/Paystack live checkout.
+- Pesapal live checkout.
 - Provider-specific webhook signature schemes.
 - Invoices/receipts from real processors.
 
@@ -390,3 +390,30 @@ Against the blueprint:
 - Full production platform: roughly 35-45% complete.
 
 The remaining gap is mostly provider work, production-grade UI depth, live email/payments/social/video/avatar integrations, and formal tests.
+
+## 2026-06-06 Pesapal Production Checkout Update
+
+### Newly completed
+
+- Public plan selection now starts at `/start/:planSlug` so landing-page pricing buttons work for guests and logged-in users.
+- Register and login preserve the intended checkout destination through a safe `next` parameter.
+- Paid signup no longer assigns the paid plan as active before payment is verified.
+- Billing now includes a real Pesapal API 3.0 provider.
+- Pesapal hosted checkout creation, token authentication, IPN support, callback support, and transaction-status verification are implemented.
+- `/dashboard/billing/pesapal/ipn` is available without auth and bypasses CSRF so Pesapal can POST payment notifications.
+- Checkout UI is now a clean onboarding-to-payment page instead of a manual invoice page.
+- Payment records store provider reference, checkout URL, paid timestamp and failed timestamp.
+- Billing page now distinguishes Pesapal production readiness from manual/internal payment handling.
+- Environment templates include Pesapal deployment variables.
+
+### Blueprint gaps closed by this update
+
+- Payment provider integration is no longer just a placeholder.
+- The onboarding route from plan selection to payment is now explicit.
+- Pending paid subscription state is enforced before paid access is granted.
+- Callback/IPN verification is required before activation.
+
+### Still requires live credentials
+
+- A real Pesapal sandbox or production payment cannot be completed until merchant credentials and IPN ID are configured.
+- Live payment verification should be tested with a real public HTTPS domain before launch.

@@ -85,7 +85,7 @@ function calculateSubscriptionDates(plan) {
   return { startsAt, trialEndsAt, renewsAt, currentPeriodStart: startsAt, currentPeriodEnd: renewsAt };
 }
 
-async function activatePlanForUser(user, planSlug, { status, paymentProvider = 'manual', metadata = {} } = {}) {
+async function activatePlanForUser(user, planSlug, { status, paymentProvider = 'free', metadata = {} } = {}) {
   const plan = await getPlanBySlug(planSlug);
   if (!plan || plan.isActive === false) throw new Error('Selected plan is not available.');
   const isTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) === 0;
@@ -119,7 +119,7 @@ async function activatePlanForUser(user, planSlug, { status, paymentProvider = '
   return { plan, subscription };
 }
 
-async function createPendingSubscription(user, planSlug, { paymentProvider = 'manual', metadata = {} } = {}) {
+async function createPendingSubscription(user, planSlug, { paymentProvider = 'pesapal', metadata = {} } = {}) {
   const plan = await getPlanBySlug(planSlug);
   const dates = calculateSubscriptionDates(plan);
   const subscription = await Subscription.findOneAndUpdate(

@@ -93,44 +93,55 @@ test('controllers do not import legacy aiProviderService directly', () => {
   assert.deepEqual(offenders, []);
 });
 
-test('legacy standalone GET routes redirect into the single dashboard shell', () => {
-  const expected = {
-    'src/routes/brands.js': ["dashboardRedirect('brand-brain')"],
-    'src/routes/posts.js': ["dashboardRedirect('quick-create')", "dashboardRedirect('content-library')", "dashboardRedirect('approvals')"],
-    'src/routes/social.js': ["dashboardRedirect('social')"],
-    'src/routes/ai.js': ["dashboardRedirect('quick-create')"],
-    'src/routes/media.js': ["dashboardRedirect('media')"],
-    'src/routes/videos.js': ["dashboardRedirect('video-system')"],
-    'src/routes/templates.js': ["dashboardRedirect('video-system')"],
-    'src/routes/calendar.js': ["dashboardRedirect('calendar')"],
-    'src/routes/campaigns.js': ["dashboardRedirect('campaigns')"],
-    'src/routes/growthStudio.js': ["dashboardRedirect('campaigns')"],
-    'src/routes/team.js': ["dashboardRedirect('team')"],
-    'src/routes/settings.js': ["dashboardRedirect('settings')"],
-    'src/routes/analytics.js': ["dashboardRedirect('analytics')"],
-    'src/routes/notifications.js': ["dashboardRedirect('notifications')"]
-  };
-  for (const [file, snippets] of Object.entries(expected)) {
+test('dashboard action routers contain only mutations, APIs, and external callbacks', () => {
+  const actionRouteFiles = [
+    'src/routes/brands.js',
+    'src/routes/posts.js',
+    'src/routes/ai.js',
+    'src/routes/videos.js',
+    'src/routes/templates.js',
+    'src/routes/campaigns.js',
+    'src/routes/growthStudio.js',
+    'src/routes/approvals.js',
+    'src/routes/notifications.js',
+    'src/routes/settings.js',
+    'src/routes/avatars.js',
+    'src/routes/admin.js'
+  ];
+  for (const file of actionRouteFiles) {
     const content = read(file);
-    for (const snippet of snippets) assert.match(content, new RegExp(snippet.replace(/[()']/g, '\\$&')));
+    assert.doesNotMatch(content, /dashboardRedirect/);
+    assert.doesNotMatch(content, /router\.get\('/, `${file} should not expose page GET routes`);
   }
+  assert.equal(fs.existsSync(path.join(root, 'src/routes/calendar.js')), false);
+  assert.equal(fs.existsSync(path.join(root, 'src/routes/analytics.js')), false);
+
+  const mediaRoutes = read('src/routes/media.js');
+  const socialRoutes = read('src/routes/social.js');
+  const teamRoutes = read('src/routes/team.js');
+  assert.match(mediaRoutes, /router\.get\('\/signature'/);
+  assert.match(socialRoutes, /router\.get\('\/facebook\/connect'/);
+  assert.match(teamRoutes, /router\.get\('\/accept'/);
+  assert.doesNotMatch(socialRoutes, /router\.get\('\/'/);
+  assert.doesNotMatch(socialRoutes, /router\.get\('\/:id'/);
 });
 
-test('full composer opens from the dashboard template and legacy /posts/new keeps embedded support only', () => {
+test('full composer opens as a dashboard page instead of an overlay or embedded standalone view', () => {
   const js = read('public/js/dashboard-experience.js');
   const dashboard = read('src/views/dashboard/experience.ejs');
   const postsRoute = read('src/routes/posts.js');
-  assert.match(dashboard, /id=\"dashboard-form-full-composer\"/);
+  assert.match(dashboard, /id="dashboard-form-full-composer"/);
   assert.match(js, /function fullComposerHtml\(\)/);
   assert.match(js, /function openFullComposer\(\)/);
-  assert.match(js, /modalBody\.innerHTML = fullComposerHtml\(\)/);
+  assert.match(js, /renderPage\('quick-create'\)/);
   assert.match(js, /safePageId === 'quick-create'/);
-  assert.match(postsRoute, /embedded === '1'/);
-  assert.match(postsRoute, /postController\.newPost/);
-  assert.doesNotMatch(js, /fetch\(['"]\/posts\/new\?embedded=1/);
+  assert.doesNotMatch(postsRoute, /router\.get\('\/new'/);
+  assert.doesNotMatch(postsRoute, /embedded === '1'/);
+  assert.doesNotMatch(js, /modalBody\.innerHTML = fullComposerHtml\(\)/);
+  assert.equal(fs.existsSync(path.join(root, 'src/views/posts/new.ejs')), false);
 });
 
-test('plan page uses /dashboard/plans and old plan GET URLs redirect there', () => {
+test('plan page uses /dashboard/plans and admin plan actions stay dashboard-scoped', () => {
   const js = read('public/js/dashboard-experience.js');
   const layout = read('src/views/layouts/dashboard.ejs');
   const dashboard = read('src/views/dashboard/experience.ejs');
@@ -144,9 +155,11 @@ test('plan page uses /dashboard/plans and old plan GET URLs redirect there', () 
   assert.match(controller, /return '\/dashboard\/plans'/);
   assert.doesNotMatch(controller, /res\.render\('dashboard\/pages\/admin\/plans/);
   assert.match(dashboardRoutes, /router\.get\('\/admin\/plans', requirePermission\('plans\.view'\), \(req, res\) => res\.redirect\(303, '\/dashboard\/plans'\)\)/);
-  assert.match(adminRoutes, /res\.redirect\(303, '\/dashboard\/plans'/);
-  assert.match(app, /\/dashboard\/plans/);
+  assert.doesNotMatch(adminRoutes, /res\.redirect\(303, '\/dashboard\/plans'/);
+  assert.match(app, /\/dashboard\/actions\/admin/);
+  assert.doesNotMatch(app, /app\.use\('\/admin'/);
   assert.doesNotMatch(js, /\/dashboard\/admin\/plans/);
+  assert.match(js, /\/dashboard\/actions\/admin\/plans/);
 });
 
 test('merged dashboard navigation has no active duplicate page links', () => {
@@ -180,14 +193,13 @@ test('dashboard EJS includes point to files that exist', () => {
   }
 });
 
-test('full composer dashboard uses the restored shared composer design', () => {
+test('full composer dashboard uses the restored shared composer design without standalone EJS pages', () => {
   const dashboard = read('src/views/dashboard/experience.ejs');
   const partial = read('src/views/dashboard/partials/full-composer.ejs');
-  const postView = read('src/views/posts/new.ejs');
   const css = read('public/css/dashboard-experience.css');
   assert.match(dashboard, /include\('partials\/full-composer'/);
   assert.match(dashboard, /classic-composer-modal dashboard-full-composer-shell/);
-  assert.match(postView, /include\('\.\.\/dashboard\/partials\/full-composer'/);
+  assert.equal(fs.existsSync(path.join(root, 'src/views/posts/new.ejs')), false);
   assert.match(partial, /composer-hero/);
   assert.match(partial, /Output preview/);
   assert.match(partial, /Use uploaded media or URLs/);
@@ -240,7 +252,6 @@ test('composer intent hides unrelated media, output, and AI controls by selected
   const intent = read('public/js/composer-intent.js');
   const partial = read('src/views/dashboard/partials/full-composer.ejs');
   const dashboard = read('public/js/dashboard-experience.js');
-  const postView = read('src/views/posts/new.ejs');
   assert.match(intent, /option\.hidden = !allowed/);
   assert.match(intent, /card\.hidden = !visible/);
   assert.match(intent, /showElement\(existingMediaSection, mediaFieldsAllowed\)/);
@@ -252,7 +263,7 @@ test('composer intent hides unrelated media, output, and AI controls by selected
   assert.match(partial, /data-intent-group="video">Video title/);
   assert.match(partial, /data-intent-group="image">Alt text/);
   assert.match(dashboard, /dataset\.brandFiltered/);
-  assert.match(postView, /dataset\.brandFiltered/);
+  assert.equal(fs.existsSync(path.join(root, 'src/views/posts/new.ejs')), false);
 });
 
 
@@ -272,14 +283,13 @@ test('requested dashboard pages keep restored designs and cleaner billing flow',
 
 test('composer media picker shows reusable videos when video format is selected', () => {
   const dashboardJs = read('public/js/dashboard-experience.js');
-  const postView = read('src/views/posts/new.ejs');
   const partial = read('src/views/dashboard/partials/full-composer.ejs');
   const controller = read('src/modules/dashboard/dashboard.controller.js');
   assert.match(dashboardJs, /Media can be reused across a user's brands/);
-  assert.match(postView, /Users can reuse already generated\/uploaded media/);
+  assert.equal(fs.existsSync(path.join(root, 'src/views/posts/new.ejs')), false);
   assert.match(partial, /inferredMediaType/);
   assert.match(partial, /data-media-type="<%= inferredMediaType %>"/);
-  assert.match(controller, /Media\.find\(\{ uploadedBy: userId \}\)[\s\S]*\.limit\(80\)/);
+  assert.match(controller, /Media\.find\(\{ uploadedBy: userId, status: \{ \$ne: 'archived' \} \}\)[\s\S]*\.limit\(80\)/);
 });
 
 test('landing pricing keeps three plan cards per row on desktop', () => {
@@ -319,4 +329,67 @@ test('public pricing and plan details use the same landing design with dynamic d
   assert.doesNotMatch(landing, /slice\(0, 3\)\.forEach/);
   assert.equal(fs.existsSync(path.join(root, 'src/views/public/pricing.ejs')), false);
   assert.equal(fs.existsSync(path.join(root, 'src/views/public/plan-details.ejs')), false);
+});
+
+test('standalone feature EJS screens and manual payment provider are removed', () => {
+  const removed = [
+    'src/views/admin',
+    'src/views/ai',
+    'src/views/analytics',
+    'src/views/avatars',
+    'src/views/brands',
+    'src/views/calendar',
+    'src/views/campaigns',
+    'src/views/growth-studio',
+    'src/views/media',
+    'src/views/notifications',
+    'src/views/posts',
+    'src/views/settings',
+    'src/views/social',
+    'src/views/team',
+    'src/views/templates',
+    'src/views/videos',
+    'src/views/billing/index.ejs',
+    'src/views/billing/checkout.ejs',
+    'src/views/dashboard/index.ejs',
+    'src/views/errors',
+    'src/views/layouts/error.ejs',
+    'src/routes/calendar.js',
+    'src/routes/analytics.js',
+    'src/services/billing/providers/manual.provider.js'
+  ];
+  for (const file of removed) {
+    assert.equal(fs.existsSync(path.join(root, file)), false, `${file} should not exist`);
+  }
+  const billingRoutes = read('src/routes/billing.js');
+  const billingService = read('src/services/billing/billing.service.js');
+  const dashboardJs = read('public/js/dashboard-experience.js');
+  assert.doesNotMatch(billingRoutes, /mark-paid|completePayment|markPaid/);
+  assert.doesNotMatch(billingService, /manual\.provider/);
+  assert.match(dashboardJs, /function isDashboardSpaPath/);
+  assert.match(dashboardJs, /if \(!isDashboardSpaPath\(url\.pathname\)\) return;/);
+});
+
+test('root feature routes are removed and dashboard namespace is canonical', () => {
+  const app = read('src/app.js');
+  const errorMiddleware = read('src/middlewares/error.middleware.js');
+  const dashboardRoutes = read('src/routes/dashboard.js');
+  const removedRootMounts = [
+    'brands', 'ai', 'videos', 'templates', 'media', 'posts', 'calendar', 'campaigns',
+    'growth-studio', 'social', 'team', 'approvals', 'notifications', 'analytics',
+    'avatars', 'settings', 'admin'
+  ];
+
+  for (const route of removedRootMounts) {
+    assert.doesNotMatch(app, new RegExp(`app\\.use\\('\\/${route}(?:'|\\/)`), `/${route} is still mounted at the root`);
+  }
+
+  assert.match(app, /app\.use\('\/dashboard\/actions\/posts', postRoutes\)/);
+  assert.match(app, /app\.use\('\/dashboard\/billing', billingRoutes\)/);
+  assert.match(app, /app\.use\('\/dashboard', dashboardRoutes\)/);
+  assert.match(errorMiddleware, /'content-library': '\/dashboard\/content-library'/);
+  assert.match(errorMiddleware, /Dashboard route required/);
+  assert.match(errorMiddleware, /render\('dashboard\/pages\/error'/);
+  assert.match(errorMiddleware, /layouts\/dashboard/);
+  assert.match(dashboardRoutes, /router\.get\('\/content-library\/:id\/edit'/);
 });

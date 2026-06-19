@@ -1,0 +1,100 @@
+<section class="panel checkout-shell">
+  <div class="checkout-steps" aria-label="Checkout progress">
+    <span class="done">1. Select plan</span>
+    <span class="<%= onboarding ? 'done' : 'done' %>">2. Account</span>
+    <span class="active">3. Payment</span>
+    <span>4. Start creating</span>
+  </div>
+
+  <% if (error) { %>
+    <div class="checkout-alert error"><strong>Payment setup needs attention.</strong><span><%= error %></span></div>
+  <% } %>
+
+  <div class="checkout-grid">
+    <article class="checkout-card checkout-summary-card">
+      <div class="section-kicker"><%= payment ? 'Payment page' : (onboarding ? 'Finish onboarding' : 'Secure checkout') %></div>
+      <h1><%= plan ? plan.name : 'Subscription payment' %></h1>
+      <p class="muted">
+        <%= payment && payment.provider === 'pesapal'
+          ? 'Your Pesapal payment has been created. Continue to the secure Pesapal page and your plan will activate after callback/IPN verification.'
+          : 'Review the selected plan and continue to Pesapal for mobile money or card payment.' %>
+      </p>
+
+      <% if (plan) { %>
+        <div class="checkout-price-row">
+          <div>
+            <strong><%= plan.name %></strong>
+            <span><%= plan.description %></span>
+          </div>
+          <div class="price"><%= plan.priceLabel %><% if (!plan.isTrial) { %><span>/<%= plan.intervalLabel %></span><% } %></div>
+        </div>
+
+        <ul class="feature-list checkout-feature-list">
+          <% plan.featureList.slice(0, 8).forEach((feature) => { %><li><%= feature %></li><% }) %>
+        </ul>
+      <% } %>
+    </article>
+
+    <article class="checkout-card checkout-payment-card">
+      <% if (payment) { %>
+        <div class="section-kicker">Payment status</div>
+        <h2><%= payment.status === 'paid' ? 'Payment confirmed' : 'Complete payment' %></h2>
+        <div class="item-grid checkout-records">
+          <article class="mini-record"><strong>Reference</strong><span><%= payment.reference %></span></article>
+          <article class="mini-record"><strong>Amount</strong><span><%= payment.currency %> <%= payment.amount %></span></article>
+          <article class="mini-record"><strong>Status</strong><span><%= payment.status %></span></article>
+          <article class="mini-record"><strong>Provider</strong><span><%= payment.provider %></span></article>
+        </div>
+
+        <% if (payment.status === 'paid') { %>
+          <div class="checkout-alert success"><strong>Your subscription is active.</strong><span>You can now start creating with the selected plan.</span></div>
+          <div class="row-actions"><a class="button" href="/dashboard/quick-create">Start creating</a><a class="button ghost" href="/dashboard/billing">View billing</a></div>
+        <% } else { %>
+          <div class="payment-method-card pesapal-card">
+            <div class="payment-method-icon">P</div>
+            <div>
+              <strong>Pesapal secure checkout</strong>
+              <p>Pay using supported mobile money and card options. AutoBrand AI never stores card or mobile money PIN data.</p>
+            </div>
+          </div>
+          <div class="row-actions">
+            <% if (payment.checkoutUrl || payment.metadata?.checkoutUrl) { %><a class="button" href="<%= payment.checkoutUrl || payment.metadata.checkoutUrl %>">Continue to Pesapal</a><% } %>
+            <a class="button ghost" href="/dashboard/billing">Back to billing</a>
+          </div>
+        <% } %>
+      <% } else if (plan && plan.isTrial) { %>
+        <div class="section-kicker">Free trial</div>
+        <h2>No payment required</h2>
+        <p class="muted">Start the trial now. You can upgrade to a paid plan later from Billing.</p>
+        <form action="/dashboard/billing/checkout/<%= plan.slug %>" method="post" class="checkout-payment-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="provider" value="free">
+          <button class="button" type="submit">Start free trial</button>
+        </form>
+      <% } else { %>
+        <div class="section-kicker">Payment method</div>
+        <h2>Pay with Pesapal</h2>
+        <p class="muted">Pesapal supports mobile money and cards and returns a verified transaction status before your paid features unlock.</p>
+
+        <div class="payment-method-card pesapal-card selected">
+          <div class="payment-method-icon">P</div>
+          <div>
+            <strong>Pesapal</strong>
+            <p>Mobile money and card payment. Secure hosted payment page.</p>
+          </div>
+        </div>
+
+        <% if (!pesapalConfigured) { %>
+          <div class="checkout-alert warning"><strong>Pesapal credentials are not configured yet.</strong><span>Add PESAPAL_CONSUMER_KEY, PESAPAL_CONSUMER_SECRET and PESAPAL_IPN_ID in production before accepting live payments.</span></div>
+        <% } %>
+
+        <form action="/dashboard/billing/checkout/<%= plan.slug %>" method="post" class="checkout-payment-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="provider" value="pesapal">
+          <button class="button" type="submit">Continue to Pesapal</button>
+          <a class="button ghost" href="/pricing">Compare plans</a>
+        </form>
+      <% } %>
+    </article>
+  </div>
+</section>

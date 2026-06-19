@@ -1,12 +1,10 @@
 const express = require('express');
 const socialController = require('../controllers/socialController');
 const requireAuth = require('../middlewares/auth');
-const dashboardRedirect = require('../middlewares/dashboardRedirect');
 
 const router = express.Router();
 
 router.use(requireAuth);
-router.get('/', dashboardRedirect('social'));
 router.get('/facebook/connect', socialController.facebookConnect);
 router.get('/facebook/callback', socialController.facebookCallback);
 router.get('/tiktok/connect', socialController.tiktokConnect);
@@ -25,9 +23,8 @@ router.get('/threads/connect', socialController.threadsConnect);
 router.get('/threads/callback', socialController.threadsCallback);
 router.post('/facebook/page-token', socialController.facebookPageToken);
 router.post('/api-connect', socialController.manualApiConnect);
-router.post('/mock-connect', socialController.storeMock);
-router.get('/:id', dashboardRedirect('social'));
 router.post('/:id/update', socialController.updateAccount);
+router.post('/:id/health-check', socialController.healthCheck);
 router.post('/:id/disconnect', socialController.disconnect);
 router.post('/:id/reconnect', socialController.reconnect);
 router.post('/:id/tiktok-sync', socialController.tiktokSync);

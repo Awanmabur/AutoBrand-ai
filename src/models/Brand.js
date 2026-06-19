@@ -46,6 +46,7 @@ const brandSchema = new mongoose.Schema(
     writingStyle: { type: String, trim: true, default: '' },
     bannedWords: stringArray,
     blockedWords: stringArray,
+    keywords: stringArray,
     preferredWords: stringArray,
     emojiUsage: { type: String, trim: true, default: '' },
     hashtagStyle: { type: String, trim: true, default: '' },

@@ -1,4 +1,4 @@
-<form action="/brands" method="post" class="real-form-grid brand-brain-form" data-brand-upload-form>
+<form action="/dashboard/actions/brands" method="post" class="real-form-grid brand-brain-form" data-brand-upload-form>
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <label>Brand name<input name="name" required placeholder="Your brand name"></label>
   <label>Business type<input name="businessType" placeholder="School, restaurant, agency"></label>
@@ -13,6 +13,7 @@
   <label class="brand-upload-control">Upload favicon<input type="file" accept="image/*" data-brand-upload-file="favicon"><small data-brand-upload-status="favicon">Square icon preferred.</small><img data-brand-upload-preview="favicon" alt="Favicon preview" hidden></label>
   <label class="brand-upload-control">Upload cover image<input type="file" accept="image/*" data-brand-upload-file="cover"><small data-brand-upload-status="cover">Wide cover image for brand pages.</small><img data-brand-upload-preview="cover" alt="Cover preview" hidden></label>
   <label class="brand-upload-control full">Upload extra brand assets<input type="file" multiple accept="image/*,video/*,.pdf" data-brand-upload-file="asset"><small data-brand-upload-status="asset">Upload product photos, guidelines, PDFs, or sample videos.</small></label>
+  <label>Industry<input name="industry" placeholder="Education, food, real estate"></label>
   <label>Website<input name="website" placeholder="https://example.com"></label>
   <label>Location<input name="location" placeholder="City, country"></label>
   <label>Language<input name="language" value="English"></label>
@@ -24,14 +25,18 @@
   <label class="full">Target audience<input name="targetAudience" placeholder="Parents, students, local buyers, founders"></label>
   <label class="full">Preferred CTA<input name="preferredCta" placeholder="Message us on WhatsApp, book a call, visit today"></label>
   <label class="full">Description<textarea name="description" rows="4" placeholder="What the brand does, who it helps, and what makes it different"></textarea></label>
-  <label class="full">Products/services<textarea name="products" rows="3" placeholder="Name | Price | Description"></textarea></label>
+  <label class="full">Products<textarea name="products" rows="3" placeholder="Name | Price | Description"></textarea></label>
+  <label class="full">Services<textarea name="services" rows="3" placeholder="Name | Price | Description"></textarea></label>
   <label class="full">Offers<textarea name="offers" rows="3" placeholder="Title | Description"></textarea></label>
+  <label class="full">FAQs<textarea name="faqs" rows="3" placeholder="Question | Answer"></textarea></label>
   <label class="full">Social links<textarea name="socialLinks" rows="3" placeholder="facebook | https://facebook.com/page&#10;instagram | https://instagram.com/name"></textarea></label>
   <label>Goals<textarea name="goals" rows="3" placeholder="Get leads, grow awareness, increase sales"></textarea></label>
   <label>Customer pain points<textarea name="customerPainPoints" rows="3" placeholder="What customers struggle with"></textarea></label>
   <label>Common objections<textarea name="commonObjections" rows="3" placeholder="Too expensive, not enough time, not sure it works"></textarea></label>
   <label>Testimonials<textarea name="testimonials" rows="3" placeholder="Author | Quote"></textarea></label>
   <label>Brand rules<textarea name="brandRules" rows="3" placeholder="Words to use, style rules, visual rules"></textarea></label>
+  <label>Keywords<textarea name="keywords" rows="3" placeholder="Core search, offer and audience phrases"></textarea></label>
+  <label>Preferred words<textarea name="preferredWords" rows="3" placeholder="Words AI should use often"></textarea></label>
   <label>Preferred hashtags<textarea name="preferredHashtags" rows="3" placeholder="#brand #local #offer"></textarea></label>
   <label>Blocked words<textarea name="blockedWords" rows="3" placeholder="Words, claims or phrases AI must avoid"></textarea></label>
   <label>Competitors<textarea name="competitors" rows="3" placeholder="Competitor names or URLs"></textarea></label>

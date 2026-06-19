@@ -124,6 +124,84 @@ function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 }
 
+const dashboardNoticeCatalog = {
+  activated: { kind: 'success', title: 'Plan activated', message: 'Your plan is active and billing usage has been refreshed.' },
+  pending: { kind: 'warning', title: 'Payment pending', message: 'We are waiting for the payment provider to confirm this transaction.' },
+  failed: { kind: 'error', title: 'Payment failed', message: 'The payment provider marked this transaction as failed.' },
+  cancelled: { kind: 'warning', title: 'Checkout cancelled', message: 'Checkout was cancelled before the plan changed.' },
+  accepted: { kind: 'success', title: 'Invitation accepted', message: 'The workspace invitation was accepted successfully.' },
+  diagnostics: { kind: 'success', title: 'Diagnostics complete', message: 'Provider diagnostics finished and the latest results are available.' },
+  retry_scheduled: { kind: 'warning', title: 'Retry scheduled', message: 'The failed post was queued for another publish attempt.' },
+  facebook_setup: { kind: 'warning', title: 'Facebook setup needed', message: 'Add Meta app credentials before starting this connection.' },
+  google_business_setup: { kind: 'warning', title: 'Google Business setup needed', message: 'Add Google Business credentials before starting this connection.' }
+};
+const dashboardNoticeMessages = {
+  meta_connected: { kind: 'success', title: 'Meta connected', message: 'Facebook and Instagram accounts were connected.' },
+  google_business_connected: { kind: 'success', title: 'Google Business connected', message: 'Google Business Profile accounts were connected.' },
+  pinterest_connected: { kind: 'success', title: 'Pinterest connected', message: 'Pinterest account connected successfully.' },
+  tiktok_connected: { kind: 'success', title: 'TikTok connected', message: 'TikTok account connected successfully.' },
+  threads_connected: { kind: 'success', title: 'Threads connected', message: 'Threads account connected successfully.' },
+  x_connected: { kind: 'success', title: 'X connected', message: 'X account connected successfully.' },
+  youtube_connected: { kind: 'success', title: 'YouTube connected', message: 'YouTube account connected successfully.' },
+  linkedin_connected: { kind: 'success', title: 'LinkedIn connected', message: 'LinkedIn account connected successfully.' },
+  tiktok_synced: { kind: 'success', title: 'TikTok synced', message: 'TikTok account details were refreshed.' },
+  updated: { kind: 'success', title: 'Updated', message: 'The record was updated successfully.' },
+  disconnected: { kind: 'warning', title: 'Disconnected', message: 'The account was disconnected from publishing.' },
+  reconnected: { kind: 'success', title: 'Reconnected', message: 'The account was reconnected and checked.' },
+  not_tiktok: { kind: 'warning', title: 'Wrong account type', message: 'Choose a TikTok account before syncing TikTok data.' }
+};
+
+function humanizeNotice(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Your update was saved.';
+  if (/[\s.,!?]/.test(raw)) return raw;
+  return raw.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function dashboardNoticeFromQuery(searchParams = new URLSearchParams()) {
+  const errorKeys = ['error', 'facebook_error', 'google_business_error', 'pinterest_error', 'tiktok_error', 'threads_error', 'x_error', 'youtube_error', 'linkedin_error'];
+  const errorMessage = errorKeys.map((key) => searchParams.get(key)).find(Boolean);
+  if (errorMessage) {
+    return { kind: 'error', title: 'Action needs attention', message: errorMessage };
+  }
+
+  const noticeValue = searchParams.get('notice');
+  if (noticeValue) {
+    const noticeKey = String(noticeValue).trim();
+    if (dashboardNoticeMessages[noticeKey]) return dashboardNoticeMessages[noticeKey];
+    if (noticeKey.startsWith('health_')) {
+      return { kind: 'warning', title: 'Account health updated', message: `Latest status: ${humanizeNotice(noticeKey.replace(/^health_/, ''))}.` };
+    }
+    return { kind: 'success', title: 'Update complete', message: humanizeNotice(noticeValue) };
+  }
+
+  const handoffCreatedCount = searchParams.get('handoff_created');
+  if (handoffCreatedCount) {
+    return {
+      kind: 'success',
+      title: 'Schedule created',
+      message: `${handoffCreatedCount} real post${handoffCreatedCount === '1' ? '' : 's'} scheduled.`
+    };
+  }
+
+  const bulkRescheduledCount = searchParams.get('bulk_rescheduled');
+  if (bulkRescheduledCount) {
+    return {
+      kind: 'success',
+      title: 'Posts rescheduled',
+      message: `${bulkRescheduledCount} post${bulkRescheduledCount === '1' ? '' : 's'} moved on the calendar.`
+    };
+  }
+
+  const flagKey = Object.keys(dashboardNoticeCatalog).find((key) => searchParams.has(key));
+  return flagKey ? dashboardNoticeCatalog[flagKey] : null;
+}
+
+function dashboardNoticeMarkup(notice) {
+  if (!notice) return '';
+  return `<article class="dashboard-notice ${escapeHtml(notice.kind || 'info')}"><strong>${escapeHtml(notice.title || 'Update')}</strong><span>${escapeHtml(notice.message || '')}</span></article>`;
+}
+
 function templateHtml(pageId) {
   const template = document.getElementById(`dashboard-form-${pageId}`);
   return template ? template.innerHTML : '';
@@ -189,19 +267,19 @@ function platformIcon(platform = '') {
 }
 
 const routeMap = {
-  overview: { primary: '#', secondary: '/dashboard/content-library', view: '/dashboard/overview', label: 'Create post', modalAction: 'full-composer' },
-  'quick-create': { primary: '#', secondary: '/dashboard/content-library', view: '/dashboard/quick-create', label: 'Full composer', modalAction: 'full-composer' },
+  overview: { primary: '/dashboard/quick-create', secondary: '/dashboard/content-library', view: '/dashboard/overview', label: 'Create post' },
+  'quick-create': { primary: '/dashboard/quick-create', secondary: '/dashboard/content-library', view: '/dashboard/quick-create', label: 'Full composer' },
   team: { primary: '/dashboard/team', secondary: '/dashboard/team', view: '/dashboard/team', label: 'Invite team' },
-  'brand-brain': { primary: '#', secondary: '/dashboard/quick-create', view: '/dashboard/brand-brain', label: 'New brand', modalAction: 'brand-create' },
-  'content-library': { primary: '#', secondary: '/dashboard/calendar', view: '/dashboard/content-library', label: 'Full composer', modalAction: 'full-composer' },
+  'brand-brain': { primary: '/dashboard/brand-brain?mode=create', secondary: '/dashboard/quick-create', view: '/dashboard/brand-brain', label: 'New brand' },
+  'content-library': { primary: '/dashboard/quick-create', secondary: '/dashboard/calendar', view: '/dashboard/content-library', label: 'Full composer' },
   campaigns: { primary: '/dashboard/campaigns', secondary: '/dashboard/quick-create', view: '/dashboard/campaigns', label: 'Campaigns' },
   media: { primary: '/dashboard/media', secondary: '/dashboard/quick-create', view: '/dashboard/media', label: 'Media library' },
   'video-system': { primary: '/dashboard/video-system', secondary: '/dashboard/quick-create', view: '/dashboard/video-system', label: 'Video studio' },
   'avatar-video': { primary: '/dashboard/avatar-video', secondary: '/dashboard/video-system', view: '/dashboard/avatar-video', label: 'Avatar video' },
-  calendar: { primary: '#', secondary: '/dashboard/content-library', view: '/dashboard/calendar', label: 'Full composer', modalAction: 'full-composer' },
+  calendar: { primary: '/dashboard/quick-create', secondary: '/dashboard/content-library', view: '/dashboard/calendar', label: 'Full composer' },
   social: { primary: '/dashboard/social', secondary: '/dashboard/content-library', view: '/dashboard/social', label: 'Social APIs' },
-  approvals: { primary: '#', secondary: '/dashboard/calendar', view: '/dashboard/approvals', label: 'Full composer', modalAction: 'full-composer' },
-  analytics: { primary: '/dashboard/analytics', secondary: '/dashboard/content-library', view: '/dashboard/analytics', label: 'Analytics' },
+  approvals: { primary: '/dashboard/quick-create', secondary: '/dashboard/calendar', view: '/dashboard/approvals', label: 'Full composer' },
+  analytics: { primary: '/dashboard/analytics/export.csv', secondary: '/dashboard/content-library', view: '/dashboard/analytics', label: 'Export CSV' },
   notifications: { primary: '/dashboard/notifications', secondary: '/dashboard/content-library', view: '/dashboard/notifications', label: 'Notifications' },
   billing: { primary: '/dashboard/billing', secondary: '/dashboard/settings', view: '/dashboard/billing', label: 'Billing' },
   plans: { primary: '/dashboard/plans?mode=create', secondary: '/dashboard/billing', view: '/dashboard/plans', label: 'Create plan' },
@@ -600,7 +678,10 @@ function actionButtons(title) {
   }
   const routes = routeMap[currentPage] || routeMap.overview;
   const routePage = (href) => aliasPageId(String(href || '').replace('/dashboard/', ''));
-  const safePrimary = routes.primary && routes.primary !== '#' && !isAllowedPage(routePage(routes.primary)) ? pagePath('overview') : routes.primary;
+  const primaryHref = String(routes.primary || '');
+  const isDashboardActionHref = primaryHref.startsWith('/dashboard/actions/');
+  const isDashboardExportHref = primaryHref.startsWith('/dashboard/analytics/export.csv');
+  const safePrimary = routes.primary && routes.primary !== '#' && !isDashboardActionHref && !isDashboardExportHref && !isAllowedPage(routePage(routes.primary)) ? pagePath('overview') : routes.primary;
   const primary = routes.modalAction
     ? `<button class="btn btn-primary" type="button" data-action="${routes.modalAction}">${icon('plus')}${escapeHtml(routes.label || 'Create')}</button>`
     : `<a class="btn btn-primary" href="${escapeHtml(safePrimary || pagePath(currentPage))}">${icon('plus')}${escapeHtml(routes.label || 'Open')}</a>`;
@@ -615,6 +696,46 @@ function renderStats(stats = []) {
   return `<div class="stats-grid">${stats.map(([num, label, meta]) => `
     <article class="stat-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(num)}</strong><small>${escapeHtml(meta)}</small></article>
   `).join('')}</div>`;
+}
+
+function analyticsChart(title, rows = [], labelKey = 'label') {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const maxValue = Math.max(1, ...safeRows.map((row) => Number(row.value || 0)));
+  return `<article class="analytics-chart">
+    <div class="card-head"><div><h3>${escapeHtml(title)}</h3><p>Performance compared by ${escapeHtml(labelKey.replace(/_/g, ' '))}.</p></div><span class="badge">${escapeHtml(safeRows.length)} rows</span></div>
+    <div class="analytics-bars">
+      ${safeRows.length ? safeRows.map((row) => {
+        const label = row[labelKey] || row.label || row.platform || row.time || row.campaign || 'Unknown';
+        const value = Number(row.value || 0);
+        const width = Math.max(6, Math.round((value / maxValue) * 100));
+        return `<div class="analytics-bar-row">
+          <span>${escapeHtml(label)}</span>
+          <div class="analytics-bar-track"><i style="width:${width}%"></i></div>
+          <strong>${escapeHtml(value)}<small>${row.engagementRate ? ` - ${Number(row.engagementRate).toFixed(2)}%` : ''}</small></strong>
+        </div>`;
+      }).join('') : '<p class="empty-state">No analytics data yet.</p>'}
+    </div>
+  </article>`;
+}
+
+function renderAnalyticsDashboard(page = {}) {
+  const charts = page.charts || {};
+  const recommendations = Array.isArray(page.recommendations) ? page.recommendations : [];
+  return `${templateHtml('analytics')}
+    <section class="analytics-dashboard-grid">
+      ${analyticsChart('Platform performance', charts.platforms || [], 'platform')}
+      ${analyticsChart('Best times', charts.times || [], 'time')}
+      ${analyticsChart('Campaign performance', charts.campaigns || [], 'campaign')}
+      <article class="analytics-chart analytics-recommendations">
+        <div class="card-head"><div><h3>Content recommendations</h3><p>Generated from post, campaign and account metrics.</p></div><a class="badge" href="${escapeHtml(page.exportUrl || '/dashboard/analytics/export.csv')}">CSV</a></div>
+        ${recommendations.length
+          ? `<ul class="record-detail-list">${recommendations.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+          : '<p class="empty-state">Recommendations appear after posts have analytics.</p>'}
+      </article>
+    </section>
+    <article class="card"><div class="card-head"><div><h3>Analytics records</h3><p>Post, campaign, account and recommendation cards from current performance data.</p></div><span class="badge">${escapeHtml(page.cards?.length || 0)} items</span></div>${renderCards(page.cards)}</article>
+    ${renderRows(page.rows)}
+    ${renderTable(page)}`;
 }
 
 function isVideoMedia(card = {}) {
@@ -684,11 +805,18 @@ function mediaLibraryCard(card, index, options = {}) {
       : `<div class="media-placeholder">${escapeHtml(type || 'post')}</div>`;
   const actionLabel = options.actionLabel || (card.kind === 'media' ? 'Create draft' : 'Open');
   const actionButton = card.kind === 'media' && card.id
-    ? `<form action="/media/${escapeHtml(card.id)}/create-draft" method="post" class="inline-form">${csrfInput()}<button class="btn btn-ghost" type="submit">${escapeHtml(actionLabel)}</button></form>`
+    ? `<form action="/dashboard/actions/media/${escapeHtml(card.id)}/create-draft" method="post" class="inline-form">${csrfInput()}<button class="btn btn-ghost" type="submit">${escapeHtml(actionLabel)}</button></form>`
     : `<button class="btn btn-ghost" type="button" data-card-action="view" data-card-index="${index}">${escapeHtml(actionLabel)}</button>`;
   const editButton = canEditCard(card) ? `<button class="btn btn-ghost" type="button" data-card-action="edit" data-card-index="${index}">Edit</button>` : '';
+  const archiveButton = card.archiveAction ? `<form action="${escapeHtml(card.archiveAction)}" method="post" class="inline-form" data-confirm="Archive this media item?">${csrfInput()}<button class="btn btn-ghost" type="submit">Archive</button></form>` : '';
   const deleteButton = card.deleteAction ? `<form action="${escapeHtml(card.deleteAction)}" method="post" class="inline-form" data-confirm="Delete this item?">${csrfInput()}<button class="btn btn-ghost" type="submit">Delete</button></form>` : '';
-  return `<article class="media-card dashboard-media-card" data-record-kind="${escapeHtml(card.kind || 'record')}" data-card-index="${index}">
+  const transformButtons = card.kind === 'media' && card.id && type === 'image'
+    ? ['crop_square:Square', 'crop_vertical:9:16', 'crop_portrait:4:5', 'crop_landscape:16:9', 'compress:Compress'].map((item) => {
+        const [actionType, label] = item.split(':');
+        return `<form action="/dashboard/actions/media/${escapeHtml(card.id)}/creative" method="post" class="inline-form">${csrfInput()}<input type="hidden" name="actionType" value="${escapeHtml(actionType)}"><button class="btn btn-ghost" type="submit">${escapeHtml(label)}</button></form>`;
+      }).join('')
+    : '';
+  return `<article class="media-card dashboard-media-card" data-record-kind="${escapeHtml(card.kind || 'record')}" data-card-index="${index}" data-media-type="${escapeHtml(type)}" data-media-folder="${escapeHtml(detailsValue(card, ['Folder']))}" data-media-tags="${escapeHtml(detailsValue(card, ['Tags']))}">
     ${preview}
     <div>
       <h3>${escapeHtml(title)}</h3>
@@ -697,6 +825,8 @@ function mediaLibraryCard(card, index, options = {}) {
       <div class="stack-actions dashboard-media-actions">
         ${actionButton}
         ${editButton}
+        ${transformButtons}
+        ${archiveButton}
         ${deleteButton}
       </div>
     </div>
@@ -716,12 +846,23 @@ function renderMediaLibraryShell(page = {}, options = {}) {
   const title = options.title || 'Media & Images';
   const description = options.description || 'Uploaded and generated assets use one reusable media-card design.';
   const emptyMessage = options.emptyMessage || 'No media assets yet';
-  const action = options.action || '<a class="btn btn-ghost" href="/media">Upload media</a>';
+  const action = options.action || '<a class="btn btn-ghost" href="/dashboard/media">Upload media</a>';
+  const filters = options.filters ? `<div class="media-filter-bar">
+    <input type="search" placeholder="Search media" data-media-search>
+    <select data-media-filter>
+      <option value="">All types</option>
+      <option value="image">Images</option>
+      <option value="video">Videos</option>
+      <option value="audio">Audio</option>
+      <option value="document">Documents</option>
+    </select>
+  </div>` : '';
   return `<article class="card dashboard-media-shell">
     <div class="card-head">
       <div><span class="kicker">${escapeHtml(kicker)}</span><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></div>
       ${action}
     </div>
+    ${filters}
     ${mediaLibraryGrid(cards, emptyMessage)}
   </article>`;
 }
@@ -732,7 +873,8 @@ function renderMediaDashboard(page = {}) {
     title: 'Media & Images',
     description: 'Uploaded and generated assets use one reusable media-card design.',
     emptyMessage: 'No media assets yet',
-    action: '<a class="btn btn-ghost" href="/media">Upload media</a>'
+    action: '<a class="btn btn-ghost" href="/dashboard/media">Upload media</a>',
+    filters: true
   });
 }
 
@@ -742,7 +884,7 @@ function renderContentLibraryDashboard(page = {}) {
     title: 'Content Library',
     description: 'Saved posts use the same Media & Images card layout, spacing, thumbnails and actions.',
     emptyMessage: 'No saved posts yet',
-    action: `<button class="btn btn-primary" type="button" data-full-composer>${icon('plus')}New post</button>`
+    action: `<a class="btn btn-primary" href="/dashboard/quick-create">${icon('plus')}New post</a>`
   });
 }
 
@@ -752,7 +894,7 @@ function renderApprovalsHandoffDashboard(page = {}) {
     <article class="card handoff-queue-card">
       <div class="card-head">
         <div><span class="kicker">review queue</span><h3>Approvals and handoff queue</h3><p>Client approval requests, handoff posts and publish-after-approval items stay together in one restored workflow.</p></div>
-        <button class="btn btn-primary" type="button" data-full-composer>${icon('plus')}Create review post</button>
+        <a class="btn btn-primary" href="/dashboard/quick-create">${icon('plus')}Create review post</a>
       </div>
       ${cards.length ? renderCards(cards) : '<article class="empty-state"><h2>No approval requests yet</h2><p>Create a draft, choose Handoff or Approval mode in the full composer, and requests will appear here.</p></article>'}
     </article>
@@ -783,7 +925,7 @@ function renderBillingDashboard(page = {}) {
   const activeSubscription = subscriptions[0] || {};
   const planLabel = currentPlan.name || detailsValue(activeSubscription, ['Plan']) || activeSubscription.title || 'Current plan';
   const statusLabel = detailsValue(activeSubscription, ['Status']) || activeSubscription.status || 'Active';
-  const providerLabel = detailsValue(activeSubscription, ['Provider']) || 'Manual';
+  const providerLabel = detailsValue(activeSubscription, ['Provider']) || 'Pesapal';
   const renewLabel = detailsValue(activeSubscription, ['Current period end']) || 'Billing period not set';
   const usageRows = usage.length ? usage.slice(0, 10).map((card) => {
     const percent = usagePercentFromCard(card);
@@ -801,7 +943,7 @@ function renderBillingDashboard(page = {}) {
   const subscriptionRows = subscriptions.length ? subscriptions.map((card) => `<article class="billing-timeline-row">
       <div><strong>${escapeHtml(card.title)}</strong><span>${escapeHtml(card.description)}</span></div>
       <span class="plan-status-chip">${escapeHtml(card.status || card.tag || 'subscription')}</span>
-    </article>`).join('') : '<p class="muted">No subscription record found. Choose a plan or use manual billing fallback.</p>';
+    </article>`).join('') : '<p class="muted">No subscription record found. Choose a plan and complete Pesapal checkout.</p>';
   const canManagePlans = isAllowedPage('plans');
   const planCards = dashboardPublicPlans.length ? dashboardPublicPlans.map((plan) => {
     const isCurrent = currentPlan.slug === plan.slug;
@@ -812,8 +954,8 @@ function renderBillingDashboard(page = {}) {
     const action = isCurrent
       ? '<button class="btn btn-ghost" type="button" disabled>Current plan</button>'
       : plan.isTrial
-        ? `<form action="/billing/plan" method="post">${csrfInput()}<input type="hidden" name="plan" value="${escapeHtml(plan.slug)}"><button class="btn btn-primary" type="submit">Activate trial</button></form>`
-        : `<form action="${escapeHtml(plan.checkoutUrl || `/billing/checkout/${encodeURIComponent(plan.slug)}`)}" method="post">${csrfInput()}<button class="btn btn-primary" type="submit">Choose and pay</button></form>`;
+        ? `<form action="/dashboard/billing/plan" method="post">${csrfInput()}<input type="hidden" name="plan" value="${escapeHtml(plan.slug)}"><button class="btn btn-primary" type="submit">Activate trial</button></form>`
+        : `<form action="${escapeHtml(plan.checkoutUrl || `/dashboard/billing/checkout/${encodeURIComponent(plan.slug)}`)}" method="post">${csrfInput()}<button class="btn btn-primary" type="submit">Choose and pay</button></form>`;
     return `<article class="billing-plan-card ${plan.isPopular ? 'is-popular' : ''}">
       <div class="plan-card-topline"><span class="plan-status-chip">${plan.isPopular ? 'Popular' : 'Plan'}</span></div>
       <h3>${escapeHtml(plan.name || 'Plan')}</h3>
@@ -914,7 +1056,28 @@ function brandLogo(brand) {
 }
 
 function brandSummary(brand) {
-  return `${brand.businessType || 'Brand'} · ${brand.products?.length || 0} products · ${brand.offers?.length || 0} offers · ${brand.brandRules?.length || 0} rules`;
+  const productServiceCount = (brand.products?.length || 0) + (brand.services?.length || 0);
+  return `${brand.businessType || 'Brand'} · ${brand.brandCompletenessScore || brand.checklist?.score || 0}% complete · ${productServiceCount} products/services · ${brand.offers?.length || 0} offers · ${brand.brandRules?.length || 0} rules`;
+}
+
+function brandChecklistHtml(brand) {
+  const checklist = brand.checklist || {};
+  const sections = Array.isArray(checklist.sections) ? checklist.sections : [];
+  if (!sections.length) return '';
+  const score = checklist.score || brand.brandCompletenessScore || 0;
+  return `<section class="brand-checklist-panel full">
+    <div class="brand-completion-head">
+      <div><span class="kicker">completion</span><h4>${escapeHtml(score)}% Brand Brain ready</h4></div>
+      <span class="badge">${escapeHtml(checklist.complete || 0)}/${escapeHtml(checklist.total || 0)}</span>
+    </div>
+    <div class="brand-completion-bar"><span style="width:${Math.max(0, Math.min(100, Number(score || 0)))}%"></span></div>
+    <div class="brand-checklist-grid">${sections.map((section) => `
+      <div class="brand-checklist-section">
+        <strong>${escapeHtml(section.title)}</strong>
+        <ul>${(section.items || []).map((item) => `<li class="${item.complete ? 'is-complete' : 'is-missing'}">${icon(item.complete ? 'check' : 'x')}${escapeHtml(item.label)}</li>`).join('')}</ul>
+      </div>
+    `).join('')}</div>
+  </section>`;
 }
 
 function hiddenBrandInput(name, value = '') {
@@ -922,10 +1085,11 @@ function hiddenBrandInput(name, value = '') {
 }
 
 function brandEditForm(brand) {
-  return `<form action="/brands/${escapeHtml(brand.id)}?_method=PUT" method="post" class="real-form-grid modal-edit-form" data-brand-upload-form data-brand-id="${escapeHtml(brand.id)}">
+  return `<form action="/dashboard/actions/brands/${escapeHtml(brand.id)}?_method=PUT" method="post" class="real-form-grid modal-edit-form" data-brand-upload-form data-brand-id="${escapeHtml(brand.id)}">
     ${hiddenBrandInput('_csrf', liveData.csrfToken || document.querySelector('input[name="_csrf"]')?.value || '')}
     <label>Brand name<input name="name" required value="${escapeHtml(brand.name)}"></label>
     <label>Business type<input name="businessType" value="${escapeHtml(brand.businessType)}"></label>
+    <label>Industry<input name="industry" value="${escapeHtml(brand.industry || '')}"></label>
     <input type="hidden" name="logo" value="${escapeHtml(brand.logo)}" data-brand-upload-url="logo">
     <input type="hidden" name="logoPublicId" value="${escapeHtml(brand.logoPublicId)}" data-brand-upload-public-id="logo">
     <input type="hidden" name="favicon" value="${escapeHtml(brand.favicon || '')}" data-brand-upload-url="favicon">
@@ -948,14 +1112,18 @@ function brandEditForm(brand) {
     <label class="full">Target audience<input name="targetAudience" value="${escapeHtml(brand.targetAudience)}"></label>
     <label class="full">Preferred CTA<input name="preferredCta" value="${escapeHtml(brand.preferredCta)}"></label>
     <label class="full">Description<textarea name="description" rows="4">${escapeHtml(brand.description)}</textarea></label>
-    <label class="full">Products/services<textarea name="products" rows="3">${escapeHtml(brand.form?.products || '')}</textarea></label>
+    <label class="full">Products<textarea name="products" rows="3">${escapeHtml(brand.form?.products || '')}</textarea></label>
+    <label class="full">Services<textarea name="services" rows="3">${escapeHtml(brand.form?.services || '')}</textarea></label>
     <label class="full">Offers<textarea name="offers" rows="3">${escapeHtml(brand.form?.offers || '')}</textarea></label>
+    <label class="full">FAQs<textarea name="faqs" rows="3">${escapeHtml(brand.form?.faqs || '')}</textarea></label>
     <label class="full">Social links<textarea name="socialLinks" rows="3">${escapeHtml(brand.form?.socialLinks || '')}</textarea></label>
     <label>Goals<textarea name="goals" rows="3">${escapeHtml(brand.form?.goals || '')}</textarea></label>
     <label>Customer pain points<textarea name="customerPainPoints" rows="3">${escapeHtml(brand.form?.customerPainPoints || '')}</textarea></label>
     <label>Common objections<textarea name="commonObjections" rows="3">${escapeHtml(brand.form?.commonObjections || '')}</textarea></label>
     <label>Testimonials<textarea name="testimonials" rows="3">${escapeHtml(brand.form?.testimonials || '')}</textarea></label>
     <label>Brand rules<textarea name="brandRules" rows="3">${escapeHtml(brand.form?.brandRules || '')}</textarea></label>
+    <label>Keywords<textarea name="keywords" rows="3">${escapeHtml(brand.form?.keywords || '')}</textarea></label>
+    <label>Preferred words<textarea name="preferredWords" rows="3">${escapeHtml(brand.form?.preferredWords || '')}</textarea></label>
     <label>Preferred hashtags<textarea name="preferredHashtags" rows="3">${escapeHtml(brand.form?.preferredHashtags || '')}</textarea></label>
     <label>Blocked words<textarea name="blockedWords" rows="3">${escapeHtml(brand.form?.blockedWords || '')}</textarea></label>
     <label>Competitors<textarea name="competitors" rows="3">${escapeHtml(brand.form?.competitors || '')}</textarea></label>
@@ -1050,14 +1218,18 @@ function brandDetailHtmlV2(brand) {
   const offers = (brand.offers || []).map((item) => [item.title, item.description].filter(Boolean).join(' - ')).join(' | ') || 'Not saved';
   const socialLinks = (brand.socialLinks || []).map((item) => [item.platform, item.url].filter(Boolean).join(': ')).join(' | ') || 'Not saved';
   const testimonials = (brand.testimonials || []).map((item) => [item.author, item.quote].filter(Boolean).join(': ')).join(' | ') || 'Not saved';
+  const services = (brand.services || []).map((item) => [item.name, item.price, item.description].filter(Boolean).join(' - ')).join(' | ') || 'Not saved';
+  const faqs = (brand.faqs || []).map((item) => [item.question, item.answer].filter(Boolean).join(': ')).join(' | ') || 'Not saved';
   return `<div class="brand-view-header">
       <div class="brand-logo-lg">${brandLogo(brand)}</div>
       <div class="brand-view-title"><span class="modal-kicker">${escapeHtml(brand.status)}</span><h3>${escapeHtml(brand.name)}</h3><p>${escapeHtml(brandSummary(brand))}</p></div>
     </div>
     <div class="brand-view-form">
+      ${brandChecklistHtml(brand)}
       ${detailGroup('Profile', [
         detailRow('Brand name', escapeHtml(brand.name || 'Not saved')),
         detailRow('Business type', escapeHtml(brand.businessType || 'Not saved')),
+        detailRow('Industry', escapeHtml(brand.industry || 'Not saved')),
         detailRow('Logo asset', brand.logo ? 'Uploaded and saved' : 'Not saved'),
         detailRow('Favicon asset', brand.favicon ? 'Uploaded and saved' : 'Not saved'),
         detailRow('Cover image asset', brand.coverImage ? 'Uploaded and saved' : 'Not saved'),
@@ -1072,7 +1244,9 @@ function brandDetailHtmlV2(brand) {
       ])}
       ${detailGroup('Offer Memory', [
         detailRow('Products', escapeHtml(products)),
+        detailRow('Services', escapeHtml(services)),
         detailRow('Offers', escapeHtml(offers)),
+        detailRow('FAQs', escapeHtml(faqs)),
         detailRow('Social links', escapeHtml(socialLinks)),
         detailRow('Pain points', escapeHtml(listValue(brand.customerPainPoints))),
         detailRow('Objections', escapeHtml(listValue(brand.commonObjections))),
@@ -1081,6 +1255,8 @@ function brandDetailHtmlV2(brand) {
       ${detailGroup('Rules & Visuals', [
         detailRow('Rules', escapeHtml(listValue(brand.brandRules))),
         detailRow('Goals', escapeHtml(listValue(brand.goals))),
+        detailRow('Keywords', escapeHtml(listValue(brand.keywords))),
+        detailRow('Preferred words', escapeHtml(listValue(brand.preferredWords))),
         detailRow('Hashtags', escapeHtml(listValue(brand.preferredHashtags))),
         detailRow('Blocked words', escapeHtml(listValue(brand.blockedWords))),
         detailRow('Competitors', escapeHtml(listValue(brand.competitors))),
@@ -1110,8 +1286,13 @@ function brandDetailHtmlV2(brand) {
 function renderBrandBrain(page) {
   const records = brandRecords;
   if (!records.length) {
-    return `<article class="card"><div class="empty-state"><h2>No Brand Brain yet</h2><p>Add your first brand below so AI can use real audience, offer, tone, and visual rules.</p></div></article>`;
+    return `<article class="card"><div class="empty-state"><h2>No Brand Brain yet</h2><p>Add your first brand so AI can use real audience, offer, tone, and visual rules.</p></div></article>${templateHtml('brand-brain')}`;
   }
+  const focusBrand = records.find((brand) => Number(brand.checklist?.score || brand.brandCompletenessScore || 0) < 100) || records[0];
+  const onboarding = `<article class="card brand-brain-card-shell">
+    <div class="card-head"><div><h3>Brand onboarding checklist</h3><p>${escapeHtml(focusBrand.name)} is the current Brand Brain focus. Complete missing fields to improve every generator.</p></div><button class="btn btn-primary" type="button" data-brand-edit="${escapeHtml(focusBrand.id)}">Edit focus brand</button></div>
+    ${brandChecklistHtml(focusBrand)}
+  </article>`;
   const cards = `<article class="card brand-brain-card-shell"><div class="card-head"><div><h3>Brand Brain cards</h3><p>Real brand records with logo, status, edit, and complete detail modals.</p></div><span class="badge">${records.length} brands</span></div>
     <div class="brand-brain-grid">${records.map((brand) => `
       <article class="brand-brain-card">
@@ -1120,8 +1301,10 @@ function renderBrandBrain(page) {
           <span class="kicker">${escapeHtml(brand.businessType || 'Brand')}</span>
           <h4>${escapeHtml(brand.name)}</h4>
           <p class="brand-card-description">${escapeHtml(brand.description || brand.targetAudience || 'No description saved yet.')}</p>
+          <div class="brand-completion-bar" aria-label="${escapeHtml(brand.name)} completion"><span style="width:${Math.max(0, Math.min(100, Number(brand.checklist?.score || brand.brandCompletenessScore || 0)))}%"></span></div>
           <div class="brand-brain-metrics">
-            <span>${brand.products?.length || 0} products</span>
+            <span>${brand.checklist?.score || brand.brandCompletenessScore || 0}% complete</span>
+            <span>${(brand.products?.length || 0) + (brand.services?.length || 0)} products/services</span>
             <span>${brand.offers?.length || 0} offers</span>
             <span>${brand.brandRules?.length || 0} rules</span>
           </div>
@@ -1133,29 +1316,30 @@ function renderBrandBrain(page) {
       </article>
     `).join('')}</div></article>`;
   const table = `<article class="card"><div class="card-head"><div><h3>Brand Brain table</h3><p>Every row opens a full real-data modal.</p></div><button class="btn btn-primary" type="button" data-action="brand-create">${icon('plus')}Add brand</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Brand</th><th>Audience</th><th>Memory</th><th>Status</th><th>Actions</th></tr></thead><tbody>${records.map((brand) => `
+    <div class="table-wrap"><table><thead><tr><th>Brand</th><th>Audience</th><th>Memory</th><th>Completion</th><th>Status</th><th>Actions</th></tr></thead><tbody>${records.map((brand) => `
       <tr>
         <td><strong>${escapeHtml(brand.name)}</strong><br><small>${escapeHtml(brand.businessType || 'Brand')}</small></td>
         <td>${escapeHtml(brand.targetAudience || 'Not saved')}</td>
-        <td>${escapeHtml(`${brand.products?.length || 0} products, ${brand.offers?.length || 0} offers, ${brand.brandRules?.length || 0} rules`)}</td>
+        <td>${escapeHtml(`${(brand.products?.length || 0) + (brand.services?.length || 0)} products/services, ${brand.offers?.length || 0} offers, ${brand.brandRules?.length || 0} rules`)}</td>
+        <td>${escapeHtml(brand.checklist?.score || brand.brandCompletenessScore || 0)}%</td>
         <td><span class="badge">${escapeHtml(brand.status)}</span></td>
         <td><button class="tool-btn" type="button" data-brand-view="${escapeHtml(brand.id)}">View</button> <button class="tool-btn" type="button" data-brand-edit="${escapeHtml(brand.id)}">Edit</button></td>
       </tr>
     `).join('')}</tbody></table></div></article>`;
-  return `${cards}${table}`;
+  return `${onboarding}${cards}${table}`;
 }
 
 function socialConnectUrl(platform) {
   const brandId = dashboardBrands[0]?.id || '';
   if (!brandId) return '/dashboard/brand-brain';
-  if (['facebook', 'instagram', 'whatsapp'].includes(platform.key)) return `/social/facebook/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'linkedin') return `/social/linkedin/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'tiktok') return `/social/tiktok/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'youtube') return `/social/youtube/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'google_business') return `/social/google-business/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'pinterest') return `/social/pinterest/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'x') return `/social/x/connect?brand=${encodeURIComponent(brandId)}`;
-  if (platform.key === 'threads') return `/social/threads/connect?brand=${encodeURIComponent(brandId)}`;
+  if (['facebook', 'instagram', 'whatsapp'].includes(platform.key)) return `/dashboard/actions/social/facebook/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'linkedin') return `/dashboard/actions/social/linkedin/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'tiktok') return `/dashboard/actions/social/tiktok/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'youtube') return `/dashboard/actions/social/youtube/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'google_business') return `/dashboard/actions/social/google-business/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'pinterest') return `/dashboard/actions/social/pinterest/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'x') return `/dashboard/actions/social/x/connect?brand=${encodeURIComponent(brandId)}`;
+  if (platform.key === 'threads') return `/dashboard/actions/social/threads/connect?brand=${encodeURIComponent(brandId)}`;
   return '/dashboard/social';
 }
 
@@ -1169,14 +1353,14 @@ function socialAccountRecord(account = {}) {
     tag: account.status || 'connected',
     status: account.status || 'connected',
     href: '/dashboard/social',
-    editHref: account.id ? `/social/${account.id}` : '',
-    editAction: account.id ? `/social/${account.id}/update` : '',
+    editHref: account.id ? `/dashboard/actions/social/${account.id}` : '',
+    editAction: account.id ? `/dashboard/actions/social/${account.id}/update` : '',
     editMethod: 'post',
     actions: account.id ? [
-      { label: 'Reconnect', action: `/social/${account.id}/reconnect`, method: 'post', kind: 'reconnect' },
-      { label: 'Disconnect', action: `/social/${account.id}/disconnect`, method: 'post', kind: 'disconnect', destructive: true }
+      { label: 'Reconnect', action: `/dashboard/actions/social/${account.id}/reconnect`, method: 'post', kind: 'reconnect' },
+      { label: 'Disconnect', action: `/dashboard/actions/social/${account.id}/disconnect`, method: 'post', kind: 'disconnect', destructive: true }
     ] : [],
-    deleteAction: account.id ? `/social/${account.id}/disconnect` : '',
+    deleteAction: account.id ? `/dashboard/actions/social/${account.id}/disconnect` : '',
     deleteLabel: 'Disconnect',
     deleteMethod: 'post',
     editFields: [
@@ -1230,7 +1414,7 @@ function apiConnectForm(platform) {
   const brandOptions = dashboardBrands.length
     ? dashboardBrands.map((brand) => `<option value="${escapeHtml(brand.id)}">${escapeHtml(brand.name)}</option>`).join('')
     : '<option value="">Create a Brand Brain first</option>';
-  return `<form action="/social/api-connect" method="post" class="real-form-grid modal-edit-form record-edit-form">
+  return `<form action="/dashboard/actions/social/api-connect" method="post" class="real-form-grid modal-edit-form record-edit-form">
     ${csrfInput()}
     <input type="hidden" name="platform" value="${escapeHtml(platform.key)}">
     <label>Brand<select name="brand" required>${brandOptions}</select></label>
@@ -1330,7 +1514,7 @@ function renderSocialDashboard() {
         <div class="dashboard-connected-actions">
           <button class="btn btn-ghost" type="button" data-social-view="${escapeHtml(account.id)}">View</button>
           <button class="btn btn-status" type="button" data-social-view="${escapeHtml(account.id)}">${escapeHtml(account.status || 'connected')}</button>
-          <form action="/social/${escapeHtml(account.id)}/disconnect" method="post" data-confirm="Disconnect this channel?">${csrfInput()}<button class="btn btn-ghost btn-danger-subtle" type="submit">Disconnect</button></form>
+          <form action="/dashboard/actions/social/${escapeHtml(account.id)}/disconnect" method="post" data-confirm="Disconnect this channel?">${csrfInput()}<button class="btn btn-ghost btn-danger-subtle" type="submit">Disconnect</button></form>
         </div>
       </article>`).join('')
     : `<article class="empty-state"><h2>No connected channels yet</h2><p>Connect a platform above. Connected accounts will appear here with preview and token status actions.</p></article>`;
@@ -1382,6 +1566,7 @@ function calendarPostActions(post) {
   return `<div class="dashboard-library-actions compact-post-actions">
     <button class="btn btn-ghost" type="button" data-calendar-post-view="${postId}">View</button>
     <button class="btn btn-ghost" type="button" data-calendar-post-edit="${postId}">Edit</button>
+    ${post.canRetry ? `<form action="/dashboard/actions/posts/${postId}/retry" method="post" class="inline-form">${csrfInput()}<button class="btn btn-ghost" type="submit">Retry</button></form>` : ''}
     <button class="btn btn-primary" type="button" data-calendar-post-view="${postId}">More</button>
   </div>`;
 }
@@ -1408,6 +1593,7 @@ function calendarLibraryPost(post, compact = false) {
       <div class="dashboard-library-title-row">
         <span class="pill">${statusDot(post.status)}${escapeHtml(post.status)}</span>
         <span class="pill">${platformIcon(post.platform)}${escapeHtml(String(post.platform || '').replace(/_/g, ' '))}</span>
+        ${!compact && post.canBulkReschedule ? `<label class="calendar-bulk-check"><input form="calendarBulkRescheduleForm" name="postIds" type="checkbox" value="${escapeHtml(post.id)}">Bulk</label>` : ''}
       </div>
       <h3>${escapeHtml(post.title || 'Scheduled post')}</h3>
       <div class="dashboard-library-meta">
@@ -1420,6 +1606,37 @@ function calendarLibraryPost(post, compact = false) {
   </article>`;
 }
 
+function calendarVisibleDays(days, view, focusDay) {
+  if (view === 'list') return days;
+  const index = Math.max(0, days.findIndex((day) => day.key === focusDay));
+  if (view === 'week') {
+    const start = Math.floor((index >= 0 ? index : 0) / 7) * 7;
+    return days.slice(start, start + 7);
+  }
+  if (view === 'day') {
+    const day = days.find((item) => item.key === focusDay);
+    return day ? [day] : [];
+  }
+  return days;
+}
+
+function postsFromCalendarDays(days) {
+  const seen = new Set();
+  return days.flatMap((day) => day.posts || []).filter((post) => {
+    if (!post?.id || seen.has(post.id)) return false;
+    seen.add(post.id);
+    return true;
+  });
+}
+
+function calendarViewHref(view, monthValue, focusDay) {
+  const params = new URLSearchParams();
+  params.set('view', view);
+  if (monthValue) params.set('month', monthValue);
+  if (view !== 'month' && focusDay) params.set('day', focusDay);
+  return `/dashboard/calendar?${params.toString()}`;
+}
+
 function renderCalendarDashboard(page) {
   const days = Array.isArray(dashboardCalendar.days) ? dashboardCalendar.days : [];
   const posts = Array.isArray(dashboardCalendar.posts) ? dashboardCalendar.posts : [];
@@ -1428,11 +1645,24 @@ function renderCalendarDashboard(page) {
   const monthLabelText = dashboardCalendar.monthLabel || 'Content calendar';
   const previousMonth = dashboardCalendar.previousMonth || '';
   const nextMonth = dashboardCalendar.nextMonth || '';
-  const realPostList = posts.length
-    ? posts.slice(0, 12).map((post) => calendarLibraryPost(post)).join('')
+  const params = new URLSearchParams(location.search || '');
+  const viewMode = params.get('view') || dashboardCalendar.view || 'month';
+  const focusDay = params.get('day') || dashboardCalendar.focusDay || todayKey;
+  const visibleDays = calendarVisibleDays(days, viewMode, focusDay);
+  const visiblePosts = viewMode === 'month' || viewMode === 'list' ? posts : postsFromCalendarDays(visibleDays);
+  const bestTimeSuggestions = Array.isArray(dashboardCalendar.bestTimeSuggestions) ? dashboardCalendar.bestTimeSuggestions : [];
+  const viewTabs = ['month', 'week', 'day', 'list'].map((view) => `<a class="btn ${viewMode === view ? 'btn-primary' : 'btn-ghost'}" href="${escapeHtml(calendarViewHref(view, dashboardCalendar.monthValue, focusDay))}">${escapeHtml(view)}</a>`).join('');
+  const suggestionBar = bestTimeSuggestions.length
+    ? `<div class="calendar-best-times">${bestTimeSuggestions.map((item) => `<button class="btn btn-ghost" type="button" data-calendar-best-time="${escapeHtml(item.scheduledAt)}"><strong>${escapeHtml(item.time)}</strong><span>${escapeHtml(item.brandName)} / ${escapeHtml(item.platform)}</span></button>`).join('')}</div>`
+    : '';
+  const bulkForm = visiblePosts.length
+    ? `<form id="calendarBulkRescheduleForm" class="calendar-bulk-form" action="/dashboard/actions/posts/bulk-reschedule" method="post">${csrfInput()}<label><span>Start time</span><input id="calendarBulkScheduledAt" name="scheduledAt" type="datetime-local"></label><label><span>Spacing min</span><input name="spacingMinutes" type="number" min="0" max="1440" value="30"></label><label><span>Shift days</span><input name="dayOffset" type="number" value="0"></label><button class="btn btn-primary" type="submit">Bulk reschedule</button></form>`
+    : '';
+  const realPostList = visiblePosts.length
+    ? visiblePosts.slice(0, 60).map((post) => calendarLibraryPost(post)).join('')
     : `<article class="empty-state"><h2>No scheduled content this month</h2><p>Use the schedule form or full composer to add real posts to the calendar.</p></article>`;
   const calendarGrid = days.length
-    ? days.map((day) => {
+    ? visibleDays.map((day) => {
         const visiblePosts = (day.posts || []).slice(0, 2);
         const hiddenCount = Math.max(0, (day.posts || []).length - visiblePosts.length);
         const postCount = (day.posts || []).length;
@@ -1464,7 +1694,7 @@ function renderCalendarDashboard(page) {
         <div>
           <span class="kicker">real calendar</span>
           <h3>${escapeHtml(monthLabelText)}</h3>
-          <p>Every day below is built from real Post records in this workspace. Use + more to open the day's content library.</p>
+          <p>Every view below is built from real Post records in this workspace. Drag posts to reschedule by day, or use bulk reschedule for selected posts.</p>
         </div>
         <div class="dashboard-calendar-nav">
           ${previousMonth ? `<a class="btn btn-ghost" href="/dashboard/calendar?month=${escapeHtml(previousMonth)}">Previous</a>` : ''}
@@ -1472,8 +1702,9 @@ function renderCalendarDashboard(page) {
           ${nextMonth ? `<a class="btn btn-ghost" href="/dashboard/calendar?month=${escapeHtml(nextMonth)}">Next</a>` : ''}
         </div>
       </div>
-      <div class="dashboard-calendar-weekdays">${weekdays.map((day) => `<span>${escapeHtml(day)}</span>`).join('')}</div>
-      <div class="dashboard-calendar-grid">${calendarGrid}</div>
+      <div class="dashboard-calendar-view-tabs">${viewTabs}</div>
+      ${suggestionBar}
+      ${viewMode === 'list' ? '' : `<div class="dashboard-calendar-weekdays">${weekdays.map((day) => `<span>${escapeHtml(day)}</span>`).join('')}</div><div class="dashboard-calendar-grid">${calendarGrid}</div>`}
       <div class="dashboard-calendar-legend">
         ${['scheduled', 'publishing', 'published', 'failed', 'cancelled'].map((status) => `<span>${statusDot(status)}${escapeHtml(status)}</span>`).join('')}
       </div>
@@ -1483,6 +1714,7 @@ function renderCalendarDashboard(page) {
         <div><span class="kicker">content library</span><h3>Real scheduled content</h3><p>No mockups here: this list only uses posts returned from the database for the selected month.</p></div>
         <a class="btn btn-ghost" href="/dashboard/content-library">Content library</a>
       </div>
+      ${bulkForm}
       <div class="dashboard-library-list dashboard-library-grid">${realPostList}</div>
     </article>`;
 }
@@ -1509,7 +1741,19 @@ function initSmartComposer(root = document) {
   const stage = scope.querySelector('[data-preview-stage]');
   const captionField = scope.querySelector('textarea[name="caption"]');
   const captionPreview = scope.querySelector('[data-preview-caption]');
+  const copyResultButton = scope.querySelector('[data-copy-composer-result]');
   const composerForm = scope.querySelector('form.composer-form') || scope.querySelector('form');
+  const mediaEmptyNote = scope.querySelector('[data-intent-empty-note]');
+
+  function syncMediaEmptyNote() {
+    if (!mediaEmptyNote) return;
+    if (!mediaOptions.length) {
+      mediaEmptyNote.hidden = true;
+      return;
+    }
+    const hasVisibleMedia = mediaOptions.some((card) => !card.hidden && card.style.display !== 'none' && !card.classList.contains('is-disabled-by-intent'));
+    mediaEmptyNote.hidden = hasVisibleMedia;
+  }
 
   function syncBrandFilters() {
     const brand = brandSelect ? brandSelect.value : '';
@@ -1530,6 +1774,7 @@ function initSmartComposer(root = document) {
       item.style.display = brandVisible ? '' : 'none';
       item.hidden = !brandVisible || item.classList.contains('is-disabled-by-intent');
     });
+    syncMediaEmptyNote();
   }
 
   function parsePreset(value) {
@@ -1546,7 +1791,7 @@ function initSmartComposer(root = document) {
 
   function selectedThumbs() {
     return mediaOptions
-      .filter((card) => card.querySelector('input')?.checked)
+      .filter((card) => card.querySelector('input')?.checked && !card.hidden && card.style.display !== 'none' && !card.classList.contains('is-disabled-by-intent'))
       .map((card) => {
         const image = card.querySelector('img')?.getAttribute('src');
         const video = card.querySelector('video')?.getAttribute('src');
@@ -1632,6 +1877,21 @@ function initSmartComposer(root = document) {
     captionPreview.textContent = value || 'Your Brand Brain caption preview will appear here.';
   }
 
+  async function copyComposerResult() {
+    if (!copyResultButton) return;
+    const value = captionField?.value.trim() || captionPreview?.textContent.trim() || '';
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      const previous = copyResultButton.textContent;
+      copyResultButton.textContent = 'Copied';
+      setTimeout(() => { copyResultButton.textContent = previous; }, 1400);
+    } catch (error) {
+      copyResultButton.textContent = 'Copy failed';
+      setTimeout(() => { copyResultButton.textContent = 'Copy result'; }, 1400);
+    }
+  }
+
   composerForm?.addEventListener('composer:intentchange', () => {
     syncBrandFilters();
     renderPreview();
@@ -1654,6 +1914,7 @@ function initSmartComposer(root = document) {
   });
   mediaOptions.forEach((card) => card.querySelector('input')?.addEventListener('change', renderPreview));
   captionField?.addEventListener('input', syncCaptionPreview);
+  copyResultButton?.addEventListener('click', copyComposerResult);
   window.AutoBrandComposerIntent?.init(scope);
   syncBrandFilters();
   syncCaptionPreview();
@@ -1661,14 +1922,9 @@ function initSmartComposer(root = document) {
 }
 
 function openFullComposer() {
-  modalBackdrop.classList.add('show');
-  modalBackdrop.setAttribute('aria-hidden', 'false');
-  modalKicker.textContent = 'Composer';
-  modalTitle.textContent = 'Full composer';
-  modalBody.innerHTML = fullComposerHtml();
-  modalActions.innerHTML = '<button class="btn btn-ghost" type="button" data-close-modal>Close</button>';
-  initSmartComposer(modalBody);
-  bindActions();
+  closeModal();
+  renderPage('quick-create');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function openContentLibrary(dayKeyValue) {
@@ -1685,7 +1941,7 @@ function openContentLibrary(dayKeyValue) {
   modalBody.innerHTML = posts.length
     ? `<div class="dashboard-library-list modal-library-list modal-day-grid">${posts.map((post) => calendarLibraryPost(post)).join('')}</div>`
     : '<article class="empty-state"><h2>No posts for this day</h2><p>Use the full composer to schedule a real post for this date.</p></article>';
-  modalActions.innerHTML = `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><button class="btn btn-primary" type="button" data-full-composer>Full composer</button>`;
+  modalActions.innerHTML = `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><a class="btn btn-primary" href="/dashboard/quick-create">Full composer</a>`;
   bindActions();
 }
 
@@ -1763,7 +2019,7 @@ function planFeatureList(plan = {}) {
 }
 
 function planFormAction(plan = {}, mode = 'create') {
-  return mode === 'edit' && plan.id ? `/admin/plans/${encodeURIComponent(plan.id)}` : '/admin/plans';
+  return mode === 'edit' && plan.id ? `/dashboard/actions/admin/plans/${encodeURIComponent(plan.id)}` : '/dashboard/actions/admin/plans';
 }
 
 function planEditorHtml(plan = {}, mode = 'create') {
@@ -1786,7 +2042,7 @@ function planEditorHtml(plan = {}, mode = 'create') {
       <label class="full"><span>Description</span><textarea name="description" rows="3">${escapeHtml(plan.description || '')}</textarea></label>
       <label><span>Price</span><input name="price" type="number" min="0" step="0.01" value="${escapeHtml(plan.price ?? 0)}"></label>
       <label><span>Currency</span><select name="currency">${['USD','EUR','GBP','NGN','KES','UGX'].map((currency) => `<option value="${currency}" ${selectedAttr(currency, plan.currency || 'USD')}>${currency}</option>`).join('')}</select></label>
-      <label><span>Billing interval</span><select name="billingInterval">${['month','year','one_time','manual'].map((interval) => `<option value="${interval}" ${selectedAttr(interval, plan.billingInterval || 'month')}>${escapeHtml(interval.replace('_', ' '))}</option>`).join('')}</select></label>
+      <label><span>Billing interval</span><select name="billingInterval">${['month','year','one_time'].map((interval) => `<option value="${interval}" ${selectedAttr(interval, plan.billingInterval || 'month')}>${escapeHtml(interval.replace('_', ' '))}</option>`).join('')}</select></label>
       <label><span>Trial days</span><input name="trialDays" type="number" min="0" value="${escapeHtml(plan.trialDays ?? 0)}"></label>
       <label><span>Sort order</span><input name="sortOrder" type="number" value="${escapeHtml(plan.sortOrder ?? 100)}"></label>
       <label><span>Queue priority</span><input name="queuePriority" type="number" min="0" max="100" value="${escapeHtml(plan.queuePriority ?? 5)}"></label>
@@ -1810,7 +2066,7 @@ function planEditorHtml(plan = {}, mode = 'create') {
       <label class="checkbox-line full"><input name="aiConfig[allowUserProviderSelection]" type="checkbox" value="on" ${checkedAttr(aiConfig.allowUserProviderSelection)}><span>Allow user provider/model selection when plan allows</span></label>
       <section class="form-section full"><h4>Billing and admin metadata</h4><p>Keep provider IDs here while frontend cards continue to use the SubscriptionPlan source.</p></section>
       <label><span>Payment provider plan ID</span><input name="paymentProviderPlanId" value="${escapeHtml(plan.paymentProviderPlanId || '')}"></label>
-      <label><span>Tax behavior</span><input name="taxBehavior" value="${escapeHtml(plan.taxBehavior || '')}" placeholder="inclusive, exclusive, manual"></label>
+      <label><span>Tax behavior</span><input name="taxBehavior" value="${escapeHtml(plan.taxBehavior || '')}" placeholder="inclusive or exclusive"></label>
       <label><span>Display badge</span><input name="metadata[displayBadge]" value="${escapeHtml(metadata.displayBadge || '')}"></label>
       <label><span>Support note</span><input name="metadata[supportNote]" value="${escapeHtml(metadata.supportNote || '')}"></label>
       <label class="full"><span>Extra metadata JSON</span><textarea name="metadata[extraJson]" rows="3" placeholder='{"region":"global"}'>${escapeHtml(metadata.extraJson || '')}</textarea></label>
@@ -1879,9 +2135,9 @@ function planViewHtml(plan = {}) {
       <div><h4>Enabled features</h4><ul>${features.length ? features.map(([name, value]) => `<li><strong>${escapeHtml(name)}</strong><span>${escapeHtml(value)}</span></li>`).join('') : '<li><span>No advanced features enabled yet.</span></li>'}</ul></div>
     </div>
     <div class="form-actions">
-      <form action="/admin/plans/${encodeURIComponent(plan.id)}/duplicate" method="post"><input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}"><button class="btn btn-ghost" type="submit">Duplicate</button></form>
-      <form action="/admin/plans/${encodeURIComponent(plan.id)}/${plan.isActive ? 'deactivate' : 'activate'}" method="post"><input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}"><button class="btn btn-ghost" type="submit">${plan.isActive ? 'Deactivate' : 'Activate'}</button></form>
-      <form action="/admin/plans/${encodeURIComponent(plan.id)}" method="post" onsubmit="return confirm('Delete or archive this plan? Existing subscriptions stay safe.');"><input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}"><input type="hidden" name="_method" value="DELETE"><button class="btn btn-danger" type="submit">Delete/archive</button></form>
+      <form action="/dashboard/actions/admin/plans/${encodeURIComponent(plan.id)}/duplicate" method="post"><input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}"><button class="btn btn-ghost" type="submit">Duplicate</button></form>
+      <form action="/dashboard/actions/admin/plans/${encodeURIComponent(plan.id)}/${plan.isActive ? 'deactivate' : 'activate'}" method="post"><input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}"><button class="btn btn-ghost" type="submit">${plan.isActive ? 'Deactivate' : 'Activate'}</button></form>
+      <form action="/dashboard/actions/admin/plans/${encodeURIComponent(plan.id)}" method="post" onsubmit="return confirm('Delete or archive this plan? Existing subscriptions stay safe.');"><input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}"><input type="hidden" name="_method" value="DELETE"><button class="btn btn-danger" type="submit">Delete/archive</button></form>
     </div>
   </article>`;
 }
@@ -1896,7 +2152,7 @@ function renderPlansDashboard(page = {}) {
   const subscribers = dashboardAdminPlans.reduce((total, plan) => total + Number(plan.subscriptionCount || 0), 0);
   const planCards = dashboardAdminPlans.length
     ? dashboardAdminPlans.map(planCardHtml).join('')
-    : '<article class="empty-state"><h2>No plans seeded yet</h2><p>Seed the default plan matrix or create a plan manually.</p></article>';
+    : '<article class="empty-state"><h2>No plans seeded yet</h2><p>Seed the default plan matrix or create a plan from the dashboard.</p></article>';
   return `${templateHtml('plans')}
     <section class="plan-management-shell">
       <article class="plan-management-hero">
@@ -1906,7 +2162,7 @@ function renderPlansDashboard(page = {}) {
           <p>Manage the same SubscriptionPlan records used by landing pricing, signup, checkout, billing, usage limits, locked features, queue priority and AI provider routing.</p>
           <div class="plan-hero-actions">
             <a class="btn btn-primary" href="/dashboard/plans?mode=create">${icon('plus')}Create plan</a>
-            <form action="/admin/plans/seed" method="post">${csrfInput()}<button class="btn btn-ghost" type="submit">Seed defaults</button></form>
+            <form action="/dashboard/actions/admin/plans/seed" method="post">${csrfInput()}<button class="btn btn-ghost" type="submit">Seed defaults</button></form>
           </div>
         </div>
         <div class="plan-hero-stats">
@@ -1943,6 +2199,7 @@ function renderLockedPage(page, pageId) {
 
 
 function renderPage(pageId, options = {}) {
+  closeModal();
   const resolved = getPage(pageId);
   const page = resolved.page || defaultPage;
   const safePageId = resolved.pageId;
@@ -1965,6 +2222,8 @@ function renderPage(pageId, options = {}) {
         ? renderMediaDashboard(page)
       : safePageId === 'approvals'
         ? renderApprovalsHandoffDashboard(page)
+      : safePageId === 'analytics'
+        ? renderAnalyticsDashboard(page)
       : safePageId === 'billing'
         ? renderBillingDashboard(page)
       : safePageId === 'quick-create'
@@ -1975,11 +2234,14 @@ function renderPage(pageId, options = {}) {
     <article class="card"><div class="card-head"><div><h3>${escapeHtml(page.title)} cards</h3><p>Live records, counts and useful next actions from your workspace.</p></div><span class="badge">${escapeHtml(page.cards?.length || 0)} items</span></div>${renderCards(page.cards)}</article>
     ${renderRows(page.rows)}
     ${renderTable(page)}`;
+  const searchParams = new URLSearchParams(location.search);
+  const queryNotice = dashboardNoticeMarkup(dashboardNoticeFromQuery(searchParams));
   pageRoot.innerHTML = `
     <div class="page-head">
       <div><span class="kicker">${escapeHtml(page.kicker)}</span><h2>${escapeHtml(page.heading)}</h2><p>${escapeHtml(page.description)}</p></div>
       ${actionButtons(page.title)}
     </div>
+    ${queryNotice}
     ${renderStats(page.stats)}
     ${pageContent}
   `;
@@ -1992,21 +2254,21 @@ function renderPage(pageId, options = {}) {
   hideDrawer();
   bindActions();
   if (safePageId === 'quick-create') initSmartComposer(pageRoot);
+  if (searchInput?.value) applyDashboardSearch(searchInput.value);
   const createdBrand = new URLSearchParams(location.search).get('brand_created');
   if (safePageId === 'brand-brain' && createdBrand) {
     const brandName = new URLSearchParams(location.search).get('brand') || 'Brand';
     openModal('brand-created', brandName);
     history.replaceState({ pageId: safePageId }, '', pagePath(safePageId));
+  } else if (safePageId === 'brand-brain') {
+    const brandMode = searchParams.get('mode');
+    const brandId = searchParams.get('id');
+    if (brandMode === 'create') requestAnimationFrame(() => openModal('brand-create'));
+    if (brandId && (brandMode === 'view' || brandMode === 'edit')) {
+      requestAnimationFrame(() => openModal(brandMode === 'edit' ? 'brand-edit' : 'brand-view', brandId));
+    }
   }
-  const handoffCreated = new URLSearchParams(location.search).get('handoff_created');
-  if (safePageId === 'calendar' && handoffCreated) {
-    modalBackdrop.classList.add('show');
-    modalBackdrop.setAttribute('aria-hidden', 'false');
-    modalKicker.textContent = 'Auto Handoff';
-    modalTitle.textContent = 'Schedule created';
-    modalBody.innerHTML = `<div class="empty-state"><h2>${escapeHtml(handoffCreated)} real post${handoffCreated === '1' ? '' : 's'} scheduled</h2><p>The calendar now shows posts returned from the database. Use the day cards or Content Library to reschedule, edit, publish, duplicate or cancel.</p></div>`;
-    modalActions.innerHTML = `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><button class="btn btn-primary" type="button" data-full-composer>Full composer</button>`;
-    bindActions();
+  if (safePageId === 'calendar' && searchParams.get('handoff_created')) {
     history.replaceState({ pageId: safePageId }, '', pagePath(safePageId));
   }
   if (location.hash) {
@@ -2031,6 +2293,15 @@ function openPageFromLink(event) {
 }
 navLinks.forEach((link) => link.addEventListener('click', openPageFromLink));
 
+function isDashboardSpaPath(pathname = '') {
+  const normalized = pathname.replace(/\/+$/, '') || '/dashboard/overview';
+  if (normalized === '/dashboard') return true;
+  const parts = normalized.replace(/^\/dashboard\/?/, '').split('/').filter(Boolean);
+  if (parts.length !== 1) return false;
+  const pageId = normalizePageId(parts[0] || 'overview');
+  return Object.prototype.hasOwnProperty.call(pages, pageId) || pageId === 'plans';
+}
+
 function bindDashboardLinks() {
   document.querySelectorAll('a[href^="/dashboard/"]').forEach((link) => {
     if (link.dataset.dashboardBound === 'true') return;
@@ -2039,10 +2310,11 @@ function bindDashboardLinks() {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target) return;
       const base = (window.location && window.location.origin) || (location && location.origin) || 'http://localhost:3200';
       const url = new URL(link.getAttribute('href') || '', base);
-      if (!url.pathname.startsWith('/dashboard/')) return;
+      if (!isDashboardSpaPath(url.pathname)) return;
       event.preventDefault();
-      history.pushState({ pageId: pageIdFromDashboardPath(url.pathname) }, '', `${url.pathname}${url.search || ''}`);
-      renderPage(pageIdFromDashboardPath(url.pathname), { updateUrl: false });
+      const pageId = pageIdFromDashboardPath(url.pathname);
+      history.pushState({ pageId }, '', `${url.pathname}${url.search || ''}${url.hash || ''}`);
+      renderPage(pageId, { updateUrl: false });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
@@ -2202,12 +2474,22 @@ function editModalButton(card = {}, index = -1) {
   return '';
 }
 
+function hiddenInputsFromAction(action = {}) {
+  const hiddenFields = action.hiddenFields && typeof action.hiddenFields === 'object' ? action.hiddenFields : {};
+  return Object.entries(hiddenFields)
+    .map(([name, value]) => `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`)
+    .join('');
+}
+
 function actionFromRecord(card = {}, action = {}) {
-  if (!action || !action.action) return '';
+  if (!action || (!action.action && !action.href)) return '';
   const kind = String(action.kind || '').toLowerCase();
   const destructive = action.destructive || ['delete', 'disconnect', 'remove', 'cancel'].includes(kind);
   const className = destructive ? 'btn btn-ghost btn-danger-subtle' : 'btn btn-ghost';
   const label = action.label || 'Action';
+  if (!action.action && action.href) {
+    return `<a class="${escapeHtml(className)}" href="${escapeHtml(action.href)}">${escapeHtml(label)}</a>`;
+  }
   if (kind === 'schedule') {
     const scheduledInput = `<label class="modal-schedule-field"><span>Schedule</span><input name="scheduledAt" type="datetime-local" value="${escapeHtml(cardScheduleValue(card))}" required></label>`;
     return modalActionForm({
@@ -2224,12 +2506,13 @@ function actionFromRecord(card = {}, action = {}) {
     method: action.method || 'post',
     label,
     className,
+    extraHtml: hiddenInputsFromAction(action),
     confirmMessage: destructive ? actionConfirmText(label) : ''
   });
 }
 
 function recordModalActions(card = {}, index = -1) {
-  const actions = Array.isArray(card.actions) ? card.actions.filter((action) => action && action.action) : [];
+  const actions = Array.isArray(card.actions) ? card.actions.filter((action) => action && (action.action || action.href)) : [];
   const renderedActions = actions.map((action) => actionFromRecord(card, action)).join('');
   const alreadyHasDelete = actions.some((action) => action.action === card.deleteAction || (action.kind === 'disconnect' && normalizedCardKind(card) === 'social-account'));
   const deleteAction = card.deleteAction && !alreadyHasDelete
@@ -2255,22 +2538,22 @@ function calendarPostToCard(post = {}) {
     status: post.status || 'draft',
     mediaUrl: post.mediaUrl || (Array.isArray(post.media) ? post.media.find((item) => item?.url)?.url : ''),
     mediaType: post.mediaType || (Array.isArray(post.media) ? post.media.find((item) => item?.url)?.type : post.type),
-    editAction: post.id ? `/posts/${post.id}?_method=PUT` : '',
+    editAction: post.id ? `/dashboard/actions/posts/${post.id}?_method=PUT` : '',
     editMethod: 'post',
     actions: post.id ? [
-      { label: post.status === 'published' ? 'Repost' : 'Publish now', action: `/posts/${post.id}/publish-now`, method: 'post', kind: 'publish' },
-      { label: 'Duplicate', action: `/posts/${post.id}/duplicate`, method: 'post', kind: 'duplicate' },
-      { label: 'Schedule', action: `/posts/${post.id}/schedule`, method: 'post', kind: 'schedule' },
-      { label: 'Cancel', action: `/posts/${post.id}/cancel`, method: 'post', kind: 'cancel', destructive: true }
+      { label: post.status === 'published' ? 'Repost' : 'Publish now', action: `/dashboard/actions/posts/${post.id}/publish-now`, method: 'post', kind: 'publish' },
+      { label: 'Duplicate', action: `/dashboard/actions/posts/${post.id}/duplicate`, method: 'post', kind: 'duplicate' },
+      { label: 'Schedule', action: `/dashboard/actions/posts/${post.id}/schedule`, method: 'post', kind: 'schedule' },
+      { label: 'Cancel', action: `/dashboard/actions/posts/${post.id}/cancel`, method: 'post', kind: 'cancel', destructive: true }
     ] : [],
-    deleteAction: post.id ? `/posts/${post.id}?_method=DELETE` : '',
+    deleteAction: post.id ? `/dashboard/actions/posts/${post.id}?_method=DELETE` : '',
     deleteLabel: 'Delete post',
     deleteMethod: 'post',
     editFields: [
       { name: 'title', label: 'Title', type: 'text', value: post.title || '', full: true },
       { name: 'caption', label: 'Caption', type: 'textarea', value: post.fullCaption || post.caption || '', rows: 5, full: true },
       { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: socialPlatforms.map((platform) => platform.key) },
-      { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'avatar_video'] },
+      { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign', 'avatar_video'] },
       { name: 'status', label: 'Status', type: 'select', value: post.status || 'draft', options: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'] },
       { name: 'scheduledAt', label: 'Schedule time', type: 'datetime-local', value: dateTimeLocalValue(post.scheduledAt || '') },
       { name: 'hashtags', label: 'Hashtags', type: 'text', value: hashtags, full: true }
@@ -2282,8 +2565,9 @@ function calendarPostToCard(post = {}) {
       Status: post.status || 'draft',
       Caption: post.fullCaption || post.caption || '',
       'Scheduled at': post.dateTimeLabel || post.scheduledAt || '',
+      'Public URL': post.platformPostUrl || '',
       Targets: (post.targetAccounts || []).map((account) => account.name || account.accountName || '').filter(Boolean),
-      Results: (post.publishResults || []).map((result) => [result.accountName, result.status, result.errorMessage].filter(Boolean).join(' | ')),
+      Results: (post.publishResults || []).map((result) => [result.accountName, result.status, result.platformPostUrl, result.errorMessage].filter(Boolean).join(' | ')),
       Media: (post.media || []).map((item) => [item.name, item.type, item.url].filter(Boolean).join(' | '))
     }
   });
@@ -2465,7 +2749,7 @@ function submitCalendarReschedule(postId, dayKey) {
   if (!post || !dayKey) return;
   const form = document.createElement('form');
   form.method = 'post';
-  form.action = `/posts/${encodeURIComponent(post.id)}/schedule`;
+  form.action = `/dashboard/actions/posts/${encodeURIComponent(post.id)}/schedule`;
   form.style.display = 'none';
   form.innerHTML = `${csrfInput()}<input name="scheduledAt" value="${escapeHtml(`${dayKey}T${localTimeForCalendarPost(post)}`)}">`;
   document.body.appendChild(form);
@@ -2507,6 +2791,7 @@ function bindCalendarDragDrop() {
 
 function bindActions() {
   window.AutoBrandBrandUploads?.init(document);
+  window.AutoBrandMediaUploads?.init(document);
   window.AutoBrandComposerIntent?.init(document);
   bindDashboardLinks();
   bindScheduleDefaults();
@@ -2530,6 +2815,14 @@ function bindActions() {
       openContentLibrary(button.dataset.libraryDay);
     };
   });
+  document.querySelectorAll('[data-calendar-best-time]').forEach((button) => {
+    if (button.dataset.bestTimeBound === '1') return;
+    button.dataset.bestTimeBound = '1';
+    button.addEventListener('click', () => {
+      const input = document.getElementById('calendarBulkScheduledAt');
+      if (input) input.value = dateTimeLocalValue(button.dataset.calendarBestTime);
+    });
+  });
   document.querySelectorAll('[data-calendar-media]').forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();
@@ -2542,6 +2835,18 @@ function bindActions() {
       modalBody.innerHTML = `<div class="record-modal-media"><img src="${escapeHtml(url)}" alt="Post media"></div>`;
       modalActions.innerHTML = `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><a class="btn btn-primary" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open file</a>`;
       bindActions();
+    };
+  });
+  document.querySelectorAll('[data-media-search], [data-media-filter]').forEach((control) => {
+    control.oninput = control.onchange = () => {
+      const root = control.closest('.dashboard-media-shell') || document;
+      const term = (root.querySelector('[data-media-search]')?.value || '').trim().toLowerCase();
+      const type = root.querySelector('[data-media-filter]')?.value || '';
+      root.querySelectorAll('.dashboard-media-card').forEach((card) => {
+        const matchesType = !type || card.dataset.mediaType === type;
+        const matchesTerm = !term || card.textContent.toLowerCase().includes(term) || String(card.dataset.mediaTags || '').toLowerCase().includes(term) || String(card.dataset.mediaFolder || '').toLowerCase().includes(term);
+        card.hidden = !(matchesType && matchesTerm);
+      });
     };
   });
   document.querySelectorAll('[data-action]').forEach((button) => {
@@ -2603,11 +2908,49 @@ function bindActions() {
   });
 }
 
-searchInput.addEventListener('input', () => {
-  const term = searchInput.value.trim().toLowerCase();
-  document.querySelectorAll('.clean-card, .data-row, tr, .dashboard-library-post, .calendar-agenda-row, .dashboard-calendar-day, .dashboard-connected-card, .dashboard-channel-card').forEach((item) => {
-    item.style.display = item.textContent.toLowerCase().includes(term) ? '' : 'none';
+const dashboardSearchSelector = [
+  '.clean-card',
+  '.data-row',
+  'tbody tr',
+  '.dashboard-library-post',
+  '.calendar-agenda-row',
+  '.dashboard-calendar-mini-post',
+  '.dashboard-connected-card',
+  '.dashboard-channel-card',
+  '.media-card',
+  '.plan-pricing-card'
+].join(', ');
+
+function syncSearchEmptyState(term = '', items = []) {
+  if (!pageRoot) return;
+  let emptyState = pageRoot.querySelector('[data-dashboard-search-empty]');
+  if (!term) {
+    emptyState?.remove();
+    return;
+  }
+  const hasVisibleMatch = items.some((item) => item.style.display !== 'none' && !item.hidden && !item.closest('[hidden]'));
+  if (!emptyState) {
+    emptyState = document.createElement('article');
+    emptyState.className = 'empty-state dashboard-search-empty';
+    emptyState.setAttribute('data-dashboard-search-empty', 'true');
+    emptyState.innerHTML = '<h2>No matches</h2><p>Try another word or clear search to see all records.</p>';
+    pageRoot.appendChild(emptyState);
+  }
+  emptyState.hidden = hasVisibleMatch;
+}
+
+function applyDashboardSearch(value = '') {
+  const term = String(value || '').trim().toLowerCase();
+  const items = Array.from(document.querySelectorAll(dashboardSearchSelector))
+    .filter((item) => !item.closest('template') && !item.closest('#modalBackdrop'));
+  items.forEach((item) => {
+    item.style.display = !term || item.textContent.toLowerCase().includes(term) ? '' : 'none';
   });
+  syncSearchEmptyState(term, items);
+}
+
+searchInput?.addEventListener('input', () => {
+  applyDashboardSearch(searchInput.value);
 });
 
 window.addEventListener('popstate', () => {

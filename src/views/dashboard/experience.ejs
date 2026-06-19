@@ -14,6 +14,8 @@
   <% const canSeeDashboardPlans = visibleDashboardPages.includes('plans') || (dashboardData.user && /Admin/i.test(dashboardData.user.role || '')); %>
   <% const socialAccounts = options.socialAccounts || []; %>
   <% const mediaAssets = options.media || []; %>
+  <% const approvalPosts = options.posts || []; %>
+  <% const approvalCampaigns = options.campaigns || []; %>
   <% const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp']; %>
   <% const composerBrands = brands.map((brand) => ({ _id: brand.id, name: brand.name })); %>
   <% const composerSocialAccounts = socialAccounts.map((account) => ({
@@ -32,7 +34,7 @@
   })); %>
   <% const composerForm = {}; %>
   <% const composerContentGoals = ['awareness', 'engagement', 'sales', 'traffic', 'lead_generation', 'community', 'customer_support', 'launch', 'event', 'other']; %>
-  <% const composerPostTypes = ['text', 'image', 'video', 'reel', 'story', 'carousel', 'article', 'campaign']; %>
+  <% const composerPostTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign']; %>
   <% const composerContentTypes = ['promo', 'educational', 'testimonial', 'offer', 'product', 'announcement', 'engagement', 'behind_the_scenes', 'proof', 'faq', 'launch']; %>
 
   <svg class="svg-sprite" aria-hidden="true">
@@ -154,7 +156,30 @@
       <div class="top-actions">
         <input class="search" id="searchInput" type="search" placeholder="Search campaigns, brands, posts..." />
         <button class="icon-btn" id="themeToggle" type="button" aria-label="Toggle theme"><svg class="icon"><use href="#icon-moon"></use></svg></button>
-        <button class="btn btn-primary" type="button" data-full-composer><svg class="icon"><use href="#icon-plus"></use></svg>Create</button>
+        <details class="notification-menu">
+          <summary class="icon-btn" aria-label="Notifications"><svg class="icon"><use href="#icon-message"></use></svg><span><%= dashboardData.nav.unread || 0 %></span></summary>
+          <div class="notification-popover">
+            <div class="notification-popover-head">
+              <strong>Notifications</strong>
+              <form action="/dashboard/actions/notifications/read-all" method="post">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button type="submit">Mark all read</button>
+              </form>
+            </div>
+            <% const notificationPreview = ((dashboardData.pages.notifications && dashboardData.pages.notifications.cards) || []).slice(0, 5); %>
+            <% if (notificationPreview.length) { %>
+              <% notificationPreview.forEach((notification) => { %>
+                <div class="notification-popover-item">
+                  <div><strong><%= notification.title %></strong><span><%= notification.description %></span></div>
+                  <a href="/dashboard/notifications">Open</a>
+                </div>
+              <% }) %>
+            <% } else { %>
+              <p>No notifications yet.</p>
+            <% } %>
+          </div>
+        </details>
+        <a class="btn btn-primary" href="/dashboard/quick-create"><svg class="icon"><use href="#icon-plus"></use></svg>Create</a>
         <div class="profile"><span><%= dashboardData.user.initials %></span><strong><%= dashboardData.user.firstName %></strong></div>
       </div>
     </header>
@@ -172,20 +197,51 @@
       <% } else { %>
         <article class="card real-form-card">
           <div class="card-head"><div><h3>Generate a real post</h3><p>Uses saved Brand Brain fields, connected accounts and media defaults.</p></div><span class="badge">Live post</span></div>
-          <form action="/posts" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/posts" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <input type="hidden" name="creationMode" value="ai">
             <input type="hidden" name="generateImage" value="on">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Channel<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
+            <label>Post format<select name="type"><option value="image">Image post</option><option value="carousel">Carousel post</option><option value="video">Video post</option><option value="reel">Reel/Short/TikTok</option><option value="text">Text post</option><option value="link">Link post</option><option value="whatsapp_message">WhatsApp message</option></select></label>
             <label>Media output<select name="mediaPreset"><option value="image-1">1 image</option><option value="carousel-3">3-image carousel</option><option value="video">Video</option><option value="text">Text only</option></select></label>
             <label>Content angle<select name="contentType"><option value="promo">Promo</option><option value="educational">Educational</option><option value="testimonial">Testimonial</option><option value="offer">Offer</option><option value="faq">FAQ</option></select></label>
             <label class="full">Goal<input name="goal" placeholder="Sell a service, announce an offer, collect WhatsApp inquiries"></label>
             <label class="full">Offer<input name="offer" placeholder="Use saved offer or override it here"></label>
+            <label class="full">Link<input name="link" type="url" placeholder="https://..."></label>
+            <label class="full">WhatsApp recipient<input name="whatsappTo" placeholder="+256700000000"></label>
             <div class="real-form-actions full">
               <button class="btn btn-ghost" name="action" value="save" type="submit">Save draft</button>
               <button class="btn btn-ghost" name="action" value="schedule" type="submit">Schedule</button>
               <button class="btn btn-primary" name="action" value="publish" type="submit">Publish now</button>
+            </div>
+          </form>
+        </article>
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Generate AI image</h3><p>Create prompt, Brand Brain, product promo, story/reel cover, or carousel images and save them to media.</p></div><span class="badge">Image</span></div>
+          <form action="/dashboard/actions/ai/generate-image" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Workflow<select name="imageWorkflow">
+              <option value="prompt">Prompt image</option>
+              <option value="brand_brain">From Brand Brain</option>
+              <option value="product_promo">Product promo</option>
+              <option value="story_cover">Story cover</option>
+              <option value="reel_cover">Reel/TikTok cover</option>
+              <option value="carousel_image">Carousel images</option>
+            </select></label>
+            <label>Platform<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
+            <label>Provider<select name="imageProvider"><option value="">Plan/default provider</option><option value="openai">OpenAI</option><option value="replicate">Replicate</option><option value="gemini">Gemini</option><option value="local">Local mock fallback</option></select></label>
+            <label>Image size<select name="imageSize"><option value="1024x1024">Square feed</option><option value="1024x1536">Vertical story/reel</option><option value="1536x1024">Landscape</option></select></label>
+            <label>Image count<input name="imageCount" type="number" min="1" max="5" value="1"></label>
+            <label>Product/service<input name="productName" placeholder="Optional product or service"></label>
+            <label>Goal<input name="goal" placeholder="Sell, announce, collect leads"></label>
+            <label class="full">Offer<input name="offer" placeholder="Optional offer to emphasize"></label>
+            <label class="full">Prompt<textarea name="prompt" rows="4" placeholder="Describe the image. Leave empty to use Brand Brain defaults."></textarea></label>
+            <label class="full">Draft caption<textarea name="caption" rows="3" placeholder="Optional caption if attaching the generated image to a draft"></textarea></label>
+            <div class="real-form-actions full">
+              <button class="btn btn-ghost" name="action" value="save_media" type="submit">Save to media</button>
+              <button class="btn btn-primary" name="action" value="attach_draft" type="submit">Attach to draft</button>
             </div>
           </form>
         </article>
@@ -224,11 +280,21 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Create campaign plan</h3><p>Writes a real Campaign document and AI plan.</p></div><a class="btn btn-ghost" href="/dashboard/campaigns">Campaigns</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before planning campaigns.</p><% } else { %>
-          <form action="/campaigns" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/campaigns" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Name<input name="name" placeholder="Weekend voucher push" required></label>
-            <label class="full">Goal<input name="goal" placeholder="Sell 100 daily vouchers"></label>
+            <label>Campaign goal<select name="campaignType">
+              <option value="awareness">Awareness</option>
+              <option value="engagement">Engagement</option>
+              <option value="leads">Leads</option>
+              <option value="sales">Sales</option>
+              <option value="product_launch">Product launch</option>
+              <option value="event_promotion">Event promotion</option>
+              <option value="offer_sale">Offer/sale</option>
+              <option value="brand_growth">Brand growth</option>
+            </select></label>
+            <label class="full">Goal detail<input name="goal" placeholder="Sell 100 daily vouchers"></label>
             <label>Platforms<input name="platforms" value="facebook, instagram, whatsapp"></label>
             <label>Duration days<input name="durationDays" type="number" min="1" max="30" value="7"></label>
             <label>Posting frequency<input name="postingFrequency" placeholder="2 posts per day"></label>
@@ -236,6 +302,45 @@
             <label>End date<input name="endDate" type="date"></label>
             <label class="full">Description<textarea name="description" rows="3"></textarea></label>
             <button class="btn btn-primary full" type="submit">Create campaign plan</button>
+          </form>
+        <% } %>
+      </article>
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Growth Studio</h3><p>Generate growth assets and save them as assets, drafts, or campaigns.</p></div><a class="btn btn-ghost" href="/dashboard/campaigns">Growth</a></div>
+        <% if (!brands.length) { %><p class="empty-state">Create a brand first before running growth actions.</p><% } else { %>
+          <form action="/dashboard/actions/growth-studio/run" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Action<select name="actionType">
+              <option value="brand_audit">Brand audit</option>
+              <option value="competitor_snapshot">Competitor snapshot</option>
+              <option value="content_ideas">Content ideas</option>
+              <option value="hook_generator">Hook generator</option>
+              <option value="offer_angles">Offer angle generator</option>
+              <option value="hashtag_pack">Hashtag pack</option>
+              <option value="reel_script">Reel script generator</option>
+              <option value="carousel_ideas">Carousel idea generator</option>
+              <option value="weekly_content_plan">Weekly content plan</option>
+              <option value="monthly_content_plan">Monthly content plan</option>
+              <option value="whatsapp_promo_pack">WhatsApp promo pack</option>
+              <option value="ad_copy_pack">Ad copy pack</option>
+              <option value="campaign_brief">Create campaign brief</option>
+              <option value="draft_batch">Create draft batch</option>
+              <option value="video_storyboard">Create video storyboard</option>
+            </select></label>
+            <label>Save as<select name="saveTarget">
+              <option value="asset">Growth asset</option>
+              <option value="drafts">Draft posts</option>
+              <option value="campaign">Campaign</option>
+            </select></label>
+            <label>Platforms<input name="platforms" value="facebook, instagram, whatsapp"></label>
+            <label class="full">Goal<input name="campaignGoal" placeholder="Grow sales for the weekend offer"></label>
+            <label class="full">Style<input name="style" placeholder="direct, warm, premium, playful"></label>
+            <label class="full">Source media<select name="sourceMedia">
+              <option value="">No source media</option>
+              <% mediaAssets.slice(0, 20).forEach((asset) => { %><option value="<%= asset.id %>"><%= asset.fileName || asset.name || 'Media asset' %></option><% }) %>
+            </select></label>
+            <button class="btn btn-primary full" type="submit">Run Growth Studio</button>
           </form>
         <% } %>
       </article>
@@ -249,14 +354,23 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Media library upload</h3><p>Upload media through the same working backend inside the clean dashboard.</p></div><a class="btn btn-primary" href="/dashboard/media">Media library</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before uploading media.</p><% } else { %>
-          <form action="/media/upload" method="post" class="real-form-grid">
+          <form id="cloudinary-upload-form" data-cloudinary-upload-form method="post" enctype="multipart/form-data" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label class="full">Image or video file<input name="asset" type="file" accept="image/*,video/*"></label>
+            <label>Tags<input name="tags" placeholder="product, promo, reel"></label>
+            <label class="checkbox-line full"><input name="consentRequired" type="checkbox"> Contains a real person / likeness and needs consent</label>
+            <p class="form-hint full" id="upload-status" data-upload-status>Uploads use Cloudinary when configured. If it is not configured, import a public URL below.</p>
+            <button class="btn btn-primary full" type="submit">Upload file</button>
+          </form>
+          <form action="/dashboard/actions/media/upload" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <input name="folder" type="hidden" value="external">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>File type<select name="fileType"><option value="image">Image</option><option value="video">Video</option><option value="audio">Audio</option><option value="document">Document</option></select></label>
             <label>File name<input name="fileName" placeholder="Product photo"></label>
             <label>MIME type<input name="mimeType" placeholder="image/png"></label>
-            <label class="full">Media URL<input name="fileUrl" type="url" placeholder="https://..." required></label>
+            <label class="full">Import from URL<input name="fileUrl" type="url" placeholder="https://..." required></label>
             <label class="full">Tags<input name="tags" placeholder="logo, product, offer"></label>
             <label class="checkbox-line full"><input name="consentRequired" type="checkbox"> Contains a real person / likeness and needs consent</label>
             <button class="btn btn-primary full" type="submit">Save media asset</button>
@@ -269,17 +383,18 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Generate video</h3><p>Creates a real AI video job using saved Brand Brain context.</p></div><a class="btn btn-ghost" href="/dashboard/video-system">Video studio</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating videos.</p><% } else { %>
-          <form action="/videos/auto-generate" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/videos/auto-generate" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Platform<select name="platform"><option>Facebook</option><option>Instagram Reels</option><option>TikTok</option><option>YouTube Shorts</option></select></label>
+            <label>Provider<select name="provider"><option value="planning">Plan only</option><option value="mock">Mock/demo render</option><option value="openai">OpenAI video</option><option value="replicate">Replicate video</option></select></label>
             <label>Aspect ratio<select name="aspectRatio"><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
             <label>Duration<input name="durationSeconds" type="number" min="6" max="60" value="20"></label>
             <label class="full">Goal<input name="goal" placeholder="Sell weekend offer"></label>
             <label class="full">Offer<input name="offer" placeholder="Main offer"></label>
             <label class="full">Style<input name="style" placeholder="premium realistic, bright, smooth motion"></label>
             <label class="full">Prompt<textarea name="prompt" rows="3" placeholder="Optional extra direction"></textarea></label>
-            <label class="checkbox-line full"><input name="renderVideo" type="checkbox"> Render video now if provider API is configured</label>
+            <label class="checkbox-line full"><input name="renderVideo" type="checkbox"> Render video now or create a mock demo render</label>
             <button class="btn btn-primary full" type="submit">Create video job</button>
           </form>
         <% } %>
@@ -288,9 +403,25 @@
 
     <template id="dashboard-form-avatar-video">
       <article class="card real-form-card">
-        <div class="card-head"><div><h3>Avatar video request</h3><p>Requires approved owner media and consent.</p></div><a class="btn btn-ghost" href="/dashboard/avatar-video">Avatar consent</a></div>
+        <div class="card-head"><div><h3>Create avatar profile</h3><p>Register consented owner media before avatar video rendering.</p></div><a class="btn btn-ghost" href="/dashboard/avatar-video">Avatar consent</a></div>
+        <% if (!brands.length || !mediaAssets.length) { %><p class="empty-state">Add a brand and consent-ready owner media before creating avatar profiles.</p><% } else { %>
+          <form action="/dashboard/actions/avatars" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Name<input name="name" placeholder="Owner / presenter name" required></label>
+            <label>Provider<select name="provider"><option value="mock_avatar_provider">Mock avatar provider</option><option value="external_avatar_provider">External avatar provider</option></select></label>
+            <label>Allowed use<select name="allowedUse"><option value="brand_content">Brand content</option><option value="ads">Ads</option><option value="internal_training">Internal training</option></select></label>
+            <label class="full">Training media<select name="sourceMedia" required><% mediaAssets.slice(0, 30).forEach((asset) => { %><option value="<%= asset.id %>"><%= asset.fileName || asset.name || 'Media asset' %></option><% }) %></select></label>
+            <label class="full">Default script<textarea name="defaultScript" rows="3" placeholder="Optional default avatar script"></textarea></label>
+            <label class="checkbox-line full"><input name="ownershipConfirmed" type="checkbox" required> I confirm I own or have explicit consent to use this likeness</label>
+            <button class="btn btn-primary full" type="submit">Create avatar profile</button>
+          </form>
+        <% } %>
+      </article>
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Avatar video request</h3><p>Creates a consent-protected avatar render job.</p></div><a class="btn btn-ghost" href="/dashboard/video-system">Video jobs</a></div>
         <% if (!brands.length || !mediaAssets.length) { %><p class="empty-state">Add a brand and consent-ready owner media before creating avatar videos.</p><% } else { %>
-          <form action="/videos/avatar-video" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/videos/avatar-video" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Aspect ratio<select name="aspectRatio"><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
@@ -318,6 +449,27 @@
 
     <template id="dashboard-form-approvals">
       <section class="handoff-workspace-shell">
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Request approval</h3><p>Send a post or campaign to a client reviewer with a public review link.</p></div><a class="btn btn-ghost" href="/dashboard/content-library">Content</a></div>
+          <% if (!approvalPosts.length && !approvalCampaigns.length) { %><p class="empty-state">Create a post or campaign first before requesting approval.</p><% } else { %>
+            <form action="/dashboard/actions/approvals/request" method="post" class="real-form-grid">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <label class="full">Post<select name="post">
+                <option value="">No post selected</option>
+                <% approvalPosts.forEach((post) => { %><option value="<%= post.id %>"><%= post.title %> / <%= post.platform %> / <%= post.status %></option><% }) %>
+              </select></label>
+              <label class="full">Campaign<select name="campaign">
+                <option value="">No campaign selected</option>
+                <% approvalCampaigns.forEach((campaign) => { %><option value="<%= campaign.id %>"><%= campaign.name %> / <%= campaign.status %></option><% }) %>
+              </select></label>
+              <label>Reviewer name<input name="reviewerName" placeholder="Client name"></label>
+              <label>Reviewer email<input name="reviewerEmail" type="email" placeholder="client@example.com"></label>
+              <label class="full">Note<textarea name="note" rows="3" placeholder="What should they review?"></textarea></label>
+              <label class="checkbox-line full"><input name="publishAfterApproval" type="checkbox"> Schedule/publish after post approval</label>
+              <button class="btn btn-primary full" type="submit">Send approval request</button>
+            </form>
+          <% } %>
+        </article>
         <article class="handoff-hero-card">
           <div>
             <span class="kicker">automatic posting</span>
@@ -331,9 +483,9 @@
           </div>
         </article>
         <article class="card real-form-card handoff-form-card">
-          <div class="card-head"><div><span class="kicker">handoff / auto mode</span><h3>Generate posts automatically</h3><p>Use the restored handoff flow inside the dashboard instead of an old standalone page.</p></div><button class="btn btn-ghost" type="button" data-full-composer>One-off post</button></div>
+          <div class="card-head"><div><span class="kicker">handoff / auto mode</span><h3>Generate posts automatically</h3><p>Use the restored handoff flow inside the dashboard instead of an old standalone page.</p></div><a class="btn btn-ghost" href="/dashboard/quick-create">One-off post</a></div>
           <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating handoff posts.</p><% } else { %>
-            <form action="/posts/handoff" method="post" class="real-form-grid composer-form handoff-dashboard-form">
+            <form action="/dashboard/actions/posts/handoff" method="post" class="real-form-grid composer-form handoff-dashboard-form">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>">
               <input type="hidden" name="generateImages" value="on">
               <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
@@ -370,16 +522,16 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Team management</h3><p>Invite members and then manage status, roles and permissions on the team workspace.</p></div><a class="btn btn-primary" href="/dashboard/team">Team workspace</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand before inviting team members.</p><% } else { %>
-          <form action="/team/invite" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/team/invite" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Name<input name="name" placeholder="Team member name"></label>
             <label>Email<input name="email" type="email" required placeholder="member@example.com"></label>
-            <label>Role<select name="role"><option value="viewer">Viewer</option><option value="reviewer">Reviewer</option><option value="editor">Editor</option><option value="content_creator">Content creator</option><option value="manager">Manager</option><option value="admin">Admin</option></select></label>
+            <label>Role<select name="role"><option value="viewer">Viewer</option><option value="creator">Creator</option><option value="approver">Approver</option><option value="manager">Manager</option><option value="billing">Billing</option><option value="admin">Admin</option><option value="owner">Owner</option></select></label>
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <fieldset class="composer-fieldset full">
               <legend>Permissions</legend>
               <div class="composer-check-grid">
-                <% ['brand_read', 'content_create', 'content_edit', 'schedule_posts', 'approve_posts', 'analytics_read'].forEach((permission) => { %>
+                <% ['brand.view', 'brand.manage', 'content.create', 'content.edit', 'content.publish', 'schedule.manage', 'approvals.manage', 'analytics.view', 'billing.view', 'billing.manage', 'team.manage'].forEach((permission) => { %>
                   <label class="composer-check-card"><input name="permissions" type="checkbox" value="<%= permission %>"><span><strong><%= permission.replace(/_/g, ' ') %></strong><small>Team permission</small></span></label>
                 <% }) %>
               </div>
@@ -403,7 +555,7 @@
     <template id="dashboard-form-notifications">
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Notification center</h3><p>Alerts from publishing, approvals and workspace activity are now reachable from the clean dashboard.</p></div><a class="btn btn-primary" href="/dashboard/notifications">Notifications workspace</a></div>
-        <form action="/notifications/read-all" method="post" class="real-form-grid">
+        <form action="/dashboard/actions/notifications/read-all" method="post" class="real-form-grid">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <button class="btn btn-ghost full" type="submit">Mark all notifications as read</button>
         </form>
@@ -419,12 +571,12 @@
 
     <template id="dashboard-form-admin">
       <article class="card real-form-card">
-        <div class="card-head"><div><h3>Admin console shortcut</h3><p>Super-admin tools are available here: plans, users, failed posts, API logs, audit logs and payments remain available.</p></div><a class="btn btn-primary" href="/dashboard/plans">Open plan page</a></div>
+        <div class="card-head"><div><h3>Admin console shortcut</h3><p>Super-admin tools are available here: plans, users, brands, subscriptions, payments, AI usage, failed jobs, connected accounts, provider readiness, API logs and audit logs.</p></div><a class="btn btn-primary" href="/dashboard/plans">Open plan page</a></div>
         <div class="data-list">
           <div class="data-row"><div><strong>Subscription plan management</strong><span>Create, edit, duplicate, reorder, activate and deactivate plans from the production admin page.</span></div><a class="badge" href="/dashboard/plans">Plans</a></div>
           <div class="data-row"><div><strong>User & subscription management</strong><span>Use the admin workspace for account status and plan control.</span></div><span class="badge">Admin</span></div>
-          <div class="data-row"><div><strong>Failed publishing retry</strong><span>Retry failed posts through the existing admin backend.</span></div><span class="badge">Retry</span></div>
-          <div class="data-row"><div><strong>Audit/API/payment logs</strong><span>Review operational records from the existing models.</span></div><span class="badge">Logs</span></div>
+          <div class="data-row"><div><strong>Failed publishing and AI job retry</strong><span>Retry failed posts and failed video jobs through the existing admin backend.</span></div><span class="badge">Retry</span></div>
+          <div class="data-row"><div><strong>Provider readiness and logs</strong><span>Review connected accounts, provider readiness, AI usage, API logs, audit logs and payments.</span></div><span class="badge">Logs</span></div>
         </div>
       </article>
     </template>
@@ -433,8 +585,61 @@
 
     <template id="dashboard-form-settings">
       <article class="card real-form-card">
-        <div class="card-head"><div><h3>Workspace settings</h3><p>Quick access to the existing settings, provider health and diagnostics workflow.</p></div><a class="btn btn-primary" href="/dashboard/settings">Settings workspace</a></div>
-        <form action="/settings/diagnostics" method="post" class="real-form-grid">
+        <div class="card-head"><div><h3>Account profile</h3><p>Keep your owner profile current for team, approval and billing workflows.</p></div><span class="badge"><%= dashboardData.user.isVerified ? 'Verified' : 'Needs verification' %></span></div>
+        <form action="/dashboard/actions/settings/profile" method="post" class="real-form-grid">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label>Name<input name="name" value="<%= dashboardData.user.name || '' %>" required></label>
+          <label>Avatar URL<input name="avatar" type="url" value="<%= dashboardData.user.avatar || '' %>" placeholder="https://..."></label>
+          <button class="btn btn-primary full" type="submit">Save profile</button>
+        </form>
+      </article>
+
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Email and verification</h3><p>Primary email controls login, account notices and plan receipts.</p></div><span class="badge"><%= dashboardData.user.pendingEmail ? 'Pending change' : dashboardData.user.email %></span></div>
+        <% if (!dashboardData.user.isVerified || dashboardData.user.pendingEmail) { %>
+          <form action="/dashboard/actions/settings/resend-verification" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="data-row full"><div><strong><%= dashboardData.user.pendingEmail ? 'Pending email' : 'Current email' %></strong><span><%= dashboardData.user.pendingEmail || dashboardData.user.email %></span></div><span class="badge">Verify</span></div>
+            <button class="btn btn-ghost full" type="submit">Resend verification link</button>
+          </form>
+        <% } %>
+        <form action="/dashboard/actions/settings/email" method="post" class="real-form-grid">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="full">New email<input name="email" type="email" value="<%= dashboardData.user.pendingEmail || '' %>" placeholder="<%= dashboardData.user.email %>" required></label>
+          <label class="full">Current password<input name="password" type="password" autocomplete="current-password" placeholder="Required for password accounts"></label>
+          <button class="btn btn-primary full" type="submit">Request email change</button>
+        </form>
+      </article>
+
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Password</h3><p>Set or update the password used for email login.</p></div><span class="badge">Security</span></div>
+        <form action="/dashboard/actions/settings/password" method="post" class="real-form-grid">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="full">Current password<input name="currentPassword" type="password" autocomplete="current-password" placeholder="Leave empty if this is a Google-only account"></label>
+          <label>New password<input name="newPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+          <label>Confirm password<input name="confirmPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+          <button class="btn btn-primary full" type="submit">Update password</button>
+        </form>
+      </article>
+
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Account deletion request</h3><p>Record a deletion request for admin review without removing data immediately.</p></div><span class="badge"><%= dashboardData.user.accountDeletionStatus === 'requested' ? 'Requested' : 'Available' %></span></div>
+        <% if (dashboardData.user.accountDeletionStatus === 'requested') { %>
+          <div class="data-row"><div><strong>Deletion requested</strong><span>Your request is recorded and awaiting admin handling.</span></div><span class="badge">Pending</span></div>
+        <% } else { %>
+          <form action="/dashboard/actions/settings/delete-account" method="post" class="real-form-grid" data-confirm="Request account deletion?">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label class="full">Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
+            <label>Current password<input name="password" type="password" autocomplete="current-password" placeholder="Required for password accounts"></label>
+            <label>Confirm<input name="confirmation" placeholder="Type DELETE or your email" required></label>
+            <button class="btn btn-ghost btn-danger-subtle full" type="submit">Request deletion</button>
+          </form>
+        <% } %>
+      </article>
+
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>Workspace diagnostics</h3><p>Check provider health and recent API diagnostics.</p></div><a class="btn btn-primary" href="/dashboard/settings">Settings workspace</a></div>
+        <form action="/dashboard/actions/settings/diagnostics" method="post" class="real-form-grid">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <label class="full">Diagnostics scope<input name="scope" value="providers, queues, storage, social"></label>
           <button class="btn btn-ghost full" type="submit">Check workspace</button>
@@ -462,6 +667,7 @@
     window.__AUTOBRAND_DASHBOARD_DATA__ = <%- dashboardJson %>;
   </script>
     <script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>
+  <script src="/js/media-upload.js?v=20260607-media-library"></script>
   <script src="/js/composer-intent.js?v=20260524-smart-output"></script>
   <script src="/js/dashboard-experience.js?v=20260606-complete-local-flows"></script>
 </body>

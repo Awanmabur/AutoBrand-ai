@@ -42,7 +42,7 @@ const FEATURE_FLAGS = [
 ].map(([name, label]) => ({ name, label }));
 
 const AI_PROVIDER_OPTIONS = ['local', 'openai', 'gemini', 'deepseek', 'groq', 'anthropic', 'mistral', 'replicate', 'stability', 'fal'];
-const BILLING_INTERVALS = ['trial', 'month', 'year', 'one_time', 'manual'];
+const BILLING_INTERVALS = ['trial', 'month', 'year', 'one_time'];
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'UGX', 'KES', 'NGN', 'ZAR', 'GHS'];
 
 function toPlain(value) {

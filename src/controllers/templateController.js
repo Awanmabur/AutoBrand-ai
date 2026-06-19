@@ -7,19 +7,8 @@ const { buildRenderInput, ensureDefaultTemplates } = require('../services/templa
 const { spendCredits } = require('../services/creditService');
 const { createTemplateVideo } = require('../services/localVideoService');
 
-async function index(req, res, next) {
-  try {
-    await ensureDefaultTemplates();
-    const [brands, templates, renders] = await Promise.all([
-      Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-      VideoTemplate.find({ status: 'active' }).sort({ category: 1, name: 1 }),
-      VideoRender.find({ createdBy: req.user._id }).populate('brand').populate('template').populate('post').sort({ createdAt: -1 }).limit(30)
-    ]);
-
-    res.render('templates/index', { title: 'Templates', layout: 'layouts/dashboard', brands, templates, renders, error: null });
-  } catch (error) {
-    next(error);
-  }
+async function index(req, res) {
+  return res.redirect(303, '/dashboard/video-system');
 }
 
 async function renderTemplate(req, res, next) {
@@ -28,7 +17,7 @@ async function renderTemplate(req, res, next) {
       Brand.findOne({ _id: req.body.brand, owner: req.user._id }),
       VideoTemplate.findOne({ _id: req.body.template, status: 'active' })
     ]);
-    if (!brand || !template) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!brand || !template) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const inputData = buildRenderInput({ brand, template, body: req.body });
     const render = await VideoRender.create({
@@ -97,12 +86,7 @@ async function renderTemplate(req, res, next) {
   } catch (error) {
     if (error.status === 402) {
       await ensureDefaultTemplates();
-      const [brands, templates, renders] = await Promise.all([
-        Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-        VideoTemplate.find({ status: 'active' }).sort({ category: 1, name: 1 }),
-        VideoRender.find({ createdBy: req.user._id }).populate('brand').populate('template').populate('post').sort({ createdAt: -1 }).limit(30)
-      ]);
-      return res.status(402).render('templates/index', { title: 'Templates', layout: 'layouts/dashboard', brands, templates, renders, error: error.message });
+      return res.redirect(`/dashboard/video-system?error=${encodeURIComponent(error.message)}`);
     }
     return next(error);
   }
@@ -111,7 +95,7 @@ async function renderTemplate(req, res, next) {
 async function updateRenderStatus(req, res, next) {
   try {
     const render = await VideoRender.findOne({ _id: req.params.id, createdBy: req.user._id });
-    if (!render) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!render) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     render.status = req.body.status;
     render.outputUrl = req.body.outputUrl || render.outputUrl;
@@ -127,16 +111,9 @@ async function updateRenderStatus(req, res, next) {
 async function createPostFromRender(req, res, next) {
   try {
     const render = await VideoRender.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand').populate('template');
-    if (!render) return res.status(404).render('errors/404', { layout: 'layouts/dashboard' });
+    if (!render) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (!render.outputUrl) {
-      return res.status(422).render('templates/index', {
-        title: 'Templates',
-        layout: 'layouts/dashboard',
-        brands: await Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-        templates: await VideoTemplate.find({ status: 'active' }).sort({ category: 1, name: 1 }),
-        renders: await VideoRender.find({ createdBy: req.user._id }).populate('brand').populate('template').populate('post').sort({ createdAt: -1 }).limit(30),
-        error: 'Render this template to an MP4 before creating a video post.'
-      });
+      return res.redirect('/dashboard/video-system?error=Render%20this%20template%20to%20an%20MP4%20before%20creating%20a%20video%20post');
     }
 
     let outputMedia = await Media.findOne({

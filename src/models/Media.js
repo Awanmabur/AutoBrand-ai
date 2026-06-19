@@ -12,6 +12,7 @@ const mediaSchema = new mongoose.Schema(
     size: { type: Number, default: 0 },
     folder: { type: String, default: 'local' },
     tags: [{ type: String }],
+    status: { type: String, enum: ['active', 'archived'], default: 'active', index: true },
     consentRequired: { type: Boolean, default: false },
     consentStatus: { type: String, enum: ['not_required', 'pending', 'accepted', 'revoked'], default: 'not_required' },
     aiPrompt: { type: String },

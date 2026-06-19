@@ -11,17 +11,14 @@ async function resolveSignupPlan(planSlug) {
   return plan;
 }
 
-async function attachSelectedPlanAfterSignup(user, selectedPlanSlug, { paymentConfigured = false } = {}) {
+async function attachSelectedPlanAfterSignup(user, selectedPlanSlug) {
   const plan = await resolveSignupPlan(selectedPlanSlug);
-  const isFreeOrTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) === 0;
+  const isFreeOrTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) <= 0;
   if (isFreeOrTrial) {
-    return { ...(await activatePlanForUser(user, plan.slug)), nextUrl: '/dashboard' };
+    return { ...(await activatePlanForUser(user, plan.slug)), nextUrl: '/dashboard?welcome=1' };
   }
-  if (!paymentConfigured) {
-    return { ...(await createPendingSubscription(user, plan.slug, { metadata: { reason: 'billing_provider_missing' } })), nextUrl: '/billing?pending=1' };
-  }
-  await createPendingSubscription(user, plan.slug, { metadata: { reason: 'checkout_required' } });
-  return { plan, nextUrl: `/billing/checkout/${encodeURIComponent(plan.slug)}` };
+  await createPendingSubscription(user, plan.slug, { metadata: { reason: 'checkout_required', selectedAt: new Date().toISOString() } });
+  return { plan, nextUrl: `/dashboard/billing/checkout/${encodeURIComponent(plan.slug)}` };
 }
 
 module.exports = { attachSelectedPlanAfterSignup, resolveSignupPlan };

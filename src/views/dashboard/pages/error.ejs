@@ -1,0 +1,28 @@
+<%
+  const code = typeof errorCode !== 'undefined' && errorCode ? errorCode : (typeof statusCode !== 'undefined' && statusCode ? statusCode : (typeof status !== 'undefined' && status ? status : 500));
+  const safeTitle = typeof errorTitle !== 'undefined' && errorTitle ? errorTitle : (typeof title !== 'undefined' && title ? title : 'Something went wrong');
+  const safeMessage = typeof errorMessage !== 'undefined' && errorMessage ? errorMessage : (typeof message !== 'undefined' && message ? message : 'Please try again or return to the dashboard.');
+  const request = typeof requestId !== 'undefined' && requestId ? requestId : 'n/a';
+  const primaryHref = typeof primaryActionHref !== 'undefined' && primaryActionHref ? primaryActionHref : '/dashboard/overview';
+  const primaryLabel = typeof primaryActionLabel !== 'undefined' && primaryActionLabel ? primaryActionLabel : 'Back to dashboard';
+  const secondaryHref = typeof secondaryActionHref !== 'undefined' && secondaryActionHref ? secondaryActionHref : '/dashboard/billing';
+  const secondaryLabel = typeof secondaryActionLabel !== 'undefined' && secondaryActionLabel ? secondaryActionLabel : 'Billing & support';
+%>
+<section class="dashboard-error-page" aria-labelledby="dashboardErrorTitle">
+  <article class="panel dashboard-error-card">
+    <div class="section-kicker">Error <%= code %></div>
+    <h1 id="dashboardErrorTitle"><%= safeTitle %></h1>
+    <p><%= safeMessage %></p>
+    <p class="muted">Request ID: <%= request %></p>
+    <div class="row-actions">
+      <a class="button" href="<%= primaryHref %>"><%= primaryLabel %></a>
+      <a class="button ghost" href="<%= secondaryHref %>"><%= secondaryLabel %></a>
+    </div>
+    <% if (typeof details !== 'undefined' && details) { %>
+      <details class="dashboard-error-details">
+        <summary>Development details</summary>
+        <pre><%= details %></pre>
+      </details>
+    <% } %>
+  </article>
+</section>
