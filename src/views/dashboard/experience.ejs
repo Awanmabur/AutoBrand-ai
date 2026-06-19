@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><%= title %> &middot; AutoBrand AI</title>
-  <link rel="stylesheet" href="/css/dashboard-experience.css?v=20260606-complete-local-flows" />
+  <link rel="stylesheet" href="/css/dashboard-experience.css?v=20260619-calendar-bulk-controls" />
 </head>
 <body>
   <% const options = dashboardData.options || {}; %>
@@ -16,6 +16,7 @@
   <% const mediaAssets = options.media || []; %>
   <% const approvalPosts = options.posts || []; %>
   <% const approvalCampaigns = options.campaigns || []; %>
+  <% const initialDashboardError = dashboardData.isErrorPage && dashboardData.pages && dashboardData.pages.errors ? dashboardData.pages.errors.error : null; %>
   <% const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp']; %>
   <% const composerBrands = brands.map((brand) => ({ _id: brand.id, name: brand.name })); %>
   <% const composerSocialAccounts = socialAccounts.map((account) => ({
@@ -184,7 +185,39 @@
       </div>
     </header>
 
-    <section class="page active" id="pageRoot" aria-live="polite"></section>
+    <section class="page active" id="pageRoot" aria-live="polite">
+      <% if (initialDashboardError) { %>
+        <div class="page-head">
+          <div>
+            <span class="kicker"><%= initialDashboardError.errorCode ? `Error ${initialDashboardError.errorCode}` : 'Error' %></span>
+            <h2><%= initialDashboardError.errorTitle || 'Something needs attention' %></h2>
+            <p><%= initialDashboardError.errorMessage || 'Please try again or return to the dashboard.' %></p>
+          </div>
+          <div class="page-actions">
+            <a class="btn btn-primary" href="<%= initialDashboardError.primaryActionHref || '/dashboard/overview' %>"><%= initialDashboardError.primaryActionLabel || 'Back to dashboard' %></a>
+            <a class="btn btn-ghost" href="<%= initialDashboardError.secondaryActionHref || '/dashboard/settings' %>"><%= initialDashboardError.secondaryActionLabel || 'Open settings' %></a>
+          </div>
+        </div>
+        <section class="dashboard-error-page" aria-labelledby="dashboardErrorTitle">
+          <article class="panel dashboard-error-card">
+            <div class="section-kicker">Error <%= initialDashboardError.errorCode || 500 %></div>
+            <h1 id="dashboardErrorTitle"><%= initialDashboardError.errorTitle || 'Something went wrong' %></h1>
+            <p><%= initialDashboardError.errorMessage || 'Please try again or return to the dashboard.' %></p>
+            <p class="muted">Request ID: <%= initialDashboardError.requestId || 'n/a' %></p>
+            <div class="row-actions">
+              <a class="btn btn-primary" href="<%= initialDashboardError.primaryActionHref || '/dashboard/overview' %>"><%= initialDashboardError.primaryActionLabel || 'Back to dashboard' %></a>
+              <a class="btn btn-ghost" href="<%= initialDashboardError.secondaryActionHref || '/dashboard/settings' %>"><%= initialDashboardError.secondaryActionLabel || 'Open settings' %></a>
+            </div>
+            <% if (initialDashboardError.details) { %>
+              <details class="dashboard-error-details">
+                <summary>Development details</summary>
+                <pre><%= initialDashboardError.details %></pre>
+              </details>
+            <% } %>
+          </article>
+        </section>
+      <% } %>
+    </section>
   </main>
 
   <div id="dashboardTemplates" hidden>
@@ -669,6 +702,6 @@
     <script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>
   <script src="/js/media-upload.js?v=20260607-media-library"></script>
   <script src="/js/composer-intent.js?v=20260524-smart-output"></script>
-  <script src="/js/dashboard-experience.js?v=20260606-complete-local-flows"></script>
+  <script src="/js/dashboard-experience.js?v=20260619-calendar-bulk-controls"></script>
 </body>
 </html>

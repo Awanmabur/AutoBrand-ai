@@ -28,6 +28,7 @@ const dashboardBasePath = '/dashboard';
 const dashboardTimeZone = liveData.timeZone || 'Africa/Kampala';
 const roleAccess = liveData.roleAccess || {};
 const currentPlan = liveData.currentPlan || {};
+const isStaticDashboardErrorPage = Boolean(liveData.isErrorPage);
 const pageLocks = roleAccess.pageLocks || liveData.featureAccess?.pageLocks || {};
 const pageAliases = {
   'post-editor': 'content-library',
@@ -284,7 +285,8 @@ const routeMap = {
   billing: { primary: '/dashboard/billing', secondary: '/dashboard/settings', view: '/dashboard/billing', label: 'Billing' },
   plans: { primary: '/dashboard/plans?mode=create', secondary: '/dashboard/billing', view: '/dashboard/plans', label: 'Create plan' },
   admin: { primary: '/dashboard/plans', secondary: '/dashboard/settings', view: '/dashboard/admin', label: 'Manage plans' },
-  settings: { primary: '/dashboard/settings', secondary: '/dashboard/team', view: '/dashboard/settings', label: 'Settings' }
+  settings: { primary: '/dashboard/settings', secondary: '/dashboard/team', view: '/dashboard/settings', label: 'Settings' },
+  errors: { primary: '/dashboard/overview', secondary: '/dashboard/settings', view: '/dashboard/errors', label: 'Dashboard' }
 };
 
 const socialPlatforms = [
@@ -455,6 +457,10 @@ const pageMeta = {
   plans: {
     title: 'Plan Management', kicker: 'Plans', heading: 'Manage subscription plans inside the dashboard.',
     description: 'Create, edit, duplicate, reorder, publish and archive dynamic plans from the same dashboard design.'
+  },
+  errors: {
+    title: 'Dashboard Error', kicker: 'Hidden page', heading: 'Something needs attention.',
+    description: 'This hidden dashboard page appears only when the app needs to show an error state.'
   }
 };
 
@@ -668,6 +674,7 @@ function pagePath(pageId) {
 }
 
 function pageFromLocation() {
+  if (isStaticDashboardErrorPage && liveData.initialPage) return normalizePageId(liveData.initialPage);
   return normalizePageId(location.pathname || liveData.initialPage || 'overview');
 }
 
@@ -1656,7 +1663,7 @@ function renderCalendarDashboard(page) {
     ? `<div class="calendar-best-times">${bestTimeSuggestions.map((item) => `<button class="btn btn-ghost" type="button" data-calendar-best-time="${escapeHtml(item.scheduledAt)}"><strong>${escapeHtml(item.time)}</strong><span>${escapeHtml(item.brandName)} / ${escapeHtml(item.platform)}</span></button>`).join('')}</div>`
     : '';
   const bulkForm = visiblePosts.length
-    ? `<form id="calendarBulkRescheduleForm" class="calendar-bulk-form" action="/dashboard/actions/posts/bulk-reschedule" method="post">${csrfInput()}<label><span>Start time</span><input id="calendarBulkScheduledAt" name="scheduledAt" type="datetime-local"></label><label><span>Spacing min</span><input name="spacingMinutes" type="number" min="0" max="1440" value="30"></label><label><span>Shift days</span><input name="dayOffset" type="number" value="0"></label><button class="btn btn-primary" type="submit">Bulk reschedule</button></form>`
+    ? `<form id="calendarBulkRescheduleForm" class="calendar-bulk-form" action="/dashboard/actions/posts/bulk-reschedule" method="post">${csrfInput()}<label class="calendar-bulk-field"><span>Start time</span><input class="calendar-bulk-input" id="calendarBulkScheduledAt" name="scheduledAt" type="datetime-local"></label><label class="calendar-bulk-field"><span>Spacing min</span><input class="calendar-bulk-input" name="spacingMinutes" type="number" min="0" max="1440" value="30"></label><label class="calendar-bulk-field"><span>Shift days</span><input class="calendar-bulk-input" name="dayOffset" type="number" value="0"></label><button class="btn btn-primary" type="submit">Bulk reschedule</button></form>`
     : '';
   const realPostList = visiblePosts.length
     ? visiblePosts.slice(0, 60).map((post) => calendarLibraryPost(post)).join('')
@@ -2197,6 +2204,32 @@ function renderLockedPage(page, pageId) {
   </article>`;
 }
 
+function renderDashboardError(page = {}) {
+  const error = page.error || {};
+  const code = error.errorCode || error.statusCode || error.status || detailsValue(page.cards?.[0], ['Status']) || '500';
+  const title = error.errorTitle || error.title || page.heading || 'Something went wrong';
+  const message = error.errorMessage || error.message || page.description || 'Please try again or return to the dashboard.';
+  const requestId = error.requestId || 'n/a';
+  const primaryHref = error.primaryActionHref || '/dashboard/overview';
+  const primaryLabel = error.primaryActionLabel || 'Back to dashboard';
+  const secondaryHref = error.secondaryActionHref || '/dashboard/settings';
+  const secondaryLabel = error.secondaryActionLabel || 'Open settings';
+  const details = error.details || '';
+  return `<section class="dashboard-error-page" aria-labelledby="dashboardErrorTitle">
+    <article class="panel dashboard-error-card">
+      <div class="section-kicker">Error ${escapeHtml(code)}</div>
+      <h1 id="dashboardErrorTitle">${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      <p class="muted">Request ID: ${escapeHtml(requestId)}</p>
+      <div class="row-actions">
+        <a class="btn btn-primary" href="${escapeHtml(primaryHref)}">${escapeHtml(primaryLabel)}</a>
+        <a class="btn btn-ghost" href="${escapeHtml(secondaryHref)}">${escapeHtml(secondaryLabel)}</a>
+      </div>
+      ${details ? `<details class="dashboard-error-details"><summary>Development details</summary><pre>${escapeHtml(details)}</pre></details>` : ''}
+    </article>
+  </section>`;
+}
+
 
 function renderPage(pageId, options = {}) {
   closeModal();
@@ -2226,6 +2259,8 @@ function renderPage(pageId, options = {}) {
         ? renderAnalyticsDashboard(page)
       : safePageId === 'billing'
         ? renderBillingDashboard(page)
+      : safePageId === 'errors'
+        ? renderDashboardError(page)
       : safePageId === 'quick-create'
         ? `${fullComposerHtml()}
     <article class="card"><div class="card-head"><div><h3>${escapeHtml(page.title)} cards</h3><p>Live records, counts and useful next actions from your workspace.</p></div><span class="badge">${escapeHtml(page.cards?.length || 0)} items</span></div>${renderCards(page.cards)}</article>
@@ -2286,6 +2321,7 @@ function pageIdFromDashboardPath(pathname = '') {
 }
 
 function openPageFromLink(event) {
+  if (isStaticDashboardErrorPage) return;
   event.preventDefault();
   const pageId = normalizePageId(event.currentTarget.dataset.page || pageIdFromDashboardPath(event.currentTarget.getAttribute('href') || ''));
   renderPage(pageId);
@@ -2303,6 +2339,7 @@ function isDashboardSpaPath(pathname = '') {
 }
 
 function bindDashboardLinks() {
+  if (isStaticDashboardErrorPage) return;
   document.querySelectorAll('a[href^="/dashboard/"]').forEach((link) => {
     if (link.dataset.dashboardBound === 'true') return;
     link.dataset.dashboardBound = 'true';
@@ -2573,6 +2610,48 @@ function calendarPostToCard(post = {}) {
   });
 }
 
+function calendarPostPreviewHtml(post = {}, card = calendarPostToCard(post)) {
+  const platformLabel = String(post.platform || 'platform').replace(/_/g, ' ');
+  const dateLabel = post.dateTimeLabel || post.dateLabel || 'No date saved';
+  const accountList = (post.targetAccounts || []).map((account) => account.name || account.accountName || '').filter(Boolean);
+  const resultList = (post.publishResults || []).map((result) => [result.accountName, result.status, result.platformPostUrl, result.errorMessage].filter(Boolean).join(' | ')).filter(Boolean);
+  const mediaItems = Array.isArray(post.media) ? post.media.filter((item) => item?.url) : [];
+  const mediaPreview = modalMediaHtml(card);
+  return `<div class="brand-view-header calendar-post-preview-header">
+      <div class="brand-logo-lg post-preview-logo">${platformIcon(post.platform || 'calendar')}</div>
+      <div class="brand-view-title">
+        <span class="modal-kicker">${escapeHtml(platformLabel)}</span>
+        <h3>${escapeHtml(post.title || 'Scheduled post')}</h3>
+        <p>${escapeHtml(`${post.brandName || 'Missing brand'} - ${post.status || 'draft'} - ${dateLabel}`)}</p>
+        <div class="brand-brain-metrics">
+          <span>${escapeHtml(post.type || 'text')}</span>
+          <span>${escapeHtml(mediaItems.length ? `${mediaItems.length} media` : 'No media')}</span>
+          <span>${escapeHtml(accountList.length ? `${accountList.length} targets` : 'No targets')}</span>
+        </div>
+      </div>
+    </div>
+    <div class="brand-view-form calendar-post-preview-form">
+      ${card.mediaUrl ? `<section class="brand-detail-section calendar-post-media-section"><h4>Media preview</h4>${mediaPreview}</section>` : ''}
+      ${detailGroup('Post copy', [
+        detailRow('Caption', escapeHtml(post.fullCaption || post.caption || 'No caption saved.')),
+        detailRow('Hashtags', escapeHtml(Array.isArray(post.hashtags) ? post.hashtags.join(' ') : (post.hashtags || 'Not saved')))
+      ])}
+      ${detailGroup('Schedule and channel', [
+        detailRow('Brand', escapeHtml(post.brandName || 'Missing brand')),
+        detailRow('Platform', escapeHtml(platformLabel)),
+        detailRow('Format', escapeHtml(post.type || 'text')),
+        detailRow('Status', escapeHtml(post.status || 'draft')),
+        detailRow('Scheduled at', escapeHtml(dateLabel)),
+        detailRow('Public URL', post.platformPostUrl ? `<a href="${escapeHtml(post.platformPostUrl)}" target="_blank" rel="noopener">${escapeHtml(post.platformPostUrl)}</a>` : 'Not published')
+      ])}
+      ${detailGroup('Publishing details', [
+        detailRow('Targets', escapeHtml(accountList.join(', ') || 'No target accounts saved')),
+        detailRow('Results', escapeHtml(resultList.join(' | ') || 'No publish results yet')),
+        detailRow('Media files', escapeHtml(mediaItems.map((item) => [item.name, item.type].filter(Boolean).join(' - ')).join(', ') || 'No attached files'))
+      ])}
+    </div>`;
+}
+
 function openCalendarPostModal(postId, mode = 'view') {
   const post = (dashboardCalendar.posts || []).find((item) => String(item.id) === String(postId));
   if (!post) return;
@@ -2589,9 +2668,9 @@ function openCalendarPostModal(postId, mode = 'view') {
   }
   modalBackdrop.classList.add('show');
   modalBackdrop.setAttribute('aria-hidden', 'false');
-  modalKicker.textContent = 'Post details';
+  modalKicker.textContent = 'Post preview';
   modalTitle.textContent = card.title || 'Post';
-  modalBody.innerHTML = cardDetailHtml(card);
+  modalBody.innerHTML = calendarPostPreviewHtml(post, card);
   modalActions.innerHTML = recordModalActions(card, -1);
   bindActions();
 }
@@ -2957,4 +3036,7 @@ window.addEventListener('popstate', () => {
   renderPage(pageFromLocation(), { updateUrl: false });
 });
 
+if (isStaticDashboardErrorPage && location.pathname !== '/dashboard/errors') {
+  history.replaceState({ pageId: 'errors' }, '', '/dashboard/errors');
+}
 renderPage(pageFromLocation(), { updateUrl: false });

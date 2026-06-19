@@ -40,3 +40,44 @@ test('composer and dashboard templates include restored empty states and admin o
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.notification-popover/);
   assert.match(css, /\.billing-progress-wrap progress/);
 });
+
+test('media library controls are styled and hidden dashboard errors are registered', () => {
+  const js = read('public/js/dashboard-experience.js');
+  const css = read('public/css/dashboard-experience.css');
+  const dashboard = read('src/views/dashboard/experience.ejs');
+  const featureAccess = read('src/services/subscription/featureAccess.service.js');
+  const dashboardController = read('src/modules/dashboard/dashboard.controller.js');
+  const errorMiddleware = read('src/middlewares/error.middleware.js');
+
+  assert.match(css, /\.media-filter-bar[\s\S]*border-radius: var\(--radius-lg\)/);
+  assert.match(css, /\.media-filter-bar input,[\s\S]*\.media-filter-bar select[\s\S]*min-height: 46px/);
+  assert.match(css, /\.dashboard-media-library-grid \.media-card,[\s\S]*\.dashboard-media-card[\s\S]*border-radius: var\(--radius-lg\)/);
+  assert.match(css, /\.dashboard-calendar-shell input:not/);
+  assert.match(css, /\.calendar-bulk-form[\s\S]*grid-template-columns: minmax\(220px, 1\.35fr\)/);
+  assert.match(css, /\.calendar-bulk-form \.calendar-bulk-input[\s\S]*min-height: 46px/);
+  assert.match(css, /\.calendar-bulk-form \.calendar-bulk-input\[type="datetime-local"\][\s\S]*min-width: 0/);
+  assert.match(css, /#calendarBulkRescheduleForm \.calendar-bulk-input[\s\S]*min-height: 48px/);
+  assert.match(css, /#calendarBulkRescheduleForm \.calendar-bulk-input::-webkit-calendar-picker-indicator/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.calendar-bulk-form \{[\s\S]*grid-template-columns: 1fr/);
+  assert.match(css, /\.content-filter-row input:not/);
+  assert.match(css, /\.modal \{[\s\S]*overflow: hidden[\s\S]*display: flex/);
+  assert.match(css, /\.modal-body \{[\s\S]*overflow: auto/);
+  assert.match(css, /\.record-detail-grid \{[\s\S]*auto-fit/);
+  assert.match(css, /\.calendar-post-preview-header/);
+  assert.match(js, /errors: \{ primary: '\/dashboard\/overview'/);
+  assert.match(js, /function renderDashboardError/);
+  assert.match(js, /function calendarPostPreviewHtml/);
+  assert.match(js, /modalBody\.innerHTML = calendarPostPreviewHtml/);
+  assert.match(js, /class="calendar-bulk-field"/);
+  assert.match(js, /class="calendar-bulk-input"/);
+  assert.match(js, /isStaticDashboardErrorPage && liveData\.initialPage/);
+  assert.match(js, /history\.replaceState\(\{ pageId: 'errors' \}, '', '\/dashboard\/errors'\)/);
+  assert.match(dashboard, /initialDashboardError/);
+  assert.match(dashboard, /dashboard-error-page/);
+  assert.match(featureAccess, /errors: \{ always: true \}/);
+  assert.match(featureAccess, /'dashboard-error': 'errors'/);
+  assert.match(dashboardController, /dashboardErrorFromRequest/);
+  assert.match(dashboardController, /errors: \{\s*stats:/);
+  assert.match(errorMiddleware, /renderDashboardExperienceError/);
+  assert.match(errorMiddleware, /req\.user \|\| isDashboardRequest\(req\) \|\| removedRootRouteTarget\(req\.path\)/);
+});

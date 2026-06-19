@@ -28,6 +28,7 @@ const { buildBrandChecklist } = require('../../services/brandBrain/brandScore.se
 const { suggestBestTimes } = require('../../services/scheduling/bestTime.service');
 const { capabilityList, evaluateSocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
 const { buildAnalyticsDashboard } = require('../../services/analytics/analyticsDashboard.service');
+const { defaultMessage, defaultTitle } = require('../../utils/errorResponse');
 
 const DASHBOARD_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TIME_ZONE || process.env.TZ || 'Africa/Kampala';
 
@@ -81,6 +82,22 @@ function scriptJson(value) {
     .replace(/&/g, '\\u0026');
 }
 
+function dashboardErrorFromRequest(req) {
+  const rawStatus = Number(req.query.code || req.query.status || req.query.errorCode || 500);
+  const status = [400, 401, 403, 404, 419, 429, 500, 503].includes(rawStatus) ? rawStatus : 500;
+  return {
+    errorCode: status,
+    errorTitle: req.query.title || defaultTitle(status),
+    errorMessage: req.query.message || defaultMessage(status),
+    requestId: req.query.requestId || req.id || 'n/a',
+    timestamp: new Date().toISOString(),
+    primaryActionHref: '/dashboard/overview',
+    primaryActionLabel: 'Back to dashboard',
+    secondaryActionHref: '/dashboard/settings',
+    secondaryActionLabel: 'Open settings'
+  };
+}
+
 const PAGE_ALIASES = {
   'post-editor': 'content-library',
   posts: 'content-library',
@@ -101,7 +118,10 @@ const PAGE_ALIASES = {
   billings: 'billing',
   'admin-plans': 'plans',
   'admin/plans': 'plans',
-  plans: 'plans'
+  plans: 'plans',
+  error: 'errors',
+  errors: 'errors',
+  'dashboard-error': 'errors'
 };
 const DASHBOARD_PAGES = [
   'overview',
@@ -121,7 +141,8 @@ const DASHBOARD_PAGES = [
   'billing',
   'settings',
   'admin',
-  'plans'
+  'plans',
+  'errors'
 ];
 
 const ROLE_PAGE_ACCESS = {
@@ -131,10 +152,10 @@ const ROLE_PAGE_ACCESS = {
   content_creator: [
     'overview', 'quick-create', 'brand-brain', 'content-library',
     'campaigns', 'media', 'video-system', 'avatar-video',
-    'calendar', 'social', 'approvals', 'analytics', 'notifications', 'settings'
+    'calendar', 'social', 'approvals', 'analytics', 'notifications', 'settings', 'errors'
   ],
-  client_reviewer: ['overview', 'content-library', 'calendar', 'approvals', 'analytics', 'notifications', 'settings'],
-  team_member: ['overview', 'quick-create', 'content-library', 'media', 'calendar', 'approvals', 'analytics', 'notifications', 'settings']
+  client_reviewer: ['overview', 'content-library', 'calendar', 'approvals', 'analytics', 'notifications', 'settings', 'errors'],
+  team_member: ['overview', 'quick-create', 'content-library', 'media', 'calendar', 'approvals', 'analytics', 'notifications', 'settings', 'errors']
 };
 
 function dashboardRole(role) {
@@ -850,7 +871,8 @@ function buildDashboardData({
   featureAccess = null,
   usageDashboard = null,
   publicPricingPlans = [],
-  platformAdminView = false
+  platformAdminView = false,
+  dashboardError = null
 }) {
   socialAccounts = socialAccounts.filter(isRealSocialAccount);
   const userName = user.name || user.email || 'User';
@@ -883,6 +905,17 @@ function buildDashboardData({
   const analyticsView = analyticsDashboard || {};
   const analyticsTotalMetrics = analyticsView.totals || analyticsTotals || {};
   const analyticsBestPlatform = analyticsView.bestPlatform || topPlatform;
+  const activeDashboardError = dashboardError || {
+    errorCode: 500,
+    errorTitle: 'No active dashboard error',
+    errorMessage: 'This hidden dashboard page is reserved for application errors.',
+    requestId: 'n/a',
+    timestamp: new Date().toISOString(),
+    primaryActionHref: '/dashboard/overview',
+    primaryActionLabel: 'Back to dashboard',
+    secondaryActionHref: '/dashboard/settings',
+    secondaryActionLabel: 'Open settings'
+  };
 
   const recentPostRows = recentPosts.map((post) =>
     row(postTitle(post), postDescription(post), titleCase(post.status))
@@ -2325,6 +2358,45 @@ function buildDashboardData({
         rows: settingCards,
         tableRows: settingCards,
         form: true
+      },
+      errors: {
+        stats: [
+          [String(activeDashboardError.errorCode || 500), 'Error code', 'Dashboard state'],
+          [truncate(activeDashboardError.requestId || 'n/a', 24), 'Request ID', 'Support trace'],
+          [formatDateTime(activeDashboardError.timestamp), 'Captured', DASHBOARD_TIME_ZONE],
+          ['Hidden', 'Navigation', 'Only shown on errors']
+        ],
+        cards: [
+          card(
+            activeDashboardError.errorTitle || 'Dashboard error',
+            activeDashboardError.errorMessage || 'Please return to the dashboard and try again.',
+            `Error ${activeDashboardError.errorCode || 500}`,
+            {
+              kind: 'error',
+              href: activeDashboardError.primaryActionHref || '/dashboard/overview',
+              actionHref: activeDashboardError.secondaryActionHref || '/dashboard/settings',
+              actionLabel: activeDashboardError.secondaryActionLabel || 'Open settings',
+              details: {
+                Status: activeDashboardError.errorCode || 500,
+                'Request ID': activeDashboardError.requestId || 'n/a',
+                Timestamp: activeDashboardError.timestamp || '',
+                Message: activeDashboardError.errorMessage || ''
+              }
+            }
+          )
+        ],
+        rows: [[
+          activeDashboardError.errorTitle || 'Dashboard error',
+          activeDashboardError.errorMessage || 'Please return to the dashboard and try again.',
+          `Error ${activeDashboardError.errorCode || 500}`
+        ]],
+        tableRows: [[
+          activeDashboardError.errorTitle || 'Dashboard error',
+          activeDashboardError.requestId || 'n/a',
+          `Error ${activeDashboardError.errorCode || 500}`
+        ]],
+        form: false,
+        error: activeDashboardError
       }
     }
   };
@@ -2544,7 +2616,8 @@ async function index(req, res, next) {
       featureAccess,
       usageDashboard,
       publicPricingPlans,
-      platformAdminView: canViewPlatformAdmin
+      platformAdminView: canViewPlatformAdmin,
+      dashboardError: requestedPage === 'errors' ? dashboardErrorFromRequest(req) : null
     });
     dashboardData.initialPage = requestedPage;
     dashboardData.csrfToken = req.csrfToken ? req.csrfToken() : '';

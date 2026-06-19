@@ -258,6 +258,74 @@ textarea.form-control { border-radius: 18px; min-height: 120px; padding: 12px 14
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(8, 44, 82, .08);
 }
+
+.dashboard-calendar-shell input:not([type="checkbox"]):not([type="radio"]),
+.dashboard-calendar-shell select,
+.content-filter-row input:not([type="checkbox"]):not([type="radio"]),
+.content-filter-row select,
+.plan-management-shell input:not([type="checkbox"]):not([type="radio"]),
+.plan-management-shell select,
+.plan-management-shell textarea,
+.modal-edit-form input:not([type="checkbox"]):not([type="radio"]),
+.modal-edit-form select,
+.modal-edit-form textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 20px rgba(6, 26, 51, .045);
+  font: inherit;
+}
+
+.dashboard-calendar-shell input:not([type="checkbox"]):not([type="radio"]),
+.content-filter-row input:not([type="checkbox"]):not([type="radio"]),
+.plan-management-shell input:not([type="checkbox"]):not([type="radio"]),
+.modal-edit-form input:not([type="checkbox"]):not([type="radio"]) {
+  padding: 0 14px;
+}
+
+.dashboard-calendar-shell select,
+.content-filter-row select,
+.plan-management-shell select,
+.modal-edit-form select {
+  appearance: none;
+  padding: 0 42px 0 14px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 22px) 50%,
+    calc(100% - 16px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.plan-management-shell textarea,
+.modal-edit-form textarea {
+  min-height: 112px;
+  border-radius: 18px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.dashboard-calendar-shell input:not([type="checkbox"]):not([type="radio"]):focus,
+.dashboard-calendar-shell select:focus,
+.content-filter-row input:not([type="checkbox"]):not([type="radio"]):focus,
+.content-filter-row select:focus,
+.plan-management-shell input:not([type="checkbox"]):not([type="radio"]):focus,
+.plan-management-shell select:focus,
+.plan-management-shell textarea:focus,
+.modal-edit-form input:not([type="checkbox"]):not([type="radio"]):focus,
+.modal-edit-form select:focus,
+.modal-edit-form textarea:focus {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent),
+    0 8px 20px rgba(6, 26, 51, .06);
+}
 .real-form-actions {
   display: flex;
   gap: 8px;
@@ -863,6 +931,31 @@ body.dark-mode .brand-brain-logo { color: #06111f; }
 .brand-read-field a {
   color: var(--primary);
 }
+
+.calendar-post-preview-header .post-preview-logo {
+  background: var(--surface);
+  color: var(--primary);
+  border: 1px solid var(--border);
+}
+
+.calendar-post-preview-header .social-logo {
+  width: 64px;
+  height: 64px;
+}
+
+.calendar-post-preview-form .brand-detail-section {
+  overflow: hidden;
+}
+
+.calendar-post-media-section .record-modal-media {
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.calendar-post-media-section .record-modal-media img,
+.calendar-post-media-section .record-modal-media video {
+  max-height: min(48vh, 420px);
+}
 .brand-logo-lg {
   width: 112px;
   height: 112px;
@@ -880,12 +973,12 @@ body.dark-mode .brand-logo-lg { color: #06111f; }
 .modal-edit-form { max-height: none; }
 .modal-backdrop { z-index: 100; padding: 18px; align-items: center; justify-content: center; }
 .modal-backdrop.show { display: flex; }
-.modal { width: min(1080px, 100%); max-height: calc(100vh - 36px); overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 26px; box-shadow: var(--shadow); padding: 18px; }
+.modal { width: min(1080px, 100%); max-height: calc(100vh - 36px); overflow: hidden; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 26px; box-shadow: var(--shadow); padding: 18px; }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .modal-kicker { display: inline-flex; margin-bottom: 6px; color: var(--primary); font-size: .72rem; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
 .modal h2 { font-size: 1.35rem; letter-spacing: -.03em; }
-.modal-body { display: grid; gap: 12px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
+.modal-body { min-height: 0; overflow: auto; display: grid; gap: 12px; padding-right: 4px; }
+.modal-actions { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 9px; margin-top: 16px; flex-wrap: wrap; }
 .empty-state { text-align: center; padding: 34px; color: var(--muted); border: 1px dashed var(--border); border-radius: 22px; background: var(--surface-soft); }
 @media (max-width: 1220px) {
   .sidebar { transform: translateX(calc(-100% - 28px)); transition: .28s ease; }
@@ -1853,20 +1946,168 @@ body.dark-mode .social-logo {
 }
 
 .calendar-bulk-form {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-soft);
+  display: grid;
+  grid-template-columns: minmax(220px, 1.35fr) minmax(130px, .7fr) minmax(130px, .7fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, var(--primary));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 7%, transparent), transparent 42%),
+    var(--surface-soft);
+  box-shadow: 0 14px 34px rgba(6, 26, 51, .055);
   margin-bottom: 14px;
 }
 
-.calendar-bulk-form label {
+.calendar-bulk-form label,
+.calendar-bulk-form .calendar-bulk-field {
   display: grid;
-  gap: 5px;
-  min-width: 150px;
+  gap: 7px;
+  min-width: 0;
   color: var(--muted);
   font-size: .76rem;
   font-weight: 850;
+}
+
+.calendar-bulk-form label span,
+.calendar-bulk-form .calendar-bulk-field span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  text-transform: uppercase;
+}
+
+.calendar-bulk-form input:not([type="checkbox"]):not([type="radio"]),
+.calendar-bulk-form .calendar-bulk-input {
+  width: 100%;
+  min-height: 46px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--primary));
+  border-radius: var(--radius-lg);
+  outline: none;
+  background: color-mix(in srgb, var(--surface) 94%, white);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .68),
+    0 8px 20px rgba(6, 26, 51, .045);
+  font: inherit;
+  font-weight: 800;
+  padding: 0 14px;
+  appearance: auto;
+}
+
+.calendar-bulk-form input[type="datetime-local"],
+.calendar-bulk-form .calendar-bulk-input[type="datetime-local"] {
+  min-width: 0;
+  color-scheme: light;
+}
+
+body.dark-mode .calendar-bulk-form input:not([type="checkbox"]):not([type="radio"]),
+body.dark-mode .calendar-bulk-form .calendar-bulk-input {
+  background: color-mix(in srgb, var(--surface) 88%, black);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .08),
+    0 8px 20px rgba(0, 0, 0, .18);
+}
+
+body.dark-mode .calendar-bulk-form input[type="datetime-local"],
+body.dark-mode .calendar-bulk-form .calendar-bulk-input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+.calendar-bulk-form input:not([type="checkbox"]):not([type="radio"]):focus,
+.calendar-bulk-form .calendar-bulk-input:focus {
+  border-color: color-mix(in srgb, var(--primary) 64%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent),
+    0 10px 24px rgba(6, 26, 51, .08);
+}
+
+.calendar-bulk-form button {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm.calendar-bulk-form {
+  align-items: end;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-field {
+  position: relative;
+  display: grid;
+  gap: 7px;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-field span {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, var(--primary));
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, white), var(--surface));
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .72),
+    0 10px 22px rgba(6, 26, 51, .06);
+  font: inherit;
+  font-weight: 850;
+  line-height: 1.2;
+  outline: none;
+  padding: 0 14px;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm input[type="datetime-local"].calendar-bulk-input {
+  padding-right: 12px;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm input[type="number"].calendar-bulk-input {
+  appearance: textfield;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm input[type="number"].calendar-bulk-input::-webkit-outer-spin-button,
+.dashboard-calendar-shell #calendarBulkRescheduleForm input[type="number"].calendar-bulk-input::-webkit-inner-spin-button {
+  margin: 0;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-input::-webkit-calendar-picker-indicator {
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: .7;
+  padding: 5px;
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-input:hover {
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .72),
+    0 12px 28px rgba(6, 26, 51, .085);
+}
+
+.dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-input:focus {
+  border-color: color-mix(in srgb, var(--primary) 68%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent),
+    0 12px 28px rgba(6, 26, 51, .09);
+}
+
+body.dark-mode .dashboard-calendar-shell #calendarBulkRescheduleForm .calendar-bulk-input {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 88%, white), var(--surface));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .09),
+    0 10px 22px rgba(0, 0, 0, .22);
 }
 
 .calendar-bulk-check {
@@ -2194,6 +2435,10 @@ body.dark-mode .dashboard-calendar-more {
     justify-content: flex-start;
   }
 
+  .calendar-bulk-form {
+    grid-template-columns: 1fr;
+  }
+
   .calendar-bulk-form label,
   .calendar-bulk-form button {
     width: 100%;
@@ -2304,6 +2549,8 @@ body.dark-mode .dashboard-calendar-more {
 
 .record-modal-card,
 .classic-composer-modal {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   gap: 18px;
 }
@@ -2351,13 +2598,17 @@ body.dark-mode .dashboard-calendar-more {
 
 .record-detail-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 12px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .record-detail-field,
 .record-detail-nested > div {
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   display: grid;
   gap: 6px;
   padding: 12px;
@@ -2388,6 +2639,18 @@ body.dark-mode .dashboard-calendar-more {
 
 .record-detail-list li {
   min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.record-detail-field span,
+.record-detail-field a,
+.record-detail-field li,
+.record-detail-nested {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .modal-frame {
@@ -4299,11 +4562,54 @@ body.dark-mode .plan-preview-card {
   grid-template-columns: minmax(180px, 1fr) minmax(140px, 220px);
   gap: 12px;
   margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 10%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface-soft) 82%, var(--surface));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45);
 }
 
 .media-filter-bar input,
 .media-filter-bar select {
   width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  outline: none;
+  background-color: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 20px rgba(6, 26, 51, .045);
+  font-weight: 750;
+}
+
+.media-filter-bar input {
+  padding: 0 16px;
+}
+
+.media-filter-bar input::placeholder {
+  color: color-mix(in srgb, var(--muted) 76%, transparent);
+  font-weight: 650;
+}
+
+.media-filter-bar select {
+  appearance: none;
+  padding: 0 42px 0 16px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 22px) 50%,
+    calc(100% - 16px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.media-filter-bar input:focus,
+.media-filter-bar select:focus {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent),
+    0 8px 20px rgba(6, 26, 51, .06);
 }
 
 .dashboard-media-library-grid.media-grid {
@@ -4317,9 +4623,20 @@ body.dark-mode .plan-preview-card {
 .dashboard-media-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  box-shadow: none;
+  box-shadow: 0 10px 28px rgba(6, 26, 51, .055);
+  min-width: 0;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.dashboard-media-library-grid .media-card:hover,
+.dashboard-media-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--border));
+  box-shadow: 0 16px 36px rgba(6, 26, 51, .09);
+  transform: translateY(-2px);
 }
 
 .dashboard-media-library-grid .media-card img,
@@ -4333,13 +4650,23 @@ body.dark-mode .plan-preview-card {
   width: 100%;
 }
 
+.dashboard-media-library-grid .media-placeholder {
+  color: var(--muted);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .dashboard-media-library-grid .media-card img,
 .dashboard-media-library-grid .media-card video {
   display: block;
 }
 
 .dashboard-media-library-grid .media-card > div:last-child {
-  padding: 14px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
 }
 
 .dashboard-media-library-grid .media-card h3 {
@@ -4351,6 +4678,7 @@ body.dark-mode .plan-preview-card {
 .dashboard-media-library-grid .media-card p {
   color: var(--muted);
   margin: 0 0 8px;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-media-actions,
@@ -4358,6 +4686,7 @@ body.dark-mode .plan-preview-card {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
   margin-top: 12px;
 }
 
@@ -4558,9 +4887,22 @@ body.dark-mode .dashboard-notice.error { background: rgba(127, 29, 29, .2); colo
   padding: clamp(1.5rem, 3vw, 2.5rem);
   border-radius: 28px;
 }
+.dashboard-error-card .section-kicker {
+  color: var(--danger);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
 .dashboard-error-card h1 {
   margin: .5rem 0 1rem;
   font-size: clamp(2rem, 4vw, 3.4rem);
+}
+.dashboard-error-card .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 1.2rem;
 }
 .dashboard-error-details {
   margin-top: 1.2rem;

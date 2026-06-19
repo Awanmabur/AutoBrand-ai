@@ -16,7 +16,8 @@ const DASHBOARD_PAGES = [
   'billing',
   'settings',
   'admin',
-  'plans'
+  'plans',
+  'errors'
 ];
 
 const PAGE_ALIASES = {
@@ -51,7 +52,10 @@ const PAGE_ALIASES = {
   threads: 'social',
   'admin-plans': 'plans',
   'admin/plans': 'plans',
-  plans: 'plans'
+  plans: 'plans',
+  error: 'errors',
+  errors: 'errors',
+  'dashboard-error': 'errors'
 };
 
 const ADMIN_ROLES = [
@@ -68,22 +72,22 @@ const ADMIN_ROLES = [
 const ROLE_PAGE_ACCESS = {
   super_admin: DASHBOARD_PAGES,
   platform_admin: DASHBOARD_PAGES.filter((page) => !['billing'].includes(page)),
-  billing_admin: ['overview', 'billing', 'analytics', 'notifications', 'settings', 'admin', 'plans'],
-  ai_manager: ['overview', 'quick-create', 'brand-brain', 'media', 'campaigns', 'analytics', 'notifications', 'settings', 'admin', 'plans'],
-  integration_manager: ['overview', 'social', 'notifications', 'settings', 'admin'],
-  content_moderator: ['overview', 'content-library', 'calendar', 'approvals', 'analytics', 'notifications', 'settings', 'admin'],
-  support_agent: ['overview', 'team', 'billing', 'social', 'approvals', 'notifications', 'settings', 'admin'],
-  analyst: ['overview', 'analytics', 'calendar', 'campaigns', 'notifications', 'admin'],
+  billing_admin: ['overview', 'billing', 'analytics', 'notifications', 'settings', 'admin', 'plans', 'errors'],
+  ai_manager: ['overview', 'quick-create', 'brand-brain', 'media', 'campaigns', 'analytics', 'notifications', 'settings', 'admin', 'plans', 'errors'],
+  integration_manager: ['overview', 'social', 'notifications', 'settings', 'admin', 'errors'],
+  content_moderator: ['overview', 'content-library', 'calendar', 'approvals', 'analytics', 'notifications', 'settings', 'admin', 'errors'],
+  support_agent: ['overview', 'team', 'billing', 'social', 'approvals', 'notifications', 'settings', 'admin', 'errors'],
+  analyst: ['overview', 'analytics', 'calendar', 'campaigns', 'notifications', 'admin', 'errors'],
   agency_owner: DASHBOARD_PAGES.filter((page) => !['admin', 'plans'].includes(page)),
   brand_owner: DASHBOARD_PAGES.filter((page) => !['admin', 'plans'].includes(page)),
   team_owner: DASHBOARD_PAGES.filter((page) => !['admin', 'plans'].includes(page)),
   content_creator: [
     'overview', 'quick-create', 'brand-brain', 'content-library',
     'campaigns', 'media', 'video-system', 'avatar-video',
-    'calendar', 'social', 'approvals', 'analytics', 'notifications', 'settings'
+    'calendar', 'social', 'approvals', 'analytics', 'notifications', 'settings', 'errors'
   ],
-  client_reviewer: ['overview', 'content-library', 'calendar', 'approvals', 'analytics', 'notifications', 'settings'],
-  team_member: ['overview', 'quick-create', 'content-library', 'media', 'calendar', 'approvals', 'analytics', 'notifications', 'settings']
+  client_reviewer: ['overview', 'content-library', 'calendar', 'approvals', 'analytics', 'notifications', 'settings', 'errors'],
+  team_member: ['overview', 'quick-create', 'content-library', 'media', 'calendar', 'approvals', 'analytics', 'notifications', 'settings', 'errors']
 };
 
 const DEFAULT_PLAN_FEATURES = {
@@ -114,6 +118,7 @@ const DEFAULT_PLAN_FEATURES = {
 
 const PAGE_REQUIREMENTS = {
   overview: { always: true },
+  errors: { always: true },
   settings: { always: true },
   notifications: { always: true },
   billing: { always: true },
