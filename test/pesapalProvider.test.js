@@ -4,6 +4,7 @@ const test = require('node:test');
 function freshProvider(env = {}) {
   Object.assign(process.env, {
     APP_URL: 'https://app.example.com',
+    PUBLIC_APP_URL: '',
     BILLING_PROVIDER: 'pesapal',
     PESAPAL_ENVIRONMENT: 'sandbox',
     PESAPAL_CONSUMER_KEY: 'consumer-key',

@@ -29,7 +29,7 @@ const postSchema = new mongoose.Schema(
     campaign: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign' },
     platform: { type: String, required: true, default: 'facebook', index: true },
     platforms: [{ type: String, index: true }],
-    type: { type: String, enum: ['text', 'image', 'carousel', 'video', 'avatar_video', 'reel', 'story', 'article', 'campaign', 'link', 'whatsapp_message'], default: 'text' },
+    type: { type: String, enum: ['text', 'image', 'carousel', 'video', 'avatar_video', 'reel', 'story', 'article', 'campaign', 'link'], default: 'text' },
     contentGoal: {
       type: String,
       enum: ['awareness', 'engagement', 'sales', 'traffic', 'lead_generation', 'community', 'customer_support', 'launch', 'event', 'other'],

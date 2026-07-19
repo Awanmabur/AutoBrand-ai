@@ -17,7 +17,7 @@
   <% const approvalPosts = options.posts || []; %>
   <% const approvalCampaigns = options.campaigns || []; %>
   <% const initialDashboardError = dashboardData.isErrorPage && dashboardData.pages && dashboardData.pages.errors ? dashboardData.pages.errors.error : null; %>
-  <% const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp']; %>
+  <% const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads']; %>
   <% const composerBrands = brands.map((brand) => ({ _id: brand.id, name: brand.name })); %>
   <% const composerSocialAccounts = socialAccounts.map((account) => ({
     _id: account.id,
@@ -35,7 +35,7 @@
   })); %>
   <% const composerForm = {}; %>
   <% const composerContentGoals = ['awareness', 'engagement', 'sales', 'traffic', 'lead_generation', 'community', 'customer_support', 'launch', 'event', 'other']; %>
-  <% const composerPostTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign']; %>
+  <% const composerPostTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'article', 'campaign']; %>
   <% const composerContentTypes = ['promo', 'educational', 'testimonial', 'offer', 'product', 'announcement', 'engagement', 'behind_the_scenes', 'proof', 'faq', 'launch']; %>
 
   <svg class="svg-sprite" aria-hidden="true">
@@ -236,13 +236,12 @@
             <input type="hidden" name="generateImage" value="on">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Channel<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
-            <label>Post format<select name="type"><option value="image">Image post</option><option value="carousel">Carousel post</option><option value="video">Video post</option><option value="reel">Reel/Short/TikTok</option><option value="text">Text post</option><option value="link">Link post</option><option value="whatsapp_message">WhatsApp message</option></select></label>
+            <label>Post format<select name="type"><option value="image">Image post</option><option value="carousel">Carousel post</option><option value="video">Video post</option><option value="reel">Reel/Short/TikTok</option><option value="text">Text post</option><option value="link">Link post</option></select></label>
             <label>Media output<select name="mediaPreset"><option value="image-1">1 image</option><option value="carousel-3">3-image carousel</option><option value="video">Video</option><option value="text">Text only</option></select></label>
             <label>Content angle<select name="contentType"><option value="promo">Promo</option><option value="educational">Educational</option><option value="testimonial">Testimonial</option><option value="offer">Offer</option><option value="faq">FAQ</option></select></label>
-            <label class="full">Goal<input name="goal" placeholder="Sell a service, announce an offer, collect WhatsApp inquiries"></label>
+            <label class="full">Goal<input name="goal" placeholder="Sell a service, announce an offer, collect customer inquiries"></label>
             <label class="full">Offer<input name="offer" placeholder="Use saved offer or override it here"></label>
             <label class="full">Link<input name="link" type="url" placeholder="https://..."></label>
-            <label class="full">WhatsApp recipient<input name="whatsappTo" placeholder="+256700000000"></label>
             <div class="real-form-actions full">
               <button class="btn btn-ghost" name="action" value="save" type="submit">Save draft</button>
               <button class="btn btn-ghost" name="action" value="schedule" type="submit">Schedule</button>
@@ -328,7 +327,7 @@
               <option value="brand_growth">Brand growth</option>
             </select></label>
             <label class="full">Goal detail<input name="goal" placeholder="Sell 100 daily vouchers"></label>
-            <label>Platforms<input name="platforms" value="facebook, instagram, whatsapp"></label>
+            <label>Platforms<input name="platforms" value="facebook, instagram, linkedin"></label>
             <label>Duration days<input name="durationDays" type="number" min="1" max="30" value="7"></label>
             <label>Posting frequency<input name="postingFrequency" placeholder="2 posts per day"></label>
             <label>Start date<input name="startDate" type="date"></label>
@@ -355,7 +354,6 @@
               <option value="carousel_ideas">Carousel idea generator</option>
               <option value="weekly_content_plan">Weekly content plan</option>
               <option value="monthly_content_plan">Monthly content plan</option>
-              <option value="whatsapp_promo_pack">WhatsApp promo pack</option>
               <option value="ad_copy_pack">Ad copy pack</option>
               <option value="campaign_brief">Create campaign brief</option>
               <option value="draft_batch">Create draft batch</option>
@@ -366,7 +364,7 @@
               <option value="drafts">Draft posts</option>
               <option value="campaign">Campaign</option>
             </select></label>
-            <label>Platforms<input name="platforms" value="facebook, instagram, whatsapp"></label>
+            <label>Platforms<input name="platforms" value="facebook, instagram, linkedin"></label>
             <label class="full">Goal<input name="campaignGoal" placeholder="Grow sales for the weekend offer"></label>
             <label class="full">Style<input name="style" placeholder="direct, warm, premium, playful"></label>
             <label class="full">Source media<select name="sourceMedia">
@@ -473,7 +471,7 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Connected channels</h3><p>Use the real social API connection tools for OAuth and token health.</p></div><a class="btn btn-primary" href="/dashboard/social">Manage channels</a></div>
         <div class="channel-grid">
-          <% ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'whatsapp'].forEach((platform) => { %>
+          <% ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube'].forEach((platform) => { %>
             <a class="channel-tile" href="/dashboard/social"><svg class="icon"><use href="#icon-<%= platform %>"></use></svg><span><%= platform %></span></a>
           <% }) %>
         </div>
@@ -696,7 +694,7 @@
     </div>
   </div>
 
-  <script>
+  <script nonce="<%= cspNonce %>">
     window.__AUTOBRAND_DASHBOARD_DATA__ = <%- dashboardJson %>;
   </script>
     <script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>

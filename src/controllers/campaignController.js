@@ -7,7 +7,6 @@ const { SCHEDULED_POST_STATUSES, assertCanSchedulePost, assertPlanPageAccess } =
 function postTypeForIdea(idea = {}) {
   if (idea.type) return idea.type;
   if (idea.platform === 'youtube' || idea.platform === 'tiktok') return 'reel';
-  if (idea.platform === 'whatsapp') return 'whatsapp_message';
   if (idea.platform === 'instagram') return 'image';
   return 'text';
 }

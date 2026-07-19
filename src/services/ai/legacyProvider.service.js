@@ -724,11 +724,11 @@ function openaiVideoSeconds(durationSeconds) {
 
 function openaiVideoSize(aspectRatio) {
   const configured = String(env.openaiVideoSize || '').trim();
-  if (['720x1280', '1280x720', '1024x1792', '1792x1024'].includes(configured)) return configured;
+  if (['720x1280', '1280x720'].includes(configured)) return configured;
   const normalized = String(aspectRatio || '').trim();
-  if (normalized === '16:9' || normalized === 'landscape') return '1792x1024';
-  if (normalized === '9:16' || normalized === 'portrait') return '1024x1792';
-  return '1024x1792';
+  if (normalized === '16:9' || normalized === 'landscape') return '1280x720';
+  if (normalized === '9:16' || normalized === 'portrait') return '720x1280';
+  return '720x1280';
 }
 
 function dimensionsFromVideoSize(size) {

@@ -25,9 +25,6 @@ const DEFAULT_PLATFORM_RULES = {
   },
   threads: {
     displayName: 'Threads', characterLimit: 500, hashtagLimit: 10, mediaTypes: ['text', 'image', 'video'], aspectRatios: ['1:1', '4:5', '9:16'], maxVideoDurationSeconds: 300, supportsFirstComment: true, supportsAltText: true, supportsLinks: true, supportsCarousel: true, supportsStory: false, supportsThumbnail: false, supportsScheduling: true, supportsDirectPublishing: true, recommendedCaptionStyle: 'Casual, human, discussion-led.', recommendedHookStyle: 'Ask or state something people can reply to.'
-  },
-  whatsapp: {
-    displayName: 'WhatsApp', characterLimit: 4096, hashtagLimit: 0, mediaTypes: ['text', 'image', 'video'], aspectRatios: ['1:1', '16:9', '9:16'], maxVideoDurationSeconds: 90, supportsFirstComment: false, supportsAltText: false, supportsLinks: true, supportsCarousel: false, supportsStory: false, supportsThumbnail: false, supportsScheduling: true, supportsDirectPublishing: true, recommendedCaptionStyle: 'Personal, concise, and action-oriented.', recommendedHookStyle: 'Lead with the customer benefit.'
   }
 };
 

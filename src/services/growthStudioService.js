@@ -201,24 +201,6 @@ function contentPlanAsset(brand, campaignGoal, platforms, days = 7) {
   };
 }
 
-function whatsappPromoPack(brand, campaignGoal) {
-  const offer = brand.offers?.[0]?.title || brand.products?.[0]?.name || brand.businessType || 'today\'s offer';
-  return {
-    title: `${brand.name} WhatsApp promo pack`,
-    summary: `WhatsApp-ready promotional messages for ${campaignGoal || offer}.`,
-    sections: [
-      {
-        heading: 'Messages',
-        items: [
-          `Hi, ${brand.name} has ${offer} ready for you. ${brand.preferredCta || 'Reply here for details.'}`,
-          `Quick reminder: ${offer} is available today. Want us to help you choose?`,
-          `Last call for ${offer}. Message us now and we will guide you.`
-        ]
-      }
-    ]
-  };
-}
-
 function adCopyPack(brand, campaignGoal) {
   const offer = brand.offers?.[0]?.title || brand.products?.[0]?.name || brand.businessType || 'your next step';
   return {
@@ -243,12 +225,11 @@ function draftsFromGrowthAsset({ asset, brand, platforms }) {
   const items = (asset.sections || []).flatMap((section) => section.items || []).slice(0, 10);
   const type = asset.type === 'reel_script' ? 'reel'
     : asset.type === 'carousel_ideas' ? 'carousel'
-      : asset.type === 'whatsapp_promo_pack' ? 'whatsapp_message'
-        : 'text';
+      : 'text';
   return items.map((item, index) => ({
     brand: brand._id,
-    platform: type === 'whatsapp_message' ? 'whatsapp' : cleanPlatforms[index % cleanPlatforms.length],
-    platforms: [type === 'whatsapp_message' ? 'whatsapp' : cleanPlatforms[index % cleanPlatforms.length]],
+    platform: cleanPlatforms[index % cleanPlatforms.length],
+    platforms: [cleanPlatforms[index % cleanPlatforms.length]],
     type,
     title: `${asset.title} ${index + 1}`,
     caption: item,
@@ -314,6 +295,5 @@ module.exports = {
   offerAngles,
   platformList,
   reelScriptGenerator,
-  whatsappPromoPack,
   videoStoryboard
 };

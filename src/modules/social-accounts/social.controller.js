@@ -64,8 +64,7 @@ const socialPlatforms = [
   { key: 'tiktok', name: 'TikTok Account', shortName: 'TikTok', icon: 'tt', description: 'Connect TikTok with OAuth and publish short-form videos.', active: true, kind: 'oauth', primaryAction: 'Open TikTok', hint: 'Opens TikTok authorization, then returns here ready for video publishing.' },
   { key: 'youtube', name: 'YouTube Shorts', shortName: 'YouTube', icon: 'yt', description: 'Connect with Google OAuth and upload short-form videos.', active: true, kind: 'oauth', primaryAction: 'Open YouTube', hint: 'Opens Google authorization, choose your YouTube channel, then publish videos.' },
   { key: 'x', name: 'X / Twitter', shortName: 'X', icon: 'x', description: 'Publish short posts and campaign updates to X.', active: true, kind: 'oauth', primaryAction: 'Open X', hint: 'Opens X authorization with OAuth 2.0 PKCE and saves the authenticated profile.', setupHint: 'Add X_CLIENT_ID, optional X_CLIENT_SECRET, X_CALLBACK_URL, and X_SCOPES=tweet.read tweet.write users.read offline.access.' },
-  { key: 'threads', name: 'Threads', shortName: 'Threads', icon: 'th', description: 'Publish conversation-first posts to Threads.', active: true, kind: 'oauth', primaryAction: 'Open Threads', hint: 'Opens Threads authorization and saves the connected Threads profile.', setupHint: 'Add THREADS_APP_ID, THREADS_APP_SECRET, THREADS_CALLBACK_URL, and use an HTTPS domain for Threads OAuth.' },
-  { key: 'whatsapp', name: 'WhatsApp Channel', shortName: 'WhatsApp', icon: 'wa', description: 'Prepare approved updates for WhatsApp Business audiences.', active: true, kind: 'api', primaryAction: 'Connect WhatsApp', hint: 'Use your WhatsApp Business account ID and access token.' }
+  { key: 'threads', name: 'Threads', shortName: 'Threads', icon: 'th', description: 'Publish conversation-first posts to Threads.', active: true, kind: 'oauth', primaryAction: 'Open Threads', hint: 'Opens Threads authorization and saves the connected Threads profile.', setupHint: 'Add THREADS_APP_ID, THREADS_APP_SECRET, THREADS_CALLBACK_URL, and use an HTTPS domain for Threads OAuth.' }
 ];
 
 function allowedApiPlatforms() {
@@ -86,7 +85,6 @@ function parsePermissions(value, fallback = []) {
 
 function defaultPermissionsForPlatform(platform) {
   if (platform === 'instagram') return ['instagram_basic', 'instagram_content_publish'];
-  if (platform === 'whatsapp') return ['whatsapp_business_messaging', 'whatsapp_business_management'];
   if (platform === 'google_business') return ['https://www.googleapis.com/auth/business.manage'];
   if (platform === 'linkedin') return ['w_member_social'];
   if (platform === 'pinterest') return ['boards:read', 'pins:read', 'pins:write', 'user_accounts:read'];

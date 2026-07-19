@@ -64,6 +64,7 @@
     formData.set('api_key', signature.apiKey);
     formData.set('timestamp', signature.timestamp);
     formData.set('folder', signature.folder);
+    formData.set('allowed_formats', signature.allowedFormats || '');
     formData.set('signature', signature.signature);
 
     const upload = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/${resourceType}/upload`, {

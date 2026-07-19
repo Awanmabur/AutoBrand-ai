@@ -7,7 +7,6 @@ const RETRY_POLICY = {
   pinterest: { maxRetries: 3, delayMinutes: [10, 30, 90] },
   threads: { maxRetries: 3, delayMinutes: [10, 30, 90] },
   x: { maxRetries: 3, delayMinutes: [10, 30, 90] },
-  whatsapp: { maxRetries: 2, delayMinutes: [5, 20] },
   tiktok: { maxRetries: 2, delayMinutes: [15, 60] },
   youtube: { maxRetries: 2, delayMinutes: [15, 60] }
 };

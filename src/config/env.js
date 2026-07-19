@@ -14,6 +14,7 @@ const env = {
   aiImageProvider: process.env.AI_IMAGE_PROVIDER || 'openai',
   aiVideoProvider: process.env.AI_VIDEO_PROVIDER || 'openai',
   publicAppUrl: process.env.PUBLIC_APP_URL || process.env.APP_URL || '',
+  scheduledPublishingEnabled: String(process.env.ENABLE_SCHEDULED_PUBLISHING ?? 'false').toLowerCase() === 'true',
 
   superadminName: cleanEnv(process.env.SUPERADMIN_NAME) || 'Super Admin',
   superadminEmail: cleanEnv(process.env.SUPERADMIN_EMAIL) || 'admin@example.com',
@@ -116,10 +117,7 @@ const env = {
     .split(',')
     .map((domain) => domain.trim())
     .filter(Boolean),
-  whatsappAccessToken: cleanEnv(process.env.WHATSAPP_ACCESS_TOKEN),
-  whatsappPhoneNumberId: cleanEnv(process.env.WHATSAPP_PHONE_NUMBER_ID),
-  whatsappBusinessAccountId: cleanEnv(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID),
-  whatsappDefaultRecipient: cleanEnv(process.env.WHATSAPP_DEFAULT_TO),
+  redisUrl: cleanEnv(process.env.REDIS_URL || process.env.REDISCLOUD_URL || process.env.REDIS_TLS_URL),
   redisHost: process.env.REDIS_HOST || '127.0.0.1',
   redisPort: Number(process.env.REDIS_PORT || 6379),
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET || 'change-this-access-secret',

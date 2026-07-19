@@ -7,6 +7,10 @@ const { buildMediaInsights } = require('../services/mediaInsightService');
 const { createBrandedVariant, createCompressedVariant, createResizeVariants } = require('../services/mediaTransformService');
 const { assertCanUseStorage } = require('../services/usageLimitService');
 
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || ''));
+}
+
 function mediaKind(mimeType) {
   if (mimeType.startsWith('image/')) return 'image';
   if (mimeType.startsWith('video/')) return 'video';
@@ -47,6 +51,10 @@ async function store(req, res, next) {
 
     if (!req.body.fileUrl) {
       return res.redirect('/dashboard/media?error=Add%20a%20media%20URL%20to%20save');
+    }
+
+    if (!isHttpUrl(req.body.fileUrl)) {
+      return res.redirect('/dashboard/media?error=Media%20URL%20must%20start%20with%20http%3A%2F%2F%20or%20https%3A%2F%2F');
     }
 
     const mimeType = req.body.mimeType || 'application/octet-stream';

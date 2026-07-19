@@ -18,15 +18,19 @@ function create(req, res) {
   res.redirect('/dashboard/brand-brain#brand-form');
 }
 
+function sanitizeUrlField(value) {
+  return /^https?:\/\//i.test(String(value || '')) ? value : '';
+}
+
 function brandPayload(body) {
   return {
     name: body.name,
     slug: slugify(body.name, { lower: true, strict: true }),
-    logo: body.logo,
+    logo: sanitizeUrlField(body.logo),
     logoPublicId: body.logoPublicId,
-    favicon: body.favicon,
+    favicon: sanitizeUrlField(body.favicon),
     faviconPublicId: body.faviconPublicId,
-    coverImage: body.coverImage,
+    coverImage: sanitizeUrlField(body.coverImage),
     coverImagePublicId: body.coverImagePublicId,
     businessType: body.businessType,
     description: body.description,
@@ -212,7 +216,7 @@ function brandAssetTypeForMime(mimeType = '') {
 }
 
 async function upsertBrandAsset({ brand, user, asset }) {
-  if (!asset.url) return null;
+  if (!asset.url || !sanitizeUrlField(asset.url)) return null;
   const query = asset.publicId
     ? { brand: brand._id, publicId: asset.publicId }
     : { brand: brand._id, url: asset.url, type: asset.type || 'other' };
@@ -243,12 +247,15 @@ async function upsertBrandAsset({ brand, user, asset }) {
 
 async function saveBrandUploadAssets({ brand, user, body }) {
   const assets = [];
-  if (body.logo) assets.push({ type: 'logo', title: `${brand.name} logo`, url: body.logo, publicId: body.logoPublicId, isDefault: true });
-  if (body.favicon) assets.push({ type: 'favicon', title: `${brand.name} favicon`, url: body.favicon, publicId: body.faviconPublicId, isDefault: true });
-  if (body.coverImage) assets.push({ type: 'cover', title: `${brand.name} cover image`, url: body.coverImage, publicId: body.coverImagePublicId, isDefault: true });
+  const logo = sanitizeUrlField(body.logo);
+  const favicon = sanitizeUrlField(body.favicon);
+  const coverImage = sanitizeUrlField(body.coverImage);
+  if (logo) assets.push({ type: 'logo', title: `${brand.name} logo`, url: logo, publicId: body.logoPublicId, isDefault: true });
+  if (favicon) assets.push({ type: 'favicon', title: `${brand.name} favicon`, url: favicon, publicId: body.faviconPublicId, isDefault: true });
+  if (coverImage) assets.push({ type: 'cover', title: `${brand.name} cover image`, url: coverImage, publicId: body.coverImagePublicId, isDefault: true });
 
   parseAssetUploadsJson(body.assetUploadsJson).forEach((asset) => {
-    if (!asset || !asset.url) return;
+    if (!asset || !asset.url || !sanitizeUrlField(asset.url)) return;
     assets.push({
       type: asset.type || brandAssetTypeForMime(asset.mimeType || ''),
       title: asset.title || asset.fileName || 'Brand asset',

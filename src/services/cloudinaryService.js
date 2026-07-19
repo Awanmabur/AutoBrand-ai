@@ -1,6 +1,8 @@
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const env = require('../config/env');
 
+const ALLOWED_UPLOAD_FORMATS = 'jpg,jpeg,png,webp,gif,avif,mp4,mov,webm,m4v,pdf';
+
 function createUploadSignature({ userId, brandId }) {
   if (!isCloudinaryConfigured()) {
     return { configured: false };
@@ -11,7 +13,8 @@ function createUploadSignature({ userId, brandId }) {
   const signature = cloudinary.utils.api_sign_request(
     {
       folder,
-      timestamp
+      timestamp,
+      allowed_formats: ALLOWED_UPLOAD_FORMATS
     },
     env.cloudinaryApiSecret
   );
@@ -22,6 +25,7 @@ function createUploadSignature({ userId, brandId }) {
     apiKey: env.cloudinaryApiKey,
     timestamp,
     folder,
+    allowedFormats: ALLOWED_UPLOAD_FORMATS,
     signature
   };
 }

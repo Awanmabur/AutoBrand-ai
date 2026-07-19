@@ -103,15 +103,15 @@ test('prepareOpenAIVideoReferenceImage resizes uploaded images to the requested 
   assert.equal(metadata.format, 'png');
 });
 
-test('openaiVideoSize defaults to high-resolution portrait and landscape outputs', () => {
+test('openaiVideoSize defaults to sora-2-supported portrait and landscape sizes', () => {
   const originalSize = env.openaiVideoSize;
   env.openaiVideoSize = '';
 
   try {
-    assert.equal(__private.openaiVideoSize('9:16'), '1024x1792');
-    assert.equal(__private.openaiVideoSize('portrait'), '1024x1792');
-    assert.equal(__private.openaiVideoSize('16:9'), '1792x1024');
-    assert.equal(__private.openaiVideoSize('landscape'), '1792x1024');
+    assert.equal(__private.openaiVideoSize('9:16'), '720x1280');
+    assert.equal(__private.openaiVideoSize('portrait'), '720x1280');
+    assert.equal(__private.openaiVideoSize('16:9'), '1280x720');
+    assert.equal(__private.openaiVideoSize('landscape'), '1280x720');
   } finally {
     env.openaiVideoSize = originalSize;
   }

@@ -4,7 +4,7 @@ const Payment = require('../models/Payment');
 const WebhookEvent = require('../models/WebhookEvent');
 
 function validSignature(req) {
-  if (!env.webhookSecret) return true;
+  if (!env.webhookSecret) return false;
   const signature = req.get('x-autobrand-signature') || req.get('x-webhook-signature');
   if (!signature) return false;
   const expected = crypto.createHmac('sha256', env.webhookSecret).update(JSON.stringify(req.body || {})).digest('hex');

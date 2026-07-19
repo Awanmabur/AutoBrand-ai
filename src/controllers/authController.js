@@ -17,6 +17,8 @@ const {
 } = require('../services/googleAuthService');
 const { getPublicPricingCards } = require('../services/pricing.service');
 const { attachSelectedPlanAfterSignup, resolveSignupPlan } = require('../services/signupPlan.service');
+const { validatePassword } = require('../services/account/account.service');
+const env = require('../config/env');
 
 function safeRedirectPath(value, fallback = '/dashboard') {
   const raw = String(value || '').trim();
@@ -77,6 +79,19 @@ async function register(req, res, next) {
         pricingPlans: await getPublicPricingCards(),
         selectedPlan,
         error: 'That email is already registered. Log in instead to continue checkout.'
+      });
+    }
+
+    try {
+      validatePassword(password);
+    } catch (validationError) {
+      return res.status(422).render('auth/register', {
+        title: 'Create account',
+        layout: 'layouts/auth',
+        form: { ...req.body, next: nextPath },
+        pricingPlans: await getPublicPricingCards(),
+        selectedPlan,
+        error: validationError.message
       });
     }
 
@@ -315,18 +330,24 @@ async function forgot(req, res, next) {
   try {
     const email = normalizeEmail(req.body.email);
     const user = await User.findOne({ email });
+    const isProduction = env.nodeEnv === 'production';
     let actionUrl = '/auth/login';
 
     if (user) {
       const resetToken = createPasswordResetToken(user);
       await user.save();
-      actionUrl = `/auth/reset-password?token=${resetToken}`;
+      // TODO: send resetToken via a real email provider instead of exposing it below.
+      if (!isProduction) {
+        actionUrl = `/auth/reset-password?token=${resetToken}`;
+      }
     }
 
     return res.render('auth/check-email', {
       title: 'Reset password',
       layout: 'layouts/auth',
-      message: 'If the email exists, a password reset link will be sent. Email delivery is not connected yet, so development shows the link here.',
+      message: isProduction
+        ? 'If that email exists, a password reset link has been sent. Check your inbox.'
+        : 'If the email exists, a password reset link will be sent. Email delivery is not connected yet, so development shows the link here.',
       actionUrl
     });
   } catch (error) {
@@ -352,6 +373,17 @@ async function reset(req, res, next) {
         layout: 'layouts/auth',
         token: req.body.token,
         error: 'Reset link is invalid or expired.'
+      });
+    }
+
+    try {
+      validatePassword(req.body.password);
+    } catch (validationError) {
+      return res.status(422).render('auth/reset', {
+        title: 'Reset password',
+        layout: 'layouts/auth',
+        token: req.body.token,
+        error: validationError.message
       });
     }
 
@@ -429,12 +461,16 @@ async function resendVerification(req, res, next) {
     const token = createEmailVerificationToken(user);
     await user.save();
 
+    const isProduction = env.nodeEnv === 'production';
     const targetEmail = user.pendingEmail || user.email;
+    // TODO: send `token` via a real email provider instead of exposing it below.
     return res.render('auth/check-email', {
       title: 'Verify email',
       layout: 'layouts/auth',
-      message: `A verification link has been prepared for ${targetEmail}. Email delivery is not connected yet, so development shows the link here.`,
-      actionUrl: verificationUrl(token)
+      message: isProduction
+        ? `A verification link has been sent to ${targetEmail}.`
+        : `A verification link has been prepared for ${targetEmail}. Email delivery is not connected yet, so development shows the link here.`,
+      actionUrl: isProduction ? '/dashboard' : verificationUrl(token)
     });
   } catch (error) {
     return next(error);

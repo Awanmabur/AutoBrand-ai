@@ -4,7 +4,7 @@ This guide covers the production deployment path for AutoBrand AI.
 
 ## 1. Environment
 
-Create a production `.env` from `.env.example` and fill all required values.
+On a platform with its own environment dashboard (Render, Railway, Heroku, Fly.io), enter these as environment variables there — do not upload a `.env` file. On a VPS, copy `.env.example` to `.env` on the server and fill it in. Either way, never commit a real `.env` and never reuse your local development secrets in production.
 
 Minimum production values:
 
@@ -17,12 +17,17 @@ JWT_ACCESS_SECRET=long-random-secret
 JWT_REFRESH_SECRET=long-random-secret
 COOKIE_SECRET=long-random-secret
 CSRF_SECRET=long-random-secret
+WEBHOOK_SECRET=long-random-secret
 SUPERADMIN_NAME=Super Admin
 SUPERADMIN_EMAIL=admin@your-domain.com
 SUPERADMIN_PASSWORD=long-initial-password
 ```
 
+Generate each random secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `WEBHOOK_SECRET` is required — the webhook endpoint rejects all requests without it (see `src/controllers/webhookController.js`).
+
 Use HTTPS for all OAuth redirect URLs in production.
+
+`ENABLE_SCHEDULED_PUBLISHING` defaults to `false` — scheduled posts stay in `scheduled` status and never auto-publish until this is set to `true`. Turn it on deliberately when you're ready for the scheduler to actually go live, not before.
 
 ## 2. Install and verify
 
@@ -92,24 +97,22 @@ Set the Pesapal consumer key/secret, IPN ID, IPN URL, and callback URL in `.env`
 
 ## 6. Configure AI routing
 
-Seed AI provider configs:
+OpenAI is the only active provider — every plan tier's `aiConfig` defaults and falls back to `openai`/`local`. Set:
+
+```env
+AI_TEXT_PROVIDER=openai
+AI_IMAGE_PROVIDER=openai
+AI_VIDEO_PROVIDER=openai
+OPENAI_API_KEY=
+```
+
+Other provider adapters (Gemini, DeepSeek, Groq, Anthropic, Mistral, Replicate, Stability, Fal) exist and are tested, but are inert until you add their env vars — don't set `AI_TEXT_PROVIDER`/etc. to anything but `openai` or `local` unless you've also added that provider's key.
+
+Seed AI provider configs and plans after any change to `src/services/subscription/defaultPlans.js`:
 
 ```bash
 npm run seed:ai-providers
-```
-
-Then configure keys/models:
-
-```env
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-DEEPSEEK_API_KEY=
-GROQ_API_KEY=
-ANTHROPIC_API_KEY=
-MISTRAL_API_KEY=
-REPLICATE_API_TOKEN=
-STABILITY_API_KEY=
-FAL_KEY=
+npm run seed:plans
 ```
 
 Plan AI routing is stored in `SubscriptionPlan.aiConfig` and `PlanAiConfig`.
@@ -120,13 +123,46 @@ Plan AI routing is stored in `SubscriptionPlan.aiConfig` and `PlanAiConfig`.
 npm start
 ```
 
-The server includes graceful shutdown handling for SIGINT and SIGTERM.
+The server includes graceful shutdown handling for SIGINT and SIGTERM. It also runs an in-process scheduler that publishes due posts every 60 seconds — no extra process needed for scheduled publishing.
+
+Separately, retry jobs (queued from the admin console or the composer's retry action) go through a Redis-backed queue that needs its own running process:
+
+```bash
+npm run worker
+```
+
+On Render/Railway/Fly.io this needs to be configured as a second service (a "background worker" / "worker" process type pointed at `npm run worker`), since those platforms don't read `Procfile` the way Heroku does — check your platform's docs for how it defines additional process types. On Heroku, the `Procfile`'s `worker:` line is picked up automatically; scale it with `heroku ps:scale worker=1`.
 
 Health check:
 
 ```text
 GET /health
 ```
+
+## 7b. Heroku-specific steps
+
+```bash
+heroku create your-app-name
+heroku addons:create heroku-redis:mini
+```
+
+The Redis add-on sets a `REDIS_URL` config var automatically — the app reads that directly (falls back to `REDIS_HOST`/`REDIS_PORT` for local dev, so nothing else to configure).
+
+Set every required var from `.env.example` (`APP_URL`, `MONGO_URI`, the 5 secrets, `SUPERADMIN_*`, `PESAPAL_*`, `OPENAI_API_KEY`, each social platform you're enabling):
+
+```bash
+heroku config:set NODE_ENV=production APP_URL=https://your-app-name.herokuapp.com ...
+```
+
+Push and scale both process types (the `Procfile` already defines `web` and `worker`):
+
+```bash
+git push heroku main
+heroku ps:scale web=1 worker=1
+heroku run npm run seed
+```
+
+Eco/Basic dynos sleep after 30 minutes of inactivity — a sleeping web dyno means the in-process post scheduler isn't running either, so scheduled posts on a free/eco plan can be delayed until the next request wakes the dyno. Use a paid dyno tier (or an external uptime ping) if scheduled publishing needs to be reliably on time.
 
 ## 8. Reverse proxy notes
 
@@ -161,8 +197,8 @@ Check:
 
 Recommended next production steps:
 
-- Add Redis-backed BullMQ workers for high-volume AI/media/publishing jobs.
-- Turn billing provider scaffolds into provider-specific SDK calls and webhook handlers.
+- Connect a real email provider (Postmark, SES, Resend, SendGrid) — password reset and email verification are in-app-only until this is wired up; see `src/controllers/authController.js`.
+- Run `npm audit fix` in a normal network environment before the first deploy (two known-vulnerable transitive dependencies as of this writing: `form-data`, `morgan`).
 - Add analytics collection workers and dashboards.
 - Add provider health checks and alerting.
 

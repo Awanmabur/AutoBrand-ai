@@ -4,9 +4,13 @@
   "private": true,
   "description": "AI social media management SaaS platform",
   "main": "server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "worker": "node workers/postWorker.js",
     "seed": "node scripts/seed.js",
     "seed:plans": "node scripts/seedPlans.js",
     "seed:superadmin": "node scripts/seedSuperadmin.js",
@@ -35,7 +39,7 @@
     "method-override": "^3.0.0",
     "mongoose": "^8.0.0",
     "morgan": "^1.10.0",
-    "openai": "^4.0.0",
+    "openai": "^6.48.0",
     "sharp": "^0.33.0",
     "slugify": "^1.6.6"
   },

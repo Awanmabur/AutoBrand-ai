@@ -7,8 +7,7 @@ const {
   contentPlanAsset,
   draftsFromGrowthAsset,
   hookGenerator,
-  reelScriptGenerator,
-  whatsappPromoPack
+  reelScriptGenerator
 } = require('../src/services/growthStudioService');
 
 const brand = {
@@ -30,7 +29,6 @@ test('growth studio generates the missing growth asset types', () => {
     reelScriptGenerator(brand, 'sales'),
     carouselIdeaGenerator(brand, 'sales'),
     contentPlanAsset(brand, 'sales', 'facebook, instagram', 7),
-    whatsappPromoPack(brand, 'sales'),
     adCopyPack(brand, 'sales')
   ];
 
@@ -45,16 +43,16 @@ test('growth studio generates the missing growth asset types', () => {
 test('growth assets can be converted into draft posts', () => {
   const asset = {
     _id: 'asset-1',
-    type: 'whatsapp_promo_pack',
-    title: 'WhatsApp promos',
-    summary: 'Promo pack',
-    sections: [{ heading: 'Messages', items: ['Hi there', 'Quick reminder'] }]
+    type: 'reel_script',
+    title: 'Reel scripts',
+    summary: 'Script pack',
+    sections: [{ heading: 'Scripts', items: ['Hi there', 'Quick reminder'] }]
   };
 
   const drafts = draftsFromGrowthAsset({ asset, brand, platforms: 'facebook, instagram' });
 
   assert.equal(drafts.length, 2);
-  assert.equal(drafts[0].platform, 'whatsapp');
-  assert.equal(drafts[0].type, 'whatsapp_message');
+  assert.equal(drafts[0].platform, 'facebook');
+  assert.equal(drafts[0].type, 'reel');
   assert.equal(drafts[0].platformMetadata.growthAsset, 'asset-1');
 });

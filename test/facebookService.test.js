@@ -27,6 +27,7 @@ test('buildFacebookAuthUrl uses configured app and callback', () => {
   env.facebookCallbackUrl = 'http://localhost:3100/social/facebook/callback';
   env.facebookLoginConfigId = '';
   env.facebookAllowClassicOAuth = true;
+  env.facebookScopes = 'pages_show_list,pages_manage_posts,pages_read_engagement';
 
   const url = new URL(buildFacebookAuthUrl({ brandId: 'brand', userId: 'user' }));
 
@@ -133,9 +134,6 @@ test('exchangeCodeForPageAccounts exchanges code and maps pages', async () => {
     if (String(url).includes('/page_1')) {
       return Response.json({}, { status: 403 });
     }
-    if (String(url).includes('/me/businesses')) {
-      return Response.json({ data: [] });
-    }
     return Response.json({
       data: [
         { id: 'page_1', name: 'Page One', access_token: 'page_token', tasks: ['CREATE_CONTENT'] }
@@ -150,7 +148,7 @@ test('exchangeCodeForPageAccounts exchanges code and maps pages', async () => {
     assert.equal(accounts[0].accountName, 'Page One');
     assert.equal(accounts[0].status, 'connected');
     assert.ok(accounts[0].accessTokenEncrypted);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 3);
     assert.match(calls[1], /fields=id%2Cname%2Caccess_token%2Ctasks/);
     assert.doesNotMatch(calls[1], /instagram_business_account/);
     assert.match(calls[2], /instagram_business_account/);
@@ -160,7 +158,7 @@ test('exchangeCodeForPageAccounts exchanges code and maps pages', async () => {
   }
 });
 
-test('exchangeCodeForPageAccounts also maps linked Instagram and WhatsApp assets from Meta', async () => {
+test('exchangeCodeForPageAccounts also maps linked Instagram assets from Meta', async () => {
   env.facebookAppId = 'app_123';
   env.facebookAppSecret = 'secret_123';
   env.facebookCallbackUrl = 'http://localhost:3100/social/facebook/callback';
@@ -186,31 +184,15 @@ test('exchangeCodeForPageAccounts also maps linked Instagram and WhatsApp assets
     if (target.includes('/page_1')) {
       return Response.json({ instagram_business_account: { id: 'ig_1', username: 'classicacademy' } });
     }
-    if (target.includes('/me/businesses')) {
-      return Response.json({ data: [{ id: 'business_1', name: 'Business One' }] });
-    }
-    if (target.includes('/business_1/owned_whatsapp_business_accounts')) {
-      return Response.json({
-        data: [{
-          id: 'waba_1',
-          name: 'WABA One',
-          phone_numbers: { data: [{ id: 'phone_1', display_phone_number: '+256 700 000 000', verified_name: 'Classic' }] }
-        }]
-      });
-    }
-    if (target.includes('/business_1/client_whatsapp_business_accounts')) {
-      return Response.json({ data: [] });
-    }
     return Response.json({}, { status: 404 });
   };
 
   try {
     const accounts = await exchangeCodeForPageAccounts({ code: 'code_123', state: facebookState() });
-    assert.equal(accounts.length, 3);
+    assert.equal(accounts.length, 2);
     assert.equal(accounts.find((account) => account.platform === 'facebook').accountId, 'page_1');
     assert.equal(accounts.find((account) => account.platform === 'instagram').accountId, 'ig_1');
     assert.equal(accounts.find((account) => account.platform === 'instagram').accountName, '@classicacademy');
-    assert.equal(accounts.find((account) => account.platform === 'whatsapp').accountId, 'phone_1');
   } finally {
     global.fetch = originalFetch;
   }

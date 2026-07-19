@@ -8,23 +8,40 @@ const { publishPinterestPin } = require('./pinterestService');
 const { publishXPost } = require('./xService');
 const { publishThreadsPost } = require('./threadsService');
 const { isTikTokConfigured, publishTikTokVideo } = require('./tiktokService');
-const { isWhatsAppConfigured, publishWhatsAppMessage } = require('./whatsappService');
 const { isYouTubeConfigured, publishYouTubeVideo } = require('./youtubeService');
 const { shouldUseHandoffFallback } = require('./auto-handoff/handoff.service');
 const { applyRetryPolicy } = require('./publishingRetryPolicyService');
 const { buildPublishingReadiness, publicUrlFromPublishResult } = require('./publishingReadiness.service');
 const { notifyAccountDisconnected, notifyUser } = require('./notification.service');
 
-async function accountsForPost(post) {
+async function accountsForPlatform(post, platform) {
   const selectedIds = (post.targetAccounts || []).map((id) => id?._id || id).filter(Boolean);
   const filter = {
     brand: post.brand._id,
-    platform: post.platform,
+    platform,
     status: { $in: ['connected', 'mock'] }
   };
 
   if (selectedIds.length) filter._id = { $in: selectedIds };
   return SocialAccount.find(filter).sort({ accountName: 1 });
+}
+
+function postViewForPlatform(post, platform) {
+  const variation = (post.platformVariations || []).find((item) => item.platform === platform);
+  if (!variation) return post.platform === platform ? post : { ...post.toObject(), platform };
+  const base = post.toObject();
+  return {
+    ...base,
+    platform,
+    caption: variation.caption || base.caption,
+    hashtags: variation.hashtags?.length ? variation.hashtags : base.hashtags,
+    firstComment: variation.firstComment || base.firstComment,
+    altText: variation.altText || base.altText,
+    thumbnail: variation.thumbnail || base.thumbnail,
+    videoTitle: variation.videoTitle || base.videoTitle,
+    videoDescription: variation.videoDescription || base.videoDescription,
+    shortVideoHook: variation.shortVideoHook || base.shortVideoHook
+  };
 }
 
 async function publishToAccount({ post, account }) {
@@ -36,7 +53,6 @@ async function publishToAccount({ post, account }) {
   if (post.platform === 'x' && account?.status === 'connected') return publishXPost({ post, account });
   if (post.platform === 'threads' && account?.status === 'connected') return publishThreadsPost({ post, account });
   if (post.platform === 'tiktok' && account?.status === 'connected') return publishTikTokVideo({ post, account });
-  if (post.platform === 'whatsapp' && (account?.status === 'connected' || isWhatsAppConfigured())) return publishWhatsAppMessage({ post, account: account || {} });
   if (post.platform === 'youtube' && account?.status === 'connected') return publishYouTubeVideo({ post, account });
   return { id: `mock_${post.platform}_${account?._id || post._id}` };
 }
@@ -46,7 +62,6 @@ function needsConnectedAccount(platform) {
   if (platform === 'tiktok') return isTikTokConfigured();
   if (platform === 'linkedin') return isLinkedInConfigured();
   if (['instagram', 'google_business', 'pinterest', 'x', 'threads'].includes(platform)) return true;
-  if (platform === 'whatsapp') return !isWhatsAppConfigured();
   return false;
 }
 
@@ -56,7 +71,7 @@ function canPersistAccount(account) {
 
 function isReconnectRequiredPublishingError(errorOrMessage) {
   const message = String(errorOrMessage?.message || errorOrMessage || '');
-  return /access token|invalid token|expired|oauth|permission|scope|app review|not approved|reconnect|insufficient/i.test(message);
+  return /access token|invalid token|expired|oauth|permission|scope|app review|not approved|reconnect|insufficient|application has been deleted|application does not exist|invalid application|app not found/i.test(message);
 }
 
 function providerApprovalMessage(errorOrMessage, platform = '') {
@@ -64,7 +79,7 @@ function providerApprovalMessage(errorOrMessage, platform = '') {
   if (/permission|scope|app review|not approved|insufficient/i.test(message)) {
     return `${platform || 'Provider'} publishing permissions need provider approval or expanded scopes before direct publishing can continue.`;
   }
-  if (/access token|invalid token|expired|oauth|reconnect/i.test(message)) {
+  if (/access token|invalid token|expired|oauth|reconnect|application has been deleted|application does not exist|invalid application|app not found/i.test(message)) {
     return `${platform || 'Provider'} needs a fresh token before direct publishing can continue.`;
   }
   return '';
@@ -142,44 +157,94 @@ async function publishPost(postId) {
       throw new Error(`Publishing validation failed: ${readiness.blockers.join(' | ')}`);
     }
 
-    const accounts = await accountsForPost(post);
+    const platformsToPublish = [...new Set(post.platforms?.length ? post.platforms : [post.platform])];
 
-    if (post.platform === 'facebook' && isFacebookConfigured() && !accounts.length) {
-      throw new Error('No selected or connected Facebook Page found for this brand. Connect Facebook, then select at least one Page.');
-    }
+    // A previous attempt may have partially succeeded (some platforms published,
+    // others failed and got scheduled for retry). Carry forward what already
+    // succeeded and never re-attempt it - otherwise every retry re-publishes to
+    // platforms that already have a live post, duplicating them each cycle.
+    const previousResults = Array.isArray(post.publishResults) ? post.publishResults : [];
+    const succeededKeys = new Set(
+      previousResults
+        .filter((item) => item.status === 'published')
+        .map((item) => `${item.platform}:${item.account ? String(item.account) : 'mock'}`)
+    );
+    const platformsWithPriorSuccess = new Set(
+      previousResults.filter((item) => item.status === 'published').map((item) => item.platform)
+    );
 
-    if (needsConnectedAccount(post.platform) && !accounts.some((account) => account.status === 'connected')) {
-      throw new Error(`No connected ${post.platform} account found for this brand. Connect ${post.platform}, then select it before publishing.`);
-    }
-
-    if (!accounts.length) {
-      accounts.push({ _id: null, platform: post.platform, accountName: `${post.platform} mock`, status: 'mock' });
-    }
-
-    const results = [];
+    const results = previousResults.filter((item) => item.status === 'published');
     const failures = [];
+    const jobs = [];
 
-    for (const account of accounts) {
-      try {
-        const platformResult = await publishToAccount({ post, account });
+    for (const platform of platformsToPublish) {
+      const accounts = await accountsForPlatform(post, platform);
+
+      if (platform === 'facebook' && isFacebookConfigured() && !accounts.length) {
+        if (!platformsWithPriorSuccess.has(platform)) {
+          const message = 'No selected or connected Facebook Page found for this brand. Connect Facebook, then select at least one Page.';
+          failures.push(`${platform}: ${message}`);
+          results.push({ platform, status: 'failed', errorMessage: message, publishedAt: new Date() });
+        }
+        continue;
+      }
+
+      if (needsConnectedAccount(platform) && !accounts.some((account) => account.status === 'connected')) {
+        if (!platformsWithPriorSuccess.has(platform)) {
+          const message = `No connected ${platform} account found for this brand. Connect ${platform}, then select it before publishing.`;
+          failures.push(`${platform}: ${message}`);
+          results.push({ platform, status: 'failed', errorMessage: message, publishedAt: new Date() });
+        }
+        continue;
+      }
+
+      const effectiveAccounts = (accounts.length
+        ? accounts
+        : [{ _id: null, platform, accountName: `${platform} mock`, status: 'mock' }]
+      ).filter((account) => !succeededKeys.has(`${platform}:${account._id ? String(account._id) : 'mock'}`));
+
+      if (!effectiveAccounts.length) continue;
+
+      const platformPost = postViewForPlatform(post, platform);
+
+      for (const account of effectiveAccounts) {
+        jobs.push({ platform, account, platformPost });
+      }
+    }
+
+    // Publish to every platform/account concurrently instead of one at a time -
+    // each provider call is network-bound (some, like Instagram video, take up to
+    // two minutes), so running them sequentially made multi-platform posts take
+    // the sum of every platform's latency instead of just the slowest one.
+    const settled = await Promise.allSettled(
+      jobs.map((job) => publishToAccount({ post: job.platformPost, account: job.account }))
+    );
+
+    for (let index = 0; index < jobs.length; index += 1) {
+      const { platform, account } = jobs[index];
+      const outcome = settled[index];
+
+      if (outcome.status === 'fulfilled') {
+        const platformResult = outcome.value;
         const platformPostUrl = publicUrlFromPublishResult(platformResult);
         await markAccountPublishSuccess(account, platformResult);
         results.push({
           account: account._id || undefined,
           accountName: account.accountName,
-          platform: account.platform || post.platform,
+          platform: account.platform || platform,
           status: 'published',
           platformPostId: platformResult.id,
           platformPostUrl,
           publishedAt: new Date()
         });
-      } catch (error) {
+      } else {
+        const error = outcome.reason;
         await markAccountPublishFailure(account, error, post);
         failures.push(`${account.accountName}: ${error.message}`);
         results.push({
           account: account._id || undefined,
           accountName: account.accountName,
-          platform: account.platform || post.platform,
+          platform: account.platform || platform,
           status: 'failed',
           errorMessage: error.message,
           publishedAt: new Date()

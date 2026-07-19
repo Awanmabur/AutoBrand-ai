@@ -4,7 +4,6 @@ const PLATFORM_DEFAULT_SLOTS = {
   linkedin: ['09:00', '12:00'],
   tiktok: ['19:30', '21:00'],
   youtube: ['18:00', '20:00'],
-  whatsapp: ['10:00', '17:30'],
   x: ['08:30', '18:00'],
   threads: ['12:00', '19:30'],
   pinterest: ['20:00'],

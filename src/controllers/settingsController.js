@@ -79,11 +79,6 @@ function configRows() {
       name: 'Meta / Facebook',
       keys: ['FACEBOOK_APP_ID or META_APP_ID', 'FACEBOOK_APP_SECRET or META_APP_SECRET', 'FACEBOOK_CALLBACK_URL or META_CALLBACK_URL', 'FACEBOOK_LOGIN_CONFIG_ID', 'FACEBOOK_APP_DOMAINS'],
       ready: facebookConnectionChecklist().canStartOAuth
-    },
-    {
-      name: 'WhatsApp Cloud API',
-      keys: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_DEFAULT_TO'],
-      ready: Boolean(env.whatsappAccessToken && env.whatsappPhoneNumberId)
     }
   ];
 }

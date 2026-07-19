@@ -18,7 +18,6 @@ const {
   makeHashtags,
   offerAngles,
   reelScriptGenerator,
-  whatsappPromoPack,
   videoStoryboard
 } = require('../services/growthStudioService');
 const { applyMediaToScenes, mediaContext } = require('../services/mediaInsightService');
@@ -182,7 +181,6 @@ async function run(req, res, next) {
       carousel_ideas: () => carouselIdeaGenerator(brand, campaignGoal),
       weekly_content_plan: () => contentPlanAsset(brand, campaignGoal, req.body.platforms, 7),
       monthly_content_plan: () => contentPlanAsset(brand, campaignGoal, req.body.platforms, 30),
-      whatsapp_promo_pack: () => whatsappPromoPack(brand, campaignGoal),
       ad_copy_pack: () => adCopyPack(brand, campaignGoal)
     };
 

@@ -21,9 +21,9 @@ test('best-time suggestions prefer Brand Brain slots and normalize common labels
   assert.match(suggestions[0].label, /instagram/);
 });
 
-test('best-time suggestions fall back to platform defaults', () => {
-  const suggestions = suggestBestTimes({ brand: {}, platform: 'whatsapp', date: new Date('2030-01-02T00:00:00Z'), limit: 1 });
+test('best-time suggestions fall back to the Facebook defaults for an unconfigured platform', () => {
+  const suggestions = suggestBestTimes({ brand: {}, platform: 'mastodon', date: new Date('2030-01-02T00:00:00Z'), limit: 1 });
 
-  assert.equal(suggestions[0].time, '10:00');
-  assert.match(suggestions[0].reason, /Default whatsapp/);
+  assert.equal(suggestions[0].time, '18:00');
+  assert.match(suggestions[0].reason, /Default mastodon/);
 });

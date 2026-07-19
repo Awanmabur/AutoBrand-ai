@@ -7,13 +7,10 @@ let postQueue;
 
 function getQueueConnection() {
   if (!connection) {
-    connection = new IORedis({
-      host: env.redisHost,
-      port: env.redisPort,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      lazyConnect: true
-    });
+    const options = { maxRetriesPerRequest: null, enableReadyCheck: false, lazyConnect: true };
+    connection = env.redisUrl
+      ? new IORedis(env.redisUrl, options)
+      : new IORedis({ host: env.redisHost, port: env.redisPort, ...options });
   }
   return connection;
 }

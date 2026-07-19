@@ -3,7 +3,6 @@ const limits = {
   instagram: { caption: 2200, title: 80, tip: 'Keep the hook in the first 125 characters and use 3 to 8 focused hashtags.' },
   tiktok: { caption: 2200, title: 70, tip: 'Make the caption direct and pair it with a short vertical video idea.' },
   youtube: { caption: 5000, title: 100, tip: 'Use the title as the hook and put the strongest keyword early.' },
-  whatsapp: { caption: 1000, title: 80, tip: 'Write like a direct message and make the next action obvious.' },
   linkedin: { caption: 3000, title: 150, tip: 'Lead with a practical insight, proof point, or business outcome.' },
   x: { caption: 280, title: 70, tip: 'Shorten aggressively and move hashtags to one or two maximum.' },
   pinterest: { caption: 500, title: 100, tip: 'Make the title searchable and include a benefit-led description.' }

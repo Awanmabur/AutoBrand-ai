@@ -24,8 +24,8 @@ const { createPlatformVariations } = require('../../services/composer/platformVa
 const { validateComposerSubmission } = require('../../services/composer/composerPayloadValidation.service');
 const { resolveComposerMediaIntent, mediaIntentAllowsType } = require('../../services/composer/mediaIntent.service');
 
-const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp'];
-const postTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign'];
+const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads'];
+const postTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'article', 'campaign'];
 const contentTypes = ['promo', 'educational', 'testimonial', 'offer', 'product', 'announcement', 'engagement', 'behind_the_scenes', 'proof', 'faq', 'launch'];
 const contentGoals = ['awareness', 'engagement', 'sales', 'traffic', 'lead_generation', 'community', 'customer_support', 'launch', 'event', 'other'];
 
@@ -317,7 +317,7 @@ function defaultHandoffForm(brand, brandId) {
   const auto = brand?.autoPosting || {};
   return {
     brand: brand?._id?.toString() || brandId,
-    platforms: ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads', 'whatsapp'],
+    platforms: ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads'],
     frequencyUnit: auto.frequencyUnit || 'week',
     postsPerDay: auto.postsPerDay || 1,
     postsPerWeek: auto.postsPerWeek || 7,
@@ -350,7 +350,7 @@ async function selectedOrDefaultAccounts({ body, userId, brand, platforms: platf
 
 function wantsGeneratedImage(body) {
   const requestedType = String(body.type || '').toLowerCase();
-  if (['text', 'article', 'link', 'whatsapp_message'].includes(requestedType)) return false;
+  if (['text', 'article', 'link'].includes(requestedType)) return false;
   if (requestedType === 'carousel') return true;
   if (requestedType === 'image') return true;
   if (requestedType === 'video') return false;
@@ -720,7 +720,6 @@ async function createPost(req, res, next) {
       platformMetadata: {
         ...buildCreativePlan({ ...req.body, __brand: brand, __sourceMedia: sourceMedia }, generated),
         selectedPlatforms,
-        whatsappTo: req.body.whatsappTo || '',
         imageWarning: generatedImages.errors.join(' | '),
         videoWarning: generatedVideo.warning || ''
       },
@@ -863,7 +862,6 @@ async function update(req, res, next) {
       ...(post.platformMetadata || {}),
       imagePrompt: req.body.imagePrompt || post.platformMetadata?.imagePrompt,
       videoScript: req.body.videoScript || post.platformMetadata?.videoScript,
-      whatsappTo: req.body.whatsappTo || post.platformMetadata?.whatsappTo || '',
       editedAt: new Date()
     };
     const validationMedia = post.media?.length

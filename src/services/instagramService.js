@@ -110,7 +110,7 @@ async function createMediaContainer({ accountId, accessToken, body }) {
 }
 
 async function waitForContainer(containerId, accessToken) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const status = await instagramRequest(`/${containerId}`, {
       params: { fields: 'status_code,status', access_token: accessToken }
     });
@@ -118,9 +118,9 @@ async function waitForContainer(containerId, accessToken) {
     if (status.status_code === 'ERROR' || status.status_code === 'EXPIRED') {
       throw new InstagramProviderError(status.status || 'Instagram media container failed processing.', status);
     }
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
-  return null;
+  throw new InstagramProviderError('Instagram is still processing this video after 2 minutes. Try publishing again shortly.');
 }
 
 async function publishContainer({ accountId, accessToken, creationId }) {

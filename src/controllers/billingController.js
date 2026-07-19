@@ -42,20 +42,25 @@ async function changePlan(req, res, next) {
 
     const isFreeOrTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) <= 0;
     if (isFreeOrTrial) {
+      const alreadyOnPlan = req.user.plan === plan.slug;
+      const trialAlreadyUsed = plan.billingInterval === 'trial' && req.user.trialUsed;
+
       await activatePlanForUser(req.user, plan.slug, {
         paymentProvider: 'free',
         metadata: { changedFromDashboard: true, activatedWithoutPayment: true }
       });
 
-      const latest = await CreditLedger.findOne({ user: req.user._id }).sort({ createdAt: -1 });
-      const balanceBefore = latest ? latest.balanceAfter : 0;
-      await CreditLedger.create({
-        user: req.user._id,
-        type: 'grant',
-        amount: 10,
-        balanceAfter: balanceBefore + 10,
-        reason: `${plan.slug} plan activation credit grant`
-      });
+      if (!alreadyOnPlan && !trialAlreadyUsed) {
+        const latest = await CreditLedger.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+        const balanceBefore = latest ? latest.balanceAfter : 0;
+        await CreditLedger.create({
+          user: req.user._id,
+          type: 'grant',
+          amount: 10,
+          balanceAfter: balanceBefore + 10,
+          reason: `${plan.slug} plan activation credit grant`
+        });
+      }
       await notifyUser({
         user: req.user,
         type: 'payment_success',

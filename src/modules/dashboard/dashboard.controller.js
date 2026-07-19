@@ -771,13 +771,12 @@ function postCard(post, options = {}) {
         { name: 'title', label: 'Title', type: 'text', value: post.title || '', full: true },
         { name: 'caption', label: 'Caption', type: 'textarea', value: post.caption || '', rows: 5, full: true },
         { name: 'description', label: 'Description', type: 'textarea', value: post.description || '', rows: 3, full: true },
-        { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'whatsapp', 'x', 'threads', 'pinterest', 'google_business'] },
-        { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign', 'avatar_video'] },
+        { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'x', 'threads', 'pinterest', 'google_business'] },
+        { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'article', 'campaign', 'avatar_video'] },
         { name: 'status', label: 'Status', type: 'select', value: post.status || 'draft', options: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'] },
         { name: 'scheduledAt', label: 'Schedule time', type: 'datetime-local', value: dateTimeLocalValue(post.scheduledAt) },
         { name: 'hashtags', label: 'Hashtags', type: 'text', value: (post.hashtags || []).join(' '), full: true },
-        { name: 'link', label: 'Link', type: 'url', value: post.link || '', full: true },
-        { name: 'whatsappTo', label: 'WhatsApp recipient', type: 'text', value: post.platformMetadata?.whatsappTo || '', full: true }
+        { name: 'link', label: 'Link', type: 'url', value: post.link || '', full: true }
       ],
       mediaUrl: mediaUrlFromRecord(mediaAsset),
       mediaType: mediaTypeFromRecord(mediaAsset, post.type),
@@ -802,7 +801,6 @@ function postCard(post, options = {}) {
         'Carousel slides': (post.platformMetadata?.carouselSlides || []).map((item) => [item.slide ? `Slide ${item.slide}` : '', item.headline, item.body].filter(Boolean).join(' | ')),
         'Video scenes': (post.platformMetadata?.videoScenes || []).map((item) => [item.order ? `Scene ${item.order}` : '', item.title, item.narration].filter(Boolean).join(' | ')),
         Link: post.link,
-        'WhatsApp recipient': post.platformMetadata?.whatsappTo,
         'Public URL': post.platformPostUrl,
         'Publish URLs': post.platformMetadata?.publishUrls,
         'Publish blockers': post.platformMetadata?.publishReadiness?.blockers,
@@ -887,7 +885,9 @@ function buildDashboardData({
   const publishedCount = postStatus.published || 0;
   const failedCount = postStatus.failed || 0;
   const connectedAccounts = socialStatus.connected || 0;
-  const connectedPlatforms = new Set(socialAccounts.map((account) => account.platform)).size;
+  const connectedPlatforms = new Set(
+    socialAccounts.filter((account) => account.status === 'connected').map((account) => account.platform)
+  ).size;
   const imageCount = mediaTypes.image || 0;
   const videoMediaCount = mediaTypes.video || 0;
   const mediaTotal = sum(Object.values(mediaTypes));
@@ -1826,10 +1826,6 @@ function buildDashboardData({
       }
     );
   });
-  const whatsappPostCards = recentPosts
-    .filter((post) => post.platform === 'whatsapp')
-    .map((post) => postCard(post));
-
   return {
     generatedAt: new Date().toISOString(),
     timeZone: DASHBOARD_TIME_ZONE,
@@ -2027,7 +2023,7 @@ function buildDashboardData({
         cards: [
           card('Use Brand Brain', `${primaryBrand?.name || 'Your saved brand'} supplies tone, offers, audience and CTA rules automatically.`, 'Context'),
           card('Generate from campaigns', `${campaigns.length} campaign${campaigns.length === 1 ? '' : 's'} can feed captions, images, videos and schedules.`, 'Campaign'),
-          card('Post everywhere ready', `${socialAccounts.length} connected account${socialAccounts.length === 1 ? '' : 's'} can be selected for publishing.`, 'Targets')
+          card('Post everywhere ready', `${connectedAccounts} connected account${connectedAccounts === 1 ? '' : 's'} can be selected for publishing.`, 'Targets')
         ],
         rows: recentPostRows,
         form: true
@@ -2211,18 +2207,6 @@ function buildDashboardData({
         tableRows: avatarCards,
         form: true
       },
-      whatsapp: {
-        stats: [
-          [compactNumber(postPlatforms.whatsapp || 0), 'WhatsApp posts', 'Ready copy'],
-          [compactNumber(socialAccounts.filter((account) => account.platform === 'whatsapp').length), 'WhatsApp accounts', 'Connected'],
-          [compactNumber(offerCount), 'Local offers', 'Saved'],
-          [compactNumber(brands.length), 'Brands', 'Local context']
-        ],
-        cards: [...whatsappPostCards, ...socialCards.filter((item) => String(item.description || '').toLowerCase().includes('whatsapp'))],
-        rows: whatsappPostCards,
-        tableRows: whatsappPostCards,
-        form: true
-      },
       calendar: {
         stats: [
           [compactNumber(scheduledCount), 'Scheduled posts', 'Queue'],
@@ -2239,7 +2223,7 @@ function buildDashboardData({
         stats: [
           [compactNumber(handoffCards.length), 'Brands ready', 'Brand Brain'],
           [compactNumber(brands.filter((brand) => brand.autoPosting?.enabled).length), 'Auto-enabled', 'Saved settings'],
-          [compactNumber(socialAccounts.length), 'Targets', 'Connected accounts'],
+          [compactNumber(connectedAccounts), 'Targets', 'Connected accounts'],
           [compactNumber(scheduledCount), 'Scheduled', 'Queue']
         ],
         cards: handoffCards,
@@ -2249,7 +2233,7 @@ function buildDashboardData({
       },
       social: {
         stats: [
-          [compactNumber(socialAccounts.length), 'Connected accounts', 'OAuth'],
+          [compactNumber(connectedAccounts), 'Connected accounts', 'OAuth'],
           [compactNumber(connectedPlatforms), 'Platforms', 'Ready'],
           [compactNumber((socialStatus.expired || 0) + (socialStatus.needs_reconnect || 0)), 'Token alerts', 'Refresh'],
           [publishedCount || failedCount ? `${Math.round((publishedCount / Math.max(publishedCount + failedCount, 1)) * 100)}%` : '0%', 'Publish success', 'All time']
@@ -2582,7 +2566,7 @@ async function index(req, res, next) {
         bestTimeSuggestions: brands.slice(0, 4).flatMap((brand) => {
           const platforms = Array.isArray(brand.autoPosting?.platforms) && brand.autoPosting.platforms.length
             ? brand.autoPosting.platforms
-            : ['facebook', 'instagram', 'whatsapp'];
+            : ['facebook', 'instagram', 'linkedin'];
           return platforms.slice(0, 2).flatMap((platform) => suggestBestTimes({ brand, platform, limit: 1 }).map((suggestion) => ({
             ...suggestion,
             brandId: brand._id?.toString?.() || '',

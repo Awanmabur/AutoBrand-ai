@@ -474,22 +474,6 @@ function normalizeInstagramAccount({ instagram, page, parsed, userTokenResponse 
   };
 }
 
-function normalizeWhatsAppPhone({ phone, waba, parsed, userTokenResponse }) {
-  if (!phone?.id) return null;
-  const displayName = phone.verified_name || phone.display_phone_number || waba.name || `WhatsApp ${phone.id}`;
-  return {
-    ...parsed,
-    platform: 'whatsapp',
-    accountName: displayName,
-    accountId: phone.id,
-    accessTokenEncrypted: encryptToken(userTokenResponse.access_token),
-    refreshTokenEncrypted: encryptToken(userTokenResponse.access_token),
-    tokenExpiresAt: tokenExpiresAt(userTokenResponse),
-    permissions: ['whatsapp_business_messaging', 'whatsapp_business_management'],
-    status: 'connected'
-  };
-}
-
 async function linkedInstagramAccounts({ pages, parsed, userTokenResponse }) {
   const accounts = [];
   const seen = new Set();
@@ -512,55 +496,6 @@ async function linkedInstagramAccounts({ pages, parsed, userTokenResponse }) {
     }
   }
 
-  return accounts;
-}
-
-async function businessWhatsAppAccounts({ businessId, parsed, userTokenResponse }) {
-  const fields = 'id,name,phone_numbers{id,display_phone_number,verified_name}';
-  const endpoints = [
-    `/${encodeURIComponent(businessId)}/owned_whatsapp_business_accounts`,
-    `/${encodeURIComponent(businessId)}/client_whatsapp_business_accounts`
-  ];
-  const accounts = [];
-
-  for (const endpoint of endpoints) {
-    const response = await graphRequest(endpoint, {
-      params: {
-        access_token: userTokenResponse.access_token,
-        fields
-      }
-    }).catch(() => ({ data: [] }));
-
-    for (const waba of response.data || []) {
-      for (const phone of waba.phone_numbers?.data || []) {
-        const account = normalizeWhatsAppPhone({ phone, waba, parsed, userTokenResponse });
-        if (account) accounts.push(account);
-      }
-    }
-  }
-
-  return accounts;
-}
-
-async function linkedWhatsAppAccounts({ parsed, userTokenResponse }) {
-  const businesses = await graphRequest('/me/businesses', {
-    params: {
-      access_token: userTokenResponse.access_token,
-      fields: 'id,name'
-    }
-  }).catch(() => ({ data: [] }));
-
-  const accounts = [];
-  const seen = new Set();
-  for (const business of businesses.data || []) {
-    const phones = await businessWhatsAppAccounts({ businessId: business.id, parsed, userTokenResponse });
-    for (const account of phones) {
-      if (!seen.has(account.accountId)) {
-        seen.add(account.accountId);
-        accounts.push(account);
-      }
-    }
-  }
   return accounts;
 }
 
@@ -606,7 +541,6 @@ async function exchangeCodeForPageAccounts({ code, state }) {
 
   const accounts = pages.map((page) => normalizePage(page, parsed, userTokenResponse));
   accounts.push(...await linkedInstagramAccounts({ pages, parsed, userTokenResponse }));
-  accounts.push(...await linkedWhatsAppAccounts({ parsed, userTokenResponse }));
 
   return accounts;
 }

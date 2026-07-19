@@ -20,7 +20,7 @@ test('campaign planner builds required campaign outputs', () => {
   const plan = buildCampaignPlan({
     brand,
     campaignType: 'offer sale',
-    platforms: ['facebook', 'instagram', 'whatsapp', 'tiktok'],
+    platforms: ['facebook', 'instagram', 'linkedin', 'tiktok'],
     durationDays: 7
   });
 
@@ -40,7 +40,7 @@ test('campaign planner normalizes goals, platforms and platform post types', () 
   assert.equal(normalizeGoal('Product Launch'), 'product_launch');
   assert.deepEqual(splitPlatforms('Facebook, instagram, facebook'), ['facebook', 'instagram']);
 
-  const plan = buildCampaignPlan({ brand, campaignType: 'leads', platforms: 'whatsapp, youtube', durationDays: 2 });
-  assert.equal(plan.postIdeas[0].type, 'whatsapp_message');
+  const plan = buildCampaignPlan({ brand, campaignType: 'leads', platforms: 'instagram, youtube', durationDays: 2 });
+  assert.equal(plan.postIdeas[0].type, 'carousel');
   assert.equal(plan.postIdeas[1].type, 'reel');
 });

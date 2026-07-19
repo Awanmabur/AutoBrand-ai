@@ -13,8 +13,8 @@ function buildMediaInsights(media, brand) {
   const cta = brand.preferredCta || 'contact us today';
   const tone = brand.tone || 'clean and friendly';
   const platforms = media.fileType === 'video'
-    ? ['tiktok', 'instagram', 'youtube', 'facebook', 'whatsapp']
-    : ['instagram', 'facebook', 'whatsapp', 'pinterest', 'linkedin'];
+    ? ['tiktok', 'instagram', 'youtube', 'facebook']
+    : ['instagram', 'facebook', 'pinterest', 'linkedin'];
 
   return {
     summary: `Use ${label} as reusable brand evidence for ${brand.name}.`,
@@ -23,7 +23,7 @@ function buildMediaInsights(media, brand) {
       `Show ${label} as proof of the offer.`,
       `Explain the customer problem: ${brand.customerPainPoints?.[0] || 'save time and reduce uncertainty'}.`,
       `Turn the asset into a simple before/after or product benefit story.`,
-      `Use the asset as a WhatsApp-ready promo with a direct CTA: ${cta}.`
+      `Turn the asset into a direct promo with a clear CTA: ${cta}.`
     ],
     recommendedPlatforms: platforms,
     safetyNotes: media.consentRequired

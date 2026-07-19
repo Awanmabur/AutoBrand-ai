@@ -65,7 +65,6 @@
           ['offer_sale', 'Offer/sale campaign'],
           ['carousel_copy', 'Carousel copy'],
           ['reel_script', 'Reel/TikTok/Shorts script'],
-          ['whatsapp_message', 'WhatsApp promo message'],
           ['linkedin_post', 'LinkedIn professional post'],
           ['facebook_post', 'Facebook post'],
           ['instagram_caption', 'Instagram caption'],
@@ -125,11 +124,11 @@
       <label>Post format
         <select name="type" data-post-type-select>
           <% postTypes.forEach((type) => { %>
-            <option value="<%= type %>" <%= (form.type || 'image') === type ? 'selected' : '' %>><%= type === 'reel' ? 'reel / short / tiktok' : type === 'whatsapp_message' ? 'whatsapp message' : type.replace(/_/g, ' ') %></option>
+            <option value="<%= type %>" <%= (form.type || 'image') === type ? 'selected' : '' %>><%= type === 'reel' ? 'reel / short / tiktok' : type.replace(/_/g, ' ') %></option>
           <% }) %>
         </select>
       </label>
-      <% const textLikePostType = ['text', 'article', 'link', 'whatsapp_message'].includes(form.type || ''); %>
+      <% const textLikePostType = ['text', 'article', 'link'].includes(form.type || ''); %>
       <% const mediaPreset = form.mediaPreset || (form.type === 'carousel' ? `carousel-${Math.max(2, Math.min(5, Number(form.imageCount || 3)))}` : ['video', 'reel'].includes(form.type || '') ? 'video' : textLikePostType ? 'text' : `image-${Math.max(1, Math.min(5, Number(form.imageCount || 1)))}`); %>
       <label>Media output
         <select name="mediaPreset" data-media-preset-select>
@@ -187,7 +186,6 @@
       <label class="span-2">Offer override <input name="offer" value="<%= form.offer || '' %>"></label>
       <label>Title <input name="title" value="<%= form.title || generated?.title || '' %>"></label>
       <label>Link <input name="link" value="<%= form.link || '' %>" placeholder="https://..."></label>
-      <label>WhatsApp recipient <input name="whatsappTo" value="<%= form.whatsappTo || '' %>" placeholder="+256700000000"></label>
       <label data-intent-group="video">Video title <input name="videoTitle" value="<%= form.videoTitle || '' %>"></label>
       <label data-intent-group="video">Thumbnail URL <input name="thumbnail" value="<%= form.thumbnail || '' %>" placeholder="https://..."></label>
       <label class="span-2" data-intent-group="video">Short video hook <input name="shortVideoHook" value="<%= form.shortVideoHook || '' %>" placeholder="First 3 seconds..."></label>

@@ -121,6 +121,11 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;');
 }
 
+function safeUrl(value = '') {
+  const text = String(value || '');
+  return /^https?:\/\//i.test(text) ? escapeHtml(text) : '';
+}
+
 function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 }
@@ -245,7 +250,7 @@ function cardIcon(card = {}) {
 
 function platformIconName(platform = '') {
   if (platform === 'x') return 'x_platform';
-  if (['facebook', 'instagram', 'linkedin', 'youtube', 'tiktok', 'whatsapp', 'google_business', 'pinterest', 'threads'].includes(platform)) return platform;
+  if (['facebook', 'instagram', 'linkedin', 'youtube', 'tiktok', 'google_business', 'pinterest', 'threads'].includes(platform)) return platform;
   return 'plug';
 }
 
@@ -298,8 +303,7 @@ const socialPlatforms = [
   { key: 'tiktok', name: 'TikTok Account', shortName: 'TikTok', description: 'Connect TikTok with OAuth and publish short-form videos.', kind: 'oauth', primaryAction: 'Open TikTok' },
   { key: 'youtube', name: 'YouTube Shorts', shortName: 'YouTube', description: 'Connect with Google OAuth and upload short-form videos.', kind: 'oauth', primaryAction: 'Open YouTube' },
   { key: 'x', name: 'X / Twitter', shortName: 'X', description: 'Publish short posts and campaign updates to X.', kind: 'oauth', primaryAction: 'Open X' },
-  { key: 'threads', name: 'Threads', shortName: 'Threads', description: 'Publish conversation-first posts to Threads.', kind: 'oauth', primaryAction: 'Open Threads' },
-  { key: 'whatsapp', name: 'WhatsApp Cloud API', shortName: 'WhatsApp', description: 'Send approved WhatsApp Business messages through Meta Cloud API.', kind: 'oauth', primaryAction: 'Open Meta' }
+  { key: 'threads', name: 'Threads', shortName: 'Threads', description: 'Publish conversation-first posts to Threads.', kind: 'oauth', primaryAction: 'Open Threads' }
 ];
 
 const savedTheme = localStorage.getItem('autoBrandDashboardTheme');
@@ -409,10 +413,6 @@ const pageMeta = {
   'avatar-consent': {
     title: 'Avatar Consent', kicker: 'Safety', heading: 'Register consented avatar profiles.',
     description: 'Create and track real avatar profiles before using owner likeness workflows.'
-  },
-  whatsapp: {
-    title: 'WhatsApp Content', kicker: 'Local business', heading: 'WhatsApp-ready content.',
-    description: 'Generate and review real WhatsApp draft posts and local offers.'
   },
   calendar: {
     title: 'Calendar', kicker: 'Scheduling', heading: 'Plan and schedule content.',
@@ -1339,7 +1339,7 @@ function renderBrandBrain(page) {
 function socialConnectUrl(platform) {
   const brandId = dashboardBrands[0]?.id || '';
   if (!brandId) return '/dashboard/brand-brain';
-  if (['facebook', 'instagram', 'whatsapp'].includes(platform.key)) return `/dashboard/actions/social/facebook/connect?brand=${encodeURIComponent(brandId)}`;
+  if (['facebook', 'instagram'].includes(platform.key)) return `/dashboard/actions/social/facebook/connect?brand=${encodeURIComponent(brandId)}`;
   if (platform.key === 'linkedin') return `/dashboard/actions/social/linkedin/connect?brand=${encodeURIComponent(brandId)}`;
   if (platform.key === 'tiktok') return `/dashboard/actions/social/tiktok/connect?brand=${encodeURIComponent(brandId)}`;
   if (platform.key === 'youtube') return `/dashboard/actions/social/youtube/connect?brand=${encodeURIComponent(brandId)}`;
@@ -1451,7 +1451,7 @@ function openSocialPlatformModal(platformKey) {
   if (!platform) return;
   const accounts = dashboardSocialAccounts.filter((account) => account.platform === platform.key);
   const connectUrl = socialConnectUrl(platform);
-  const isOAuth = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'youtube', 'google_business', 'pinterest', 'x', 'threads'].includes(platform.key);
+  const isOAuth = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google_business', 'pinterest', 'x', 'threads'].includes(platform.key);
   const record = normalizeRecordCard({
     kind: 'social-platform',
     title: platform.name,
@@ -1485,7 +1485,7 @@ function renderSocialDashboard() {
     const connectUrl = socialConnectUrl(platform);
     const platformAccounts = connected.filter((account) => account.platform === platform.key);
     const primaryLabel = platformAccounts.length ? 'Add another' : platform.primaryAction;
-    const isOAuth = ['facebook', 'instagram', 'whatsapp', 'linkedin', 'tiktok', 'youtube', 'google_business', 'pinterest', 'x', 'threads'].includes(platform.key);
+    const isOAuth = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google_business', 'pinterest', 'x', 'threads'].includes(platform.key);
     const connectControl = isOAuth
       ? `<a class="btn btn-primary" href="${connectUrl}">${icon('plus')}${escapeHtml(primaryLabel)}</a>`
       : `<button class="btn btn-primary" type="button" data-social-connect="${escapeHtml(platform.key)}">${icon('plus')}${escapeHtml(primaryLabel)}</button>`;
@@ -2374,14 +2374,15 @@ function detailValueHtml(value) {
 }
 
 function modalMediaHtml(card) {
-  if (!card?.mediaUrl) return '';
+  const url = safeUrl(card?.mediaUrl);
+  if (!url) return '';
   if (isVideoMedia(card)) {
-    return `<div class="record-modal-media record-modal-video"><video src="${escapeHtml(card.mediaUrl)}" controls preload="metadata" playsinline></video></div>`;
+    return `<div class="record-modal-media record-modal-video"><video src="${url}" controls preload="metadata" playsinline></video></div>`;
   }
   if (isImageMedia(card)) {
-    return `<div class="record-modal-media"><img src="${escapeHtml(card.mediaUrl)}" alt="${escapeHtml(card.mediaAlt || card.title || 'Record media')}"></div>`;
+    return `<div class="record-modal-media"><img src="${url}" alt="${escapeHtml(card.mediaAlt || card.title || 'Record media')}"></div>`;
   }
-  return `<div class="record-modal-media record-modal-file"><a class="btn btn-ghost" href="${escapeHtml(card.mediaUrl)}" target="_blank" rel="noopener">Open media file</a></div>`;
+  return `<div class="record-modal-media record-modal-file"><a class="btn btn-ghost" href="${url}" target="_blank" rel="noopener">Open media file</a></div>`;
 }
 
 function cardDetailHtml(card) {
@@ -2590,7 +2591,7 @@ function calendarPostToCard(post = {}) {
       { name: 'title', label: 'Title', type: 'text', value: post.title || '', full: true },
       { name: 'caption', label: 'Caption', type: 'textarea', value: post.fullCaption || post.caption || '', rows: 5, full: true },
       { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: socialPlatforms.map((platform) => platform.key) },
-      { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'whatsapp_message', 'article', 'campaign', 'avatar_video'] },
+      { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'article', 'campaign', 'avatar_video'] },
       { name: 'status', label: 'Status', type: 'select', value: post.status || 'draft', options: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'] },
       { name: 'scheduledAt', label: 'Schedule time', type: 'datetime-local', value: dateTimeLocalValue(post.scheduledAt || '') },
       { name: 'hashtags', label: 'Hashtags', type: 'text', value: hashtags, full: true }
@@ -2905,14 +2906,14 @@ function bindActions() {
   document.querySelectorAll('[data-calendar-media]').forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();
-      const url = button.dataset.calendarMedia || '';
+      const url = safeUrl(button.dataset.calendarMedia || '');
       if (!url) return;
       modalBackdrop.classList.add('show');
       modalBackdrop.setAttribute('aria-hidden', 'false');
       modalKicker.textContent = 'Media';
       modalTitle.textContent = button.getAttribute('aria-label') || 'Post media';
-      modalBody.innerHTML = `<div class="record-modal-media"><img src="${escapeHtml(url)}" alt="Post media"></div>`;
-      modalActions.innerHTML = `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><a class="btn btn-primary" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open file</a>`;
+      modalBody.innerHTML = `<div class="record-modal-media"><img src="${url}" alt="Post media"></div>`;
+      modalActions.innerHTML = `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><a class="btn btn-primary" href="${url}" target="_blank" rel="noopener">Open file</a>`;
       bindActions();
     };
   });

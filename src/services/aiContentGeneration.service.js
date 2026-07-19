@@ -3,7 +3,7 @@ const { scoreContent } = require('./composer/contentScore.service');
 const { checkBrandFit } = require('./composer/brandFitChecker.service');
 const { checkRisk } = require('./composer/riskChecker.service');
 
-const SUPPORTED_PLATFORMS = ['facebook', 'instagram', 'linkedin', 'x', 'tiktok', 'youtube', 'whatsapp', 'threads', 'pinterest', 'google_business'];
+const SUPPORTED_PLATFORMS = ['facebook', 'instagram', 'linkedin', 'x', 'tiktok', 'youtube', 'threads', 'pinterest', 'google_business'];
 const OUTPUT_TYPES = [
   'single_post',
   'platform_captions',
@@ -15,7 +15,6 @@ const OUTPUT_TYPES = [
   'offer_sale',
   'carousel_copy',
   'reel_script',
-  'whatsapp_message',
   'linkedin_post',
   'facebook_post',
   'instagram_caption',
@@ -24,7 +23,6 @@ const OUTPUT_TYPES = [
 ];
 
 const PLATFORM_BY_OUTPUT = {
-  whatsapp_message: 'whatsapp',
   linkedin_post: 'linkedin',
   facebook_post: 'facebook',
   instagram_caption: 'instagram',
@@ -145,7 +143,7 @@ function hashtagify(value) {
 }
 
 function hashtagsFor(brand = {}, controls = {}, platform = '') {
-  if (controls.hashtagCount <= 0 || platform === 'whatsapp') return [];
+  if (controls.hashtagCount <= 0) return [];
   const candidates = [
     ...(brand.preferredHashtags || []),
     hashtagify(brand.name),
@@ -198,7 +196,6 @@ function platformCaption(platform, brand, controls, angle = '') {
     ].filter(Boolean).join('\n\n');
   }
   if (platform === 'instagram') return `${base}\n\n${hashtags.join(' ')}`.trim();
-  if (platform === 'whatsapp') return `Hi, ${base}`.replace(/\s+/g, ' ').trim();
   if (platform === 'youtube') return `${base}\n\nShorts idea: open with the customer problem, show the offer, close with ${ctaFor(brand, controls)}.`;
   return `${base}\n\n${hashtags.join(' ')}`.trim();
 }
@@ -270,7 +267,6 @@ function outputHeadline(outputType, brand) {
     offer_sale: `${name} offer campaign`,
     carousel_copy: `${name} carousel copy`,
     reel_script: `${name} short-video script`,
-    whatsapp_message: `${name} WhatsApp promo`,
     linkedin_post: `${name} LinkedIn post`,
     facebook_post: `${name} Facebook post`,
     instagram_caption: `${name} Instagram caption`,
@@ -285,7 +281,6 @@ function collectBundleText(bundle = {}) {
     bundle.caption,
     bundle.description,
     bundle.videoScript,
-    bundle.whatsappMessage,
     bundle.youtubeShortsDescription,
     ...(bundle.platformOutputs || []).map((item) => item.caption),
     ...(bundle.campaignPlan || []).map((item) => item.caption),
@@ -355,7 +350,6 @@ function buildFallbackBundle(brand = {}, body = {}) {
     videoScenes,
     youtubeTags: hashtags.map((tag) => tag.replace(/^#/, '')).slice(0, 12),
     youtubeShortsDescription: controls.outputType === 'youtube_shorts_description' ? platformCaption('youtube', brand, controls) : '',
-    whatsappMessage: controls.outputType === 'whatsapp_message' ? platformCaption('whatsapp', brand, controls) : '',
     platformOutputs,
     campaignPlan,
     carouselSlides,
@@ -403,7 +397,7 @@ function buildGenerationPrompt(brand = {}, controls = {}, fallback = {}) {
     `Offers: ${(brand.offers || []).map((item) => [item.title, item.description].filter(Boolean).join(' - ')).join('; ') || 'not set'}.`,
     `Keywords: ${(brand.keywords || []).join(', ') || 'not set'}. Blocked words: ${[...(brand.blockedWords || []), ...(brand.bannedWords || [])].join(', ') || 'none'}.`,
     `Brand rules: ${(brand.brandRules || []).join('; ') || 'none'}.`,
-    'Return keys: title, caption, hashtags, callToAction, description, imageIdea, imagePrompt, videoScript, videoScenes, youtubeTags, youtubeShortsDescription, whatsappMessage, platformOutputs, campaignPlan, carouselSlides, bestPostingTime, improvementSuggestion, safetyNotes.',
+    'Return keys: title, caption, hashtags, callToAction, description, imageIdea, imagePrompt, videoScript, videoScenes, youtubeTags, youtubeShortsDescription, platformOutputs, campaignPlan, carouselSlides, bestPostingTime, improvementSuggestion, safetyNotes.',
     `Fallback shape example: ${JSON.stringify(fallback).slice(0, 5000)}`
   ].join('\n');
 }

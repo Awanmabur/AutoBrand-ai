@@ -6,7 +6,11 @@ const { startDuePostPublisher, stopDuePostPublisher } = require('./src/services/
 
 async function startServer() {
   await connectDb();
-  startDuePostPublisher();
+  if (env.scheduledPublishingEnabled) {
+    startDuePostPublisher();
+  } else {
+    console.log('Scheduled post auto-publishing is disabled (ENABLE_SCHEDULED_PUBLISHING=false). Scheduled posts will stay scheduled until this is turned back on or published manually.');
+  }
 
   const server = app.listen(env.port, () => {
     console.log(`${env.appName} running on ${env.appUrl}`);

@@ -17,7 +17,6 @@ const growthAssetSchema = new mongoose.Schema(
         'carousel_ideas',
         'weekly_content_plan',
         'monthly_content_plan',
-        'whatsapp_promo_pack',
         'ad_copy_pack'
       ],
       required: true,

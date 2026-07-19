@@ -99,7 +99,6 @@ function campaignThemes(goal = 'awareness') {
 function platformPostType(platform = 'facebook', index = 0) {
   if (platform === 'tiktok' || platform === 'youtube') return 'reel';
   if (platform === 'instagram') return index % 3 === 0 ? 'carousel' : 'image';
-  if (platform === 'whatsapp') return 'whatsapp_message';
   if (platform === 'pinterest') return 'image';
   if (platform === 'linkedin') return 'article';
   return 'text';
@@ -121,7 +120,7 @@ function captionFor({ brand = {}, goal = 'awareness', platform = 'facebook', the
 
 function buildPlanItems({ brand = {}, goal = 'awareness', platforms = [], durationDays = 7 }) {
   const days = Math.max(1, Math.min(30, Number(durationDays || 7)));
-  const platformList = platforms.length ? platforms : ['facebook', 'instagram', 'whatsapp'];
+  const platformList = platforms.length ? platforms : ['facebook', 'instagram', 'linkedin'];
   const themes = campaignThemes(goal);
   return Array.from({ length: days }, (_, index) => {
     const platform = platformList[index % platformList.length];
@@ -143,7 +142,7 @@ function buildPlanItems({ brand = {}, goal = 'awareness', platforms = [], durati
 
 function buildCreativeIdeas({ brand = {}, goal = 'awareness', platforms = [] }) {
   const offer = firstValue(brand.offers, firstValue(brand.products, 'the main offer'));
-  const platformList = platforms.length ? platforms : ['facebook', 'instagram', 'whatsapp'];
+  const platformList = platforms.length ? platforms : ['facebook', 'instagram', 'linkedin'];
   return [
     ['Before and after', `Show the customer situation before and after ${offer}.`, 'carousel'],
     ['Proof snapshot', `Turn a testimonial or result into a trust-building visual.`, 'image'],
