@@ -9,16 +9,19 @@ let ffmpegPath;
 const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'ai');
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
 
-// Hosting platforms like Render/Heroku wipe the local filesystem on every
-// restart/redeploy, so a locally-rendered video can vanish before a
-// scheduled post ever reads it back. Persist to Cloudinary when configured;
-// local disk stays the immediate render target either way (ffmpeg needs a
-// real file path), but the returned fileUrl points at Cloudinary when possible.
+// ffmpeg only knows how to render to a real file, so a local path is
+// unavoidable as the immediate render target. But hosting platforms like
+// Render/Heroku wipe local disk on every restart, so that file is never a
+// valid long-term home. Upload it to Cloudinary and delete the local copy -
+// keeping both would just leave a duplicate that silently rots on the next
+// restart anyway. Local disk is only actually kept as storage when
+// Cloudinary isn't configured or the upload fails.
 async function persistRenderedFile(absolutePath, { folder, resourceType }) {
   if (!isCloudinaryConfigured()) return { fileUrl: '', publicId: '' };
   try {
     const buffer = await fs.readFile(absolutePath);
     const uploaded = await uploadBuffer({ buffer, folder, resourceType });
+    await fs.unlink(absolutePath).catch(() => {});
     return { fileUrl: uploaded.secure_url, publicId: uploaded.public_id };
   } catch (error) {
     console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
@@ -210,6 +213,7 @@ async function createTemplateVideo({ brand, inputData = {}, userId, renderId, du
     '-movflags', '+faststart',
     absoluteOutput
   ]);
+  await fs.unlink(framePath).catch(() => {});
 
   const stat = await fs.stat(absoluteOutput);
   const fileName = path.basename(absoluteOutput);
@@ -222,7 +226,7 @@ async function createTemplateVideo({ brand, inputData = {}, userId, renderId, du
     mimeType: 'video/mp4',
     size: stat.size,
     folder: 'local-template-video',
-    metadata: { userId, renderId, aspectRatio, durationSeconds: safeDuration, frameUrl: `/uploads/ai/${path.basename(framePath)}` }
+    metadata: { userId, renderId, aspectRatio, durationSeconds: safeDuration }
   };
 }
 

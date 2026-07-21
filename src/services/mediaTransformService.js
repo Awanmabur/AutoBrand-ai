@@ -8,15 +8,19 @@ try { sharp = require('sharp'); } catch (error) { sharp = null; }
 
 const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'ai');
 
-// Hosting platforms like Render/Heroku wipe the local filesystem on every
-// restart/redeploy, so a locally-rendered variant can vanish before it's
-// ever used in a post. Persist to Cloudinary when configured; local disk
-// stays the immediate render target (sharp needs a real file path either way).
+// sharp only knows how to render to a real file, so a local path is
+// unavoidable as the immediate render target. But hosting platforms like
+// Render/Heroku wipe local disk on every restart, so that file is never a
+// valid long-term home. Upload it to Cloudinary and delete the local copy -
+// keeping both would just leave a duplicate that silently rots on the next
+// restart anyway. Local disk is only actually kept as storage when
+// Cloudinary isn't configured or the upload fails.
 async function persistedUrl(absolutePath, folder) {
   if (!isCloudinaryConfigured()) return '';
   try {
     const buffer = await fs.readFile(absolutePath);
     const uploaded = await uploadBuffer({ buffer, folder, resourceType: 'image' });
+    await fs.unlink(absolutePath).catch(() => {});
     return uploaded.secure_url;
   } catch (error) {
     console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
