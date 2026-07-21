@@ -9,6 +9,8 @@ let sharp = null;
 try { ({ Resvg } = require('@resvg/resvg-js')); } catch (error) { Resvg = null; }
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
 const env = require('../../config/env');
+const { isCloudinaryConfigured } = require('../../config/cloudinary');
+const { uploadBuffer } = require('../cloudinaryService');
 
 const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', '..', 'public', 'uploads', 'ai');
 const REQUEST_TIMEOUT_MS = 90000;
@@ -176,16 +178,48 @@ async function generateJsonText({ prompt, fallback, preferredProvider }) {
 }
 
 async function saveGeneratedBuffer({ buffer, mimeType = 'image/png', brand, prompt, provider, model, userId, extension = 'png' }) {
-  await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
   const id = crypto.randomBytes(8).toString('hex');
   const filename = `${Date.now()}-${safeFilePart(brand?.name)}-${id}.${extension}`;
+  const fileType = mimeType.startsWith('video/') ? 'video' : 'image';
+
+  // Hosting platforms like Render/Heroku wipe the local filesystem on every
+  // restart/redeploy, so a locally-saved file can vanish before a scheduled
+  // post ever reads it back. Persist to Cloudinary when it's configured;
+  // local disk is only a dev-mode fallback, not a real storage destination.
+  if (isCloudinaryConfigured()) {
+    try {
+      const uploaded = await uploadBuffer({
+        buffer,
+        folder: `${provider}-generated`,
+        resourceType: fileType === 'video' ? 'video' : 'image',
+        publicId: `${Date.now()}-${safeFilePart(brand?.name)}-${id}`
+      });
+      return {
+        fileName: filename,
+        fileUrl: uploaded.secure_url,
+        publicId: uploaded.public_id,
+        fileType,
+        mimeType,
+        size: buffer.length,
+        folder: `${provider}-generated`,
+        aiPrompt: prompt,
+        provider,
+        providerModel: model,
+        metadata: { userId }
+      };
+    } catch (error) {
+      console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
+    }
+  }
+
+  await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
   const absolutePath = path.join(GENERATED_UPLOAD_DIR, filename);
   await fs.writeFile(absolutePath, buffer);
   return {
     fileName: filename,
     fileUrl: `/uploads/ai/${filename}`,
     publicId: `${provider}:${id}`,
-    fileType: mimeType.startsWith('video/') ? 'video' : 'image',
+    fileType,
     mimeType,
     size: buffer.length,
     folder: `${provider}-generated`,

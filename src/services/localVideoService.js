@@ -1,11 +1,30 @@
 const fs = require('fs/promises');
 const path = require('path');
 const { spawn } = require('child_process');
+const { isCloudinaryConfigured } = require('../config/cloudinary');
+const { uploadBuffer } = require('./cloudinaryService');
 let sharp = null;
 let ffmpegPath;
 
 const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'ai');
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
+
+// Hosting platforms like Render/Heroku wipe the local filesystem on every
+// restart/redeploy, so a locally-rendered video can vanish before a
+// scheduled post ever reads it back. Persist to Cloudinary when configured;
+// local disk stays the immediate render target either way (ffmpeg needs a
+// real file path), but the returned fileUrl points at Cloudinary when possible.
+async function persistRenderedFile(absolutePath, { folder, resourceType }) {
+  if (!isCloudinaryConfigured()) return { fileUrl: '', publicId: '' };
+  try {
+    const buffer = await fs.readFile(absolutePath);
+    const uploaded = await uploadBuffer({ buffer, folder, resourceType });
+    return { fileUrl: uploaded.secure_url, publicId: uploaded.public_id };
+  } catch (error) {
+    console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
+    return { fileUrl: '', publicId: '' };
+  }
+}
 
 function localPublicFilePath(fileUrl) {
   if (!fileUrl || /^https?:\/\//i.test(fileUrl)) return '';
@@ -121,10 +140,11 @@ async function createSlideshowVideo({ brand, sourceMedia, userId, durationSecond
   ]);
 
   const stat = await fs.stat(absoluteOutput);
+  const persisted = await persistRenderedFile(absoluteOutput, { folder: 'local-generated-video', resourceType: 'video' });
   return {
     fileName: filename,
-    fileUrl: `/uploads/ai/${filename}`,
-    publicId: `local-video:${filename}`,
+    fileUrl: persisted.fileUrl || `/uploads/ai/${filename}`,
+    publicId: persisted.publicId || `local-video:${filename}`,
     fileType: 'video',
     mimeType: 'video/mp4',
     size: stat.size,
@@ -193,10 +213,11 @@ async function createTemplateVideo({ brand, inputData = {}, userId, renderId, du
 
   const stat = await fs.stat(absoluteOutput);
   const fileName = path.basename(absoluteOutput);
+  const persisted = await persistRenderedFile(absoluteOutput, { folder: 'local-template-video', resourceType: 'video' });
   return {
     fileName,
-    fileUrl: `/uploads/ai/${fileName}`,
-    publicId: `local-template-video:${fileName}`,
+    fileUrl: persisted.fileUrl || `/uploads/ai/${fileName}`,
+    publicId: persisted.publicId || `local-template-video:${fileName}`,
     fileType: 'video',
     mimeType: 'video/mp4',
     size: stat.size,

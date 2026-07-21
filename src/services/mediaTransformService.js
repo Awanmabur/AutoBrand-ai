@@ -1,10 +1,28 @@
 const fs = require('fs/promises');
 const path = require('path');
+const { isCloudinaryConfigured } = require('../config/cloudinary');
+const { uploadBuffer } = require('./cloudinaryService');
 let sharp = null;
 
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
 
 const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads', 'ai');
+
+// Hosting platforms like Render/Heroku wipe the local filesystem on every
+// restart/redeploy, so a locally-rendered variant can vanish before it's
+// ever used in a post. Persist to Cloudinary when configured; local disk
+// stays the immediate render target (sharp needs a real file path either way).
+async function persistedUrl(absolutePath, folder) {
+  if (!isCloudinaryConfigured()) return '';
+  try {
+    const buffer = await fs.readFile(absolutePath);
+    const uploaded = await uploadBuffer({ buffer, folder, resourceType: 'image' });
+    return uploaded.secure_url;
+  } catch (error) {
+    console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
+    return '';
+  }
+}
 
 function localPublicFilePath(fileUrl) {
   if (!fileUrl || /^https?:\/\//i.test(fileUrl)) return '';
@@ -83,10 +101,11 @@ async function createResizeVariants(media, brand, ratios = ['1:1', '9:16', '4:5'
       .png({ quality: 92 })
       .toFile(absoluteOutput);
     const stat = await fs.stat(absoluteOutput);
+    const persistedFileUrl = await persistedUrl(absoluteOutput, 'resize-variants');
     created.push({
       kind: 'resize',
       label: ratioLabel(ratio),
-      url: `/uploads/ai/${filename}`,
+      url: persistedFileUrl || `/uploads/ai/${filename}`,
       prompt: `Resized ${media.fileName} for ${ratio} while preserving the key subject and brand space.`,
       status: 'ready',
       metadata: { aspectRatio: ratio, width, height, bytes: stat.size, brand: brand?.name || '' },
@@ -110,10 +129,11 @@ async function createCompressedVariant(media, brand, { width = 1400, quality = 7
     .jpeg({ quality: Number(quality || 78), mozjpeg: true })
     .toFile(absoluteOutput);
   const stat = await fs.stat(absoluteOutput);
+  const persistedFileUrl = await persistedUrl(absoluteOutput, 'compressed-variants');
   return {
     kind: 'compress',
     label: 'Compressed image',
-    url: `/uploads/ai/${filename}`,
+    url: persistedFileUrl || `/uploads/ai/${filename}`,
     prompt: `Compressed ${media.fileName} for faster uploads and smaller social assets.`,
     status: 'ready',
     metadata: { width: Number(width || 1400), quality: Number(quality || 78), bytes: stat.size, brand: brand?.name || '' },
@@ -155,10 +175,11 @@ async function createBrandedVariant(media, brand, { label = 'Brand style variant
     .toFile(absoluteOutput);
 
   const stat = await fs.stat(absoluteOutput);
+  const persistedFileUrl = await persistedUrl(absoluteOutput, 'branded-variants');
   return {
     kind: 'image_variant',
     label,
-    url: `/uploads/ai/${filename}`,
+    url: persistedFileUrl || `/uploads/ai/${filename}`,
     prompt: prompt || `Created a branded variation for ${brand?.name || 'this brand'}.`,
     status: 'ready',
     metadata: { width, height, bytes: stat.size, brand: brand?.name || '' },

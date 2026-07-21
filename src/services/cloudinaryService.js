@@ -30,6 +30,25 @@ function createUploadSignature({ userId, brandId }) {
   };
 }
 
+function uploadBuffer({ buffer, folder, resourceType = 'auto', publicId, format }) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: resourceType,
+        public_id: publicId,
+        format,
+        overwrite: false
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    uploadStream.end(buffer);
+  });
+}
+
 async function checkCloudinary() {
   if (!isCloudinaryConfigured()) {
     return { ok: false, configured: false, message: 'Cloudinary keys are missing.' };
@@ -43,4 +62,4 @@ async function checkCloudinary() {
   }
 }
 
-module.exports = { createUploadSignature, checkCloudinary };
+module.exports = { createUploadSignature, checkCloudinary, uploadBuffer };

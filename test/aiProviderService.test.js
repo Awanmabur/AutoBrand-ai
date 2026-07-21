@@ -8,30 +8,46 @@ const env = require('../src/config/env');
 const { generateImage, generateVideo, __private } = require('../src/services/aiProviderService');
 
 test('generateImage creates a local branded PNG when local provider is explicitly used', async () => {
-  const result = await generateImage({
-    preferredProvider: 'local',
-    brand: {
-      name: 'Fallback Brand',
-      businessType: 'shop',
-      description: 'Friendly local offers',
-      preferredCta: 'Book now',
-      brandColors: ['#123456', '#24a391'],
-      offers: [{ title: 'Weekend Deal', description: 'Save on the service customers need.' }]
-    },
-    prompt: 'Create a Facebook offer image',
-    userId: 'user_1',
-    size: '64x64'
-  });
+  // Force the local-disk fallback path specifically (what this test verifies),
+  // rather than the real Cloudinary upload saveGeneratedBuffer prefers when
+  // credentials are configured in this environment's .env.
+  const originalCloudinary = {
+    cloudinaryCloudName: env.cloudinaryCloudName,
+    cloudinaryApiKey: env.cloudinaryApiKey,
+    cloudinaryApiSecret: env.cloudinaryApiSecret
+  };
+  env.cloudinaryCloudName = '';
+  env.cloudinaryApiKey = '';
+  env.cloudinaryApiSecret = '';
 
-  const absolutePath = path.join(__dirname, '..', 'public', result.fileUrl.replace(/^\/+/, ''));
-  const file = await fs.readFile(absolutePath);
+  try {
+    const result = await generateImage({
+      preferredProvider: 'local',
+      brand: {
+        name: 'Fallback Brand',
+        businessType: 'shop',
+        description: 'Friendly local offers',
+        preferredCta: 'Book now',
+        brandColors: ['#123456', '#24a391'],
+        offers: [{ title: 'Weekend Deal', description: 'Save on the service customers need.' }]
+      },
+      prompt: 'Create a Facebook offer image',
+      userId: 'user_1',
+      size: '64x64'
+    });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.mimeType, 'image/png');
-  assert.equal(result.provider, 'local_fallback');
-  assert.deepEqual([...file.slice(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const absolutePath = path.join(__dirname, '..', 'public', result.fileUrl.replace(/^\/+/, ''));
+    const file = await fs.readFile(absolutePath);
 
-  await fs.unlink(absolutePath);
+    assert.equal(result.ok, true);
+    assert.equal(result.mimeType, 'image/png');
+    assert.equal(result.provider, 'local_fallback');
+    assert.deepEqual([...file.slice(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    await fs.unlink(absolutePath);
+  } finally {
+    Object.assign(env, originalCloudinary);
+  }
 });
 
 test('generateImage does not silently replace hosted provider failures with local fallback art', async () => {
