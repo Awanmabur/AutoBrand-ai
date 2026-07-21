@@ -16,7 +16,9 @@ const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', '..', 'public', 'u
 const REQUEST_TIMEOUT_MS = 90000;
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 40;
-const OPENAI_VIDEO_MAX_POLLS = Number(process.env.OPENAI_VIDEO_MAX_POLLS || 80);
+// Sora-2 renders can genuinely take longer than a few minutes under real load -
+// 80 polls * 3s = 4 minutes was cutting it off before OpenAI ever finished.
+const OPENAI_VIDEO_MAX_POLLS = Number(process.env.OPENAI_VIDEO_MAX_POLLS || 240);
 
 function localAbsolutePathFromUrl(fileUrl) {
   if (!fileUrl) return '';
