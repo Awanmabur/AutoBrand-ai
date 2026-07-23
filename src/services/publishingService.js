@@ -1,29 +1,71 @@
+const crypto = require('crypto');
 const Post = require('../models/Post');
+const Approval = require('../models/Approval');
+const env = require('../config/env');
 const SocialAccount = require('../models/SocialAccount');
-const { isFacebookConfigured, publishFacebookPost } = require('./facebookService');
+const { publishFacebookPost } = require('./facebookService');
 const { publishGoogleBusinessPost } = require('./googleBusinessProfileService');
 const { publishInstagramPost } = require('./instagramService');
-const { isLinkedInConfigured, publishLinkedInPost } = require('./linkedinService');
+const { publishLinkedInPost } = require('./linkedinService');
 const { publishPinterestPin } = require('./pinterestService');
 const { publishXPost } = require('./xService');
 const { publishThreadsPost } = require('./threadsService');
-const { isTikTokConfigured, publishTikTokVideo } = require('./tiktokService');
-const { isYouTubeConfigured, publishYouTubeVideo } = require('./youtubeService');
+const { publishTikTokVideo } = require('./tiktokService');
+const { publishYouTubeVideo } = require('./youtubeService');
 const { shouldUseHandoffFallback } = require('./auto-handoff/handoff.service');
 const { applyRetryPolicy } = require('./publishingRetryPolicyService');
 const { buildPublishingReadiness, publicUrlFromPublishResult } = require('./publishingReadiness.service');
 const { notifyAccountDisconnected, notifyUser } = require('./notification.service');
+const { isTokenDecryptionError } = require('./tokenCryptoService');
+
+async function bestEffort(label, task) {
+  try {
+    return await task();
+  } catch (error) {
+    console.error(`${label}:`, error.message);
+    return null;
+  }
+}
+
+async function safeNotifyUser(payload) {
+  return bestEffort('Publishing notification failed', () => notifyUser(payload));
+}
+
+async function settleWithConcurrency(items, limit, task) {
+  const queue = Array.from(items || []);
+  const results = new Array(queue.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(Math.max(1, Number(limit || 1)), queue.length || 1));
+
+  async function worker() {
+    while (cursor < queue.length) {
+      const index = cursor;
+      cursor += 1;
+      try {
+        results[index] = { status: 'fulfilled', value: await task(queue[index], index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 
 async function accountsForPlatform(post, platform) {
   const selectedIds = (post.targetAccounts || []).map((id) => id?._id || id).filter(Boolean);
+  const allowedStatuses = ['connected'];
   const filter = {
     brand: post.brand._id,
+    owner: post.createdBy,
     platform,
-    status: { $in: ['connected', 'mock'] }
+    status: { $in: allowedStatuses }
   };
 
   if (selectedIds.length) filter._id = { $in: selectedIds };
-  return SocialAccount.find(filter).sort({ accountName: 1 });
+  const accounts = await SocialAccount.find(filter).sort({ accountName: 1 });
+  return accounts.filter((account) => platform !== 'instagram' || Boolean(account.providerMeta?.permissionGrantVerifiedAt));
 }
 
 function postViewForPlatform(post, platform) {
@@ -45,24 +87,22 @@ function postViewForPlatform(post, platform) {
 }
 
 async function publishToAccount({ post, account }) {
-  if (post.platform === 'facebook' && account) return publishFacebookPost({ post, account });
-  if (post.platform === 'google_business' && account?.status === 'connected') return publishGoogleBusinessPost({ post, account });
-  if (post.platform === 'instagram' && account?.status === 'connected') return publishInstagramPost({ post, account });
-  if (post.platform === 'linkedin' && account?.status === 'connected') return publishLinkedInPost({ post, account });
-  if (post.platform === 'pinterest' && account?.status === 'connected') return publishPinterestPin({ post, account });
-  if (post.platform === 'x' && account?.status === 'connected') return publishXPost({ post, account });
-  if (post.platform === 'threads' && account?.status === 'connected') return publishThreadsPost({ post, account });
-  if (post.platform === 'tiktok' && account?.status === 'connected') return publishTikTokVideo({ post, account });
-  if (post.platform === 'youtube' && account?.status === 'connected') return publishYouTubeVideo({ post, account });
-  return { id: `mock_${post.platform}_${account?._id || post._id}` };
-}
+  if (!account) throw new Error(`No connected ${post.platform} account was selected.`);
+  if (account.status === 'mock') {
+    throw new Error('Mock social accounts cannot publish in production or create live posts. Reconnect the real provider account.');
+  }
+  if (account.status !== 'connected') throw new Error(`${account.accountName || post.platform} is not connected.`);
 
-function needsConnectedAccount(platform) {
-  if (platform === 'youtube') return isYouTubeConfigured();
-  if (platform === 'tiktok') return isTikTokConfigured();
-  if (platform === 'linkedin') return isLinkedInConfigured();
-  if (['instagram', 'google_business', 'pinterest', 'x', 'threads'].includes(platform)) return true;
-  return false;
+  if (post.platform === 'facebook') return publishFacebookPost({ post, account });
+  if (post.platform === 'google_business') return publishGoogleBusinessPost({ post, account });
+  if (post.platform === 'instagram') return publishInstagramPost({ post, account });
+  if (post.platform === 'linkedin') return publishLinkedInPost({ post, account });
+  if (post.platform === 'pinterest') return publishPinterestPin({ post, account });
+  if (post.platform === 'x') return publishXPost({ post, account });
+  if (post.platform === 'threads') return publishThreadsPost({ post, account });
+  if (post.platform === 'tiktok') return publishTikTokVideo({ post, account });
+  if (post.platform === 'youtube') return publishYouTubeVideo({ post, account });
+  throw new Error(`Direct publishing is not implemented for ${post.platform}.`);
 }
 
 function canPersistAccount(account) {
@@ -70,12 +110,16 @@ function canPersistAccount(account) {
 }
 
 function isReconnectRequiredPublishingError(errorOrMessage) {
+  if (isTokenDecryptionError(errorOrMessage)) return true;
   const message = String(errorOrMessage?.message || errorOrMessage || '');
   return /access token|invalid token|expired|oauth|permission|scope|app review|not approved|reconnect|insufficient|application has been deleted|application does not exist|invalid application|app not found/i.test(message);
 }
 
 function providerApprovalMessage(errorOrMessage, platform = '') {
   const message = String(errorOrMessage?.message || errorOrMessage || '');
+  if (isTokenDecryptionError(errorOrMessage)) {
+    return `${platform || 'Provider'} credentials were encrypted with a different TOKEN_ENCRYPTION_KEY. Restore the previous key or reconnect this account.`;
+  }
   if (/permission|scope|app review|not approved|insufficient/i.test(message)) {
     return `${platform || 'Provider'} publishing permissions need provider approval or expanded scopes before direct publishing can continue.`;
   }
@@ -129,35 +173,119 @@ async function markAccountPublishFailure(account, error, post) {
   }
   await account.save();
   if (account.status === 'needs_reconnect') {
-    await notifyAccountDisconnected({
+    await bestEffort('Disconnected-account notification failed', () => notifyAccountDisconnected({
       user: post?.createdBy || account.owner,
       account,
       health: { status: 'needs_reconnect', message: approvalMessage || message }
-    });
+    }));
   }
 }
 
-async function publishPost(postId) {
-  const post = await Post.findById(postId).populate('brand').populate('media').populate('targetAccounts');
-  if (!post || post.status === 'cancelled') return null;
-  if (post.status === 'published') return post;
+async function publishPost(postId, { expectedScheduleVersion } = {}) {
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - Math.max(5 * 60 * 1000, Number(process.env.PUBLISHING_STALE_MS || 15 * 60 * 1000)));
+  const claimFilter = {
+    _id: postId,
+    $or: [
+      { status: 'scheduled', scheduledAt: { $lte: now } },
+      { status: 'publishing', publishingStartedAt: { $lte: staleBefore } },
+      { status: 'publishing', publishingStartedAt: { $exists: false }, updatedAt: { $lte: staleBefore } }
+    ]
+  };
+  if (expectedScheduleVersion !== undefined && expectedScheduleVersion !== null) {
+    const expectedVersion = Math.max(0, Number(expectedScheduleVersion) || 0);
+    if (expectedVersion === 0) {
+      claimFilter.$and = [
+        ...(claimFilter.$and || []),
+        { $or: [{ scheduleVersion: 0 }, { scheduleVersion: { $exists: false } }] }
+      ];
+    } else {
+      claimFilter.scheduleVersion = expectedVersion;
+    }
+  }
+
+  const publishingAttemptId = crypto.randomUUID();
+  const claimed = await Post.findOneAndUpdate(
+    claimFilter,
+    {
+      $set: {
+        status: 'publishing',
+        publishingStartedAt: now,
+        publishingAttemptId
+      }
+    },
+    { new: true }
+  );
+
+  if (!claimed) {
+    const existing = await Post.findById(postId);
+    if (!existing || ['cancelled', 'published'].includes(existing.status)) return existing || null;
+    return null;
+  }
+
+  const post = await Post.findById(claimed._id).populate('brand').populate('media').populate('targetAccounts');
+  if (!post) return null;
 
   try {
-    if (post.approvalRequired && !['approved', 'scheduled', 'publishing'].includes(post.status)) {
-      throw new Error('This post requires approval before publishing.');
+    if (post.approvalRequired) {
+      const approved = post.handoffStatus === 'approved' || Boolean(await Approval.exists({
+        post: post._id,
+        $or: [{ status: 'approved' }, { decision: 'approved' }]
+      }));
+      if (!approved) {
+        post.status = 'pending_approval';
+        post.publishingStartedAt = undefined;
+        post.publishingAttemptId = '';
+        post.errorMessage = 'This post requires approval before publishing.';
+        await post.save();
+        await safeNotifyUser({
+          user: post.createdBy,
+          type: 'post_approval_required',
+          title: 'Approval required',
+          message: post.errorMessage,
+          severity: 'warning',
+          entityType: 'Post',
+          entityId: post._id,
+          actionUrl: '/dashboard/approvals'
+        });
+        return post;
+      }
     }
 
-    const readiness = await buildPublishingReadiness(post);
+    const platformsToPublish = [...new Set(post.platforms?.length ? post.platforms : [post.platform])];
+    const readinessChecks = await Promise.all(platformsToPublish.map(async (platform) => {
+      const platformPost = postViewForPlatform(post, platform);
+      const readiness = await buildPublishingReadiness(platformPost);
+      return { platform, ...readiness };
+    }));
+    const readinessByPlatform = new Map(readinessChecks.map((item) => [item.platform, item]));
+    const readiness = {
+      // Multi-platform publishing is intentionally not all-or-nothing. A platform
+      // that cannot accept the current media (for example Instagram receiving a
+      // localhost URL) must not prevent an otherwise valid Facebook Page publish.
+      ready: readinessChecks.some((item) => item.ready),
+      fullyReady: readinessChecks.every((item) => item.ready),
+      warnings: [...new Set(readinessChecks.flatMap((item) => item.warnings || []))],
+      blockers: [...new Set(readinessChecks.flatMap((item) => (item.blockers || []).map((warning) => `${item.platform}: ${warning}`)))],
+      platforms: readinessChecks,
+      checkedAt: new Date()
+    };
     post.validationWarnings = [...new Set([...(post.validationWarnings || []), ...readiness.warnings])];
     post.platformMetadata = {
       ...(post.platformMetadata || {}),
       publishReadiness: readiness
     };
-    if (!readiness.ready) {
-      throw new Error(`Publishing validation failed: ${readiness.blockers.join(' | ')}`);
-    }
 
-    const platformsToPublish = [...new Set(post.platforms?.length ? post.platforms : [post.platform])];
+    console.log('[publishing] post claimed', {
+      postId: String(post._id),
+      attemptId: publishingAttemptId,
+      platforms: platformsToPublish,
+      readiness: readinessChecks.map((item) => ({
+        platform: item.platform,
+        ready: item.ready,
+        blockers: item.blockers || []
+      }))
+    });
 
     // A previous attempt may have partially succeeded (some platforms published,
     // others failed and got scheduled for retry). Carry forward what already
@@ -178,30 +306,38 @@ async function publishPost(postId) {
     const jobs = [];
 
     for (const platform of platformsToPublish) {
+      const platformReadiness = readinessByPlatform.get(platform);
+      if (!platformReadiness?.ready) {
+        if (!platformsWithPriorSuccess.has(platform)) {
+          const message = (platformReadiness?.blockers || []).join(' | ') || `Publishing validation failed for ${platform}.`;
+          failures.push(`${platform}: ${message}`);
+          results.push({
+            platform,
+            status: 'failed',
+            errorMessage: message,
+            publishedAt: new Date()
+          });
+          console.error('[publishing] platform blocked before provider call', {
+            postId: String(post._id),
+            platform,
+            blockers: platformReadiness?.blockers || []
+          });
+        }
+        continue;
+      }
+
       const accounts = await accountsForPlatform(post, platform);
 
-      if (platform === 'facebook' && isFacebookConfigured() && !accounts.length) {
+      if (!accounts.length) {
         if (!platformsWithPriorSuccess.has(platform)) {
-          const message = 'No selected or connected Facebook Page found for this brand. Connect Facebook, then select at least one Page.';
+          const message = `No connected ${platform} account found for this brand. Connect and select a destination before publishing.`;
           failures.push(`${platform}: ${message}`);
           results.push({ platform, status: 'failed', errorMessage: message, publishedAt: new Date() });
         }
         continue;
       }
 
-      if (needsConnectedAccount(platform) && !accounts.some((account) => account.status === 'connected')) {
-        if (!platformsWithPriorSuccess.has(platform)) {
-          const message = `No connected ${platform} account found for this brand. Connect ${platform}, then select it before publishing.`;
-          failures.push(`${platform}: ${message}`);
-          results.push({ platform, status: 'failed', errorMessage: message, publishedAt: new Date() });
-        }
-        continue;
-      }
-
-      const effectiveAccounts = (accounts.length
-        ? accounts
-        : [{ _id: null, platform, accountName: `${platform} mock`, status: 'mock' }]
-      ).filter((account) => !succeededKeys.has(`${platform}:${account._id ? String(account._id) : 'mock'}`));
+      const effectiveAccounts = accounts.filter((account) => !succeededKeys.has(`${platform}:${account._id ? String(account._id) : 'mock'}`));
 
       if (!effectiveAccounts.length) continue;
 
@@ -216,8 +352,28 @@ async function publishPost(postId) {
     // each provider call is network-bound (some, like Instagram video, take up to
     // two minutes), so running them sequentially made multi-platform posts take
     // the sum of every platform's latency instead of just the slowest one.
-    const settled = await Promise.allSettled(
-      jobs.map((job) => publishToAccount({ post: job.platformPost, account: job.account }))
+    console.log('[publishing] provider jobs prepared', {
+      postId: String(post._id),
+      jobs: jobs.map((job) => ({
+        platform: job.platform,
+        accountId: String(job.account?._id || ''),
+        accountName: job.account?.accountName || ''
+      })),
+      preflightFailures: failures
+    });
+
+    const settled = await settleWithConcurrency(
+      jobs,
+      Math.max(1, Math.min(10, Number(process.env.POST_PUBLISH_CONCURRENCY || 3))),
+      async (job) => {
+        console.log('[publishing] provider request starting', {
+          postId: String(post._id),
+          platform: job.platform,
+          accountId: String(job.account?._id || ''),
+          accountName: job.account?.accountName || ''
+        });
+        return publishToAccount({ post: job.platformPost, account: job.account });
+      }
     );
 
     for (let index = 0; index < jobs.length; index += 1) {
@@ -226,8 +382,15 @@ async function publishPost(postId) {
 
       if (outcome.status === 'fulfilled') {
         const platformResult = outcome.value;
+        console.log('[publishing] provider request succeeded', {
+          postId: String(post._id),
+          platform,
+          accountId: String(account?._id || ''),
+          accountName: account?.accountName || '',
+          providerPostId: platformResult?.id || ''
+        });
         const platformPostUrl = publicUrlFromPublishResult(platformResult);
-        await markAccountPublishSuccess(account, platformResult);
+        await bestEffort('Could not persist social-account publish success', () => markAccountPublishSuccess(account, platformResult));
         results.push({
           account: account._id || undefined,
           accountName: account.accountName,
@@ -239,7 +402,14 @@ async function publishPost(postId) {
         });
       } else {
         const error = outcome.reason;
-        await markAccountPublishFailure(account, error, post);
+        console.error('[publishing] provider request failed', {
+          postId: String(post._id),
+          platform,
+          accountId: String(account?._id || ''),
+          accountName: account?.accountName || '',
+          error: error?.message || String(error)
+        });
+        await bestEffort('Could not persist social-account publish failure', () => markAccountPublishFailure(account, error, post));
         failures.push(`${account.accountName}: ${error.message}`);
         results.push({
           account: account._id || undefined,
@@ -270,11 +440,23 @@ async function publishPost(postId) {
       }, {})
     };
     post.errorMessage = failures.join(' | ');
+    post.publishingStartedAt = undefined;
+    post.publishingAttemptId = '';
     await post.save();
+
+    console.log('[publishing] post attempt completed', {
+      postId: String(post._id),
+      status: post.status,
+      published: results.filter((item) => item.status === 'published').map((item) => ({
+        platform: item.platform,
+        accountName: item.accountName || ''
+      })),
+      failures
+    });
 
     if (failures.length) {
       const retry = await applyRetryPolicy(post, failures.join(' | '));
-      await notifyUser({
+      await safeNotifyUser({
         user: post.createdBy,
         type: retry.scheduled ? 'post_retry_scheduled' : 'post_failed',
         title: retry.scheduled ? 'Post retry scheduled' : 'Post failed on some Pages',
@@ -290,7 +472,7 @@ async function publishPost(postId) {
       throw new Error(failures.join(' | '));
     }
 
-    await notifyUser({
+    await safeNotifyUser({
       user: post.createdBy,
       type: 'post_published',
       title: 'Post published',
@@ -314,7 +496,7 @@ async function publishPost(postId) {
         await post.save();
       }
 
-      await notifyUser({
+      await safeNotifyUser({
         user: post.createdBy,
         type: retry.scheduled ? 'post_retry_scheduled' : 'post_failed',
         title: retry.scheduled ? 'Post retry scheduled' : shouldUseHandoffFallback(error) ? 'Post moved to handoff' : 'Post failed',

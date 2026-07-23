@@ -29,7 +29,14 @@ function validateName(value = '') {
 
 function validatePassword(value = '', label = 'Password') {
   const password = String(value || '');
-  if (password.length < 8) throw new Error(`${label} must be at least 8 characters.`);
+  if (password.length < 12) throw new Error(`${label} must be at least 12 characters.`);
+  if (password.length > 128) throw new Error(`${label} must be 128 characters or less.`);
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    throw new Error(`${label} must include at least one letter and one number.`);
+  }
+  const normalized = password.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const blocked = new Set(['password1234', 'password12345', 'changeme1234', 'qwerty123456', 'admin123456']);
+  if (blocked.has(normalized)) throw new Error(`${label} is too common. Choose a stronger password.`);
   return password;
 }
 

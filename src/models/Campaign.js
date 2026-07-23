@@ -8,6 +8,7 @@ const campaignSchema = new mongoose.Schema(
     goal: { type: String, trim: true },
     description: { type: String, trim: true },
     platforms: [{ type: String }],
+    targetAccounts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'SocialAccount' }],
     startDate: { type: Date },
     endDate: { type: Date },
     postingFrequency: { type: String },

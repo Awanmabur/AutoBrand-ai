@@ -1,6 +1,7 @@
 const Approval = require('../../models/Approval');
 const ClientApprovalLink = require('../../models/ClientApprovalLink');
 const { createApprovalLink } = require('../approvals/approval.service');
+const { dispatchScheduledPost } = require('../postDispatchService');
 
 async function prepareHandoff(post, { assignedTo, reviewerEmail, reviewerName, notes = '', checklist = [], dueDate, requestedBy }) {
   post.workflowMode = 'handoff';
@@ -37,8 +38,15 @@ async function markHandoffDecision(post, decision, note = '') {
   if (decision === 'approved') post.status = post.publishAfterApproval ? 'scheduled' : 'approved';
   if (decision === 'rejected') post.status = 'rejected';
   if (decision === 'changes_requested') post.status = 'pending_approval';
+  if (decision === 'approved' && post.publishAfterApproval) {
+    post.scheduledAt = post.scheduledAt || new Date();
+    post.scheduleVersion = Number(post.scheduleVersion || 0) + 1;
+    post.publishingStartedAt = undefined;
+    post.publishingAttemptId = '';
+  }
   post.handoffNotes = [post.handoffNotes, note].filter(Boolean).join('\n');
   await post.save();
+  if (decision === 'approved' && post.publishAfterApproval) await dispatchScheduledPost(post, { userId: post.createdBy || undefined });
   return post;
 }
 

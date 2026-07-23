@@ -95,12 +95,12 @@
     <details class="span-2 fieldset" open>
       <summary>Platforms and connected accounts</summary>
       <% const chosenAccounts = Array.isArray(form.targetAccounts) ? form.targetAccounts : form.targetAccounts ? [form.targetAccounts] : []; %>
-      <% const selectedPlatforms = Array.isArray(form.platforms) ? form.platforms : form.platforms ? [form.platforms] : form.platform ? [form.platform] : ['facebook']; %>
+      <% const selectedPlatforms = Array.isArray(form.platforms) ? form.platforms : form.platforms ? [form.platforms] : form.platform ? [form.platform] : platforms.slice(0, 1); %>
       <div class="platform-multi-grid channel-spaced-grid">
-        <% platforms.forEach((platform) => { %>
-          <label class="checkbox-row platform-option">
-            <input name="platforms" type="checkbox" value="<%= platform %>" <%= selectedPlatforms.includes(platform) ? 'checked' : '' %>>
-            <span><strong><%= platform.replace(/_/g, ' ') %></strong></span>
+        <% platformOptions.forEach((platform) => { %>
+          <label class="checkbox-row platform-option" data-platform-option data-brands="<%= platform.brandIds.join(',') %>">
+            <input name="platforms" type="checkbox" value="<%= platform.key %>" <%= selectedPlatforms.includes(platform.key) ? 'checked' : '' %>>
+            <span><strong><%= platform.label %></strong> <small><%= platform.accountCount %> live</small></span>
           </label>
         <% }) %>
       </div>

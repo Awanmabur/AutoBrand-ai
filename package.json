@@ -1,6 +1,6 @@
 {
   "name": "autobrand-ai-social-saas",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "AI social media management SaaS platform",
   "main": "server.js",
@@ -18,7 +18,14 @@
     "seed:platform-rules": "node scripts/seedPlatformRules.js",
     "seed:ai-providers": "node scripts/seedAiProviders.js",
     "lint": "node scripts/checkSyntax.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "worker:ai": "node workers/aiGenerationWorker.js",
+    "security:static": "node scripts/securityCheck.js",
+    "security": "node scripts/securityCheck.js && npm audit --omit=dev",
+    "verify": "npm run lint && npm test && npm run security",
+    "diagnose:publishing": "node scripts/diagnosePublishing.js",
+    "repair:publishing": "node scripts/repairPublishing.js",
+    "diagnose:connectivity": "node scripts/diagnoseConnectivity.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -39,6 +46,7 @@
     "method-override": "^3.0.0",
     "mongoose": "^8.0.0",
     "morgan": "^1.10.0",
+    "nodemailer": "^9.0.3",
     "openai": "^6.48.0",
     "sharp": "^0.33.0",
     "slugify": "^1.6.6"

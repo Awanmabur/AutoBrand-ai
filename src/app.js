@@ -5,14 +5,18 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const methodOverride = require('method-override');
-const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
 const crypto = require('crypto');
+const requestSanitizer = require('./middlewares/requestSanitizer');
+const { createRateLimiter } = require('./config/rateLimit');
+const { streamGridFsMedia } = require('./services/gridFsMediaStorage.service');
 
 const env = require('./config/env');
 const attachUser = require('./middlewares/attachUser');
 const csrfProtection = require('./middlewares/csrfProtection');
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
+const databaseAvailability = require('./middlewares/databaseAvailability');
 
 const publicRoutes = require('./routes/public');
 const authRoutes = require('./routes/auth');
@@ -36,10 +40,8 @@ const adminRoutes = require('./routes/admin');
 const webhookRoutes = require('./routes/webhooks');
 
 const app = express();
-
-if (env.nodeEnv === 'production') {
-  app.set('trust proxy', 1);
-}
+app.disable('x-powered-by');
+app.set('trust proxy', env.nodeEnv === 'production' ? env.trustProxyHops : false);
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -51,31 +53,94 @@ app.use((req, res, next) => {
   next();
 });
 app.use(helmet({
-  contentSecurityPolicy: env.nodeEnv === 'production' ? {
+  contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      objectSrc: ["'none'"],
       scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      mediaSrc: ["'self'", 'blob:', 'https:'],
       connectSrc: ["'self'", 'https:'],
-      frameAncestors: ["'self'"]
+      frameSrc: ["'self'", 'https:'],
+      frameAncestors: ["'self'"],
+      formAction: ["'self'"],
+      ...(env.nodeEnv === 'production' ? { upgradeInsecureRequests: [] } : {})
     }
-  } : false
+  },
+  crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  strictTransportSecurity: env.nodeEnv === 'production'
+    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+    : false
 }));
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(self), usb=()');
+  next();
+});
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  dotfiles: 'deny',
+  etag: true,
+  fallthrough: true,
+  // Asset filenames are not content-hashed, so immutable caching can keep a
+  // broken dashboard script after deployment. Revalidate instead.
+  immutable: false,
+  maxAge: env.nodeEnv === 'production' ? '1h' : 0
+}));
 app.use((req, res, next) => {
-  req.id = req.headers['x-request-id'] || crypto.randomUUID();
+  const supplied = String(req.headers['x-request-id'] || '');
+  req.id = /^[A-Za-z0-9_-]{8,128}$/.test(supplied) ? supplied : crypto.randomUUID();
   res.setHeader('x-request-id', req.id);
   next();
 });
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
-app.use(express.json({ limit: '2mb' }));
+
+function health(req, res) {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, app: env.appName, timestamp: new Date().toISOString(), requestId: req.id });
+}
+
+app.get('/health', health);
+app.get('/healthz', health);
+app.get('/readyz', (req, res) => {
+  const ready = mongoose.connection.readyState === 1;
+  res.set('Cache-Control', 'no-store');
+  return res.status(ready ? 200 : 503).json({ ok: ready, mongoState: mongoose.connection.readyState, redisEnabled: env.redisEnabled, requestId: req.id });
+});
+
+// Fail fast while MongoDB is reconnecting instead of letting media,
+// authentication, dashboard, API, or publishing requests wait for timeouts.
+app.use(databaseAvailability);
+// Generated media persisted in MongoDB/GridFS. This route is public so Meta can
+// fetch it from the configured HTTPS APP_URL, and supports byte ranges for video.
+app.get('/uploads/db/:id/:filename?', streamGridFsMedia);
+app.head('/uploads/db/:id/:filename?', streamGridFsMedia);
+app.use(express.urlencoded({ extended: false, limit: '2mb', parameterLimit: 1000 }));
+app.use(express.json({
+  limit: '2mb',
+  strict: true,
+  verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer); }
+}));
+app.use(requestSanitizer);
 app.use(cookieParser(env.cookieSecret));
 app.use(methodOverride('_method'));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300 }));
+app.use(createRateLimiter({
+  prefix: 'global',
+  windowMs: env.rateLimitWindowMs,
+  limit: env.rateLimitMax
+}));
+
 app.use(attachUser);
 app.use(csrfProtection);
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/auth') || req.path.startsWith('/dashboard')) {
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  next();
+});
 
 app.use((req, res, next) => {
   res.locals.appName = env.appName;
@@ -84,13 +149,6 @@ app.use((req, res, next) => {
   res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
   next();
 });
-
-function health(req, res) {
-  res.json({ ok: true, app: env.appName, env: env.nodeEnv, timestamp: new Date().toISOString(), requestId: req.id });
-}
-
-app.get('/health', health);
-app.get('/healthz', health);
 
 app.use('/', publicRoutes);
 app.use('/auth', authRoutes);

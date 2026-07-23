@@ -1,12 +1,12 @@
 const ApiLog = require('../models/ApiLog');
 const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
-const RefreshToken = require('../models/RefreshToken');
 const User = require('../models/User');
 const env = require('../config/env');
+const { sendVerificationEmail } = require('../services/emailService');
 const { facebookConnectionChecklist } = require('../services/facebookService');
 const { checkProviders } = require('../services/providerHealthService');
-const { hashToken } = require('../services/tokenService');
+const { revokeAllSessions, issueAuthTokens, setAuthCookies } = require('../services/authService');
 const {
   applyDeleteAccountRequest,
   applyPendingEmailChange,
@@ -14,8 +14,7 @@ const {
   createEmailVerificationToken,
   normalizeEmail,
   validateEmail,
-  validatePassword,
-  verificationUrl
+  validatePassword
 } = require('../services/account/account.service');
 
 function settingsUrl(params = {}) {
@@ -59,13 +58,16 @@ async function verifyCurrentPasswordIfNeeded(user, password) {
   if (!valid) throw new Error('Current password is incorrect.');
 }
 
-function renderVerificationPrepared(res, user, token) {
+async function renderVerificationPrepared(res, user, token) {
   const targetEmail = user.pendingEmail || user.email;
+  const delivery = await sendVerificationEmail({ user, token });
   return res.render('auth/check-email', {
     title: 'Verify email',
     layout: 'layouts/auth',
-    message: `A verification link has been prepared for ${targetEmail}. Email delivery is not connected yet, so development shows the link here.`,
-    actionUrl: verificationUrl(token)
+    message: `A verification link has been sent to ${targetEmail}.`,
+    actionUrl: !delivery.delivered && env.allowDevelopmentEmailLinks
+      ? `/auth/verify-email?token=${encodeURIComponent(token)}`
+      : '/dashboard/settings'
   });
 }
 
@@ -74,7 +76,7 @@ function configRows() {
     { name: 'OpenAI', keys: ['OPENAI_API_KEY'], ready: Boolean(env.openaiApiKey) },
     { name: 'Google OAuth', keys: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_CALLBACK_URL'], ready: Boolean(env.googleClientId && env.googleClientSecret && env.googleCallbackUrl) },
     { name: 'Cloudinary', keys: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'], ready: Boolean(env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret) },
-    { name: 'Redis', keys: ['REDIS_HOST', 'REDIS_PORT'], ready: Boolean(env.redisHost && env.redisPort) },
+    { name: 'Redis (optional)', keys: ['REDIS_ENABLED', 'REDIS_URL'], ready: !env.redisEnabled || env.redisConfigured },
     {
       name: 'Meta / Facebook',
       keys: ['FACEBOOK_APP_ID or META_APP_ID', 'FACEBOOK_APP_SECRET or META_APP_SECRET', 'FACEBOOK_CALLBACK_URL or META_CALLBACK_URL', 'FACEBOOK_LOGIN_CONFIG_ID', 'FACEBOOK_APP_DOMAINS'],
@@ -123,10 +125,9 @@ async function password(req, res, next) {
     await user.setPassword(nextPassword);
     await user.save();
 
-    const currentRefreshToken = req.cookies.refreshToken;
-    const tokenQuery = { user: user._id, revokedAt: null };
-    if (currentRefreshToken) tokenQuery.tokenHash = { $ne: hashToken(currentRefreshToken) };
-    await RefreshToken.updateMany(tokenQuery, { revokedAt: new Date() });
+    await revokeAllSessions(user._id, 'password_changed');
+    const tokens = await issueAuthTokens(user, req);
+    setAuthCookies(res, tokens);
     await auditAccountAction(req, 'account.password_changed');
 
     return redirectNotice(res, 'Password updated. Other sessions were signed out.');
@@ -151,7 +152,7 @@ async function email(req, res, next) {
     const token = applyPendingEmailChange(user, nextEmail);
     await user.save();
     await auditAccountAction(req, 'account.email_change_requested', { pendingEmail: nextEmail });
-    return renderVerificationPrepared(res, user, token);
+    return await renderVerificationPrepared(res, user, token);
   } catch (error) {
     if (!error.status) return redirectError(res, error.message);
     return next(error);
@@ -168,7 +169,7 @@ async function resendVerification(req, res, next) {
     const token = createEmailVerificationToken(user);
     await user.save();
     await auditAccountAction(req, 'account.verification_resent', { targetEmail: user.pendingEmail || user.email });
-    return renderVerificationPrepared(res, user, token);
+    return await renderVerificationPrepared(res, user, token);
   } catch (error) {
     return next(error);
   }

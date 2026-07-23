@@ -1,216 +1,289 @@
-# Deployment Guide
+# AutoBrand AI Deployment Guide
 
-This guide covers the production deployment path for AutoBrand AI.
+This guide describes the runtime configuration required for publishing, scheduling, AI generation, OAuth callbacks, and public media delivery.
 
-## 1. Environment
+## 1. Required production environment
 
-On a platform with its own environment dashboard (Render, Railway, Heroku, Fly.io), enter these as environment variables there — do not upload a `.env` file. On a VPS, copy `.env.example` to `.env` on the server and fill it in. Either way, never commit a real `.env` and never reuse your local development secrets in production.
-
-Minimum production values:
+Set environment variables in the hosting dashboard. Do not commit a real `.env` file.
 
 ```env
 NODE_ENV=production
 PORT=3200
-APP_URL=https://your-domain.com
+APP_URL=https://your-domain.example
+PUBLIC_APP_URL=https://your-domain.example
+APP_TIME_ZONE=Africa/Kampala
 MONGO_URI=mongodb+srv://...
-JWT_ACCESS_SECRET=long-random-secret
-JWT_REFRESH_SECRET=long-random-secret
-COOKIE_SECRET=long-random-secret
-CSRF_SECRET=long-random-secret
-WEBHOOK_SECRET=long-random-secret
-SUPERADMIN_NAME=Super Admin
-SUPERADMIN_EMAIL=admin@your-domain.com
-SUPERADMIN_PASSWORD=long-initial-password
+
+JWT_ACCESS_SECRET=<unique-random-secret>
+JWT_REFRESH_SECRET=<different-random-secret>
+COOKIE_SECRET=<different-random-secret>
+CSRF_SECRET=<different-random-secret>
+WEBHOOK_SECRET=<different-random-secret>
+TOKEN_ENCRYPTION_KEY=<different-random-secret>
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=30d
+
+PAUSE_PUBLISHING=false
+AI_GENERATION_WORKER_MODE=web
+
+SMTP_HOST=...
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=...
+SMTP_PASS=...
+EMAIL_FROM=AutoBrand AI <no-reply@your-domain.example>
 ```
 
-Generate each random secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `WEBHOOK_SECRET` is required — the webhook endpoint rejects all requests without it (see `src/controllers/webhookController.js`).
-
-Use HTTPS for all OAuth redirect URLs in production.
-
-`ENABLE_SCHEDULED_PUBLISHING` defaults to `false` — scheduled posts stay in `scheduled` status and never auto-publish until this is set to `true`. Turn it on deliberately when you're ready for the scheduler to actually go live, not before.
-
-## 2. Install and verify
+Generate each secret separately:
 
 ```bash
-npm install --omit=dev
-npm run lint
-npm test
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-For platforms where production installs omit dev dependencies, run lint/test in CI before deploying the production image.
+`APP_URL` and `PUBLIC_APP_URL` must be the same public HTTPS origin unless a separate public media origin is intentionally used. Provider callbacks and provider-fetched media cannot use localhost.
 
-## 3. Seed production data
+## 2. Publishing and scheduling runtime
 
-```bash
-npm run seed
-```
+Publishing is a core responsibility of the web process:
 
-This seeds:
+- `PAUSE_PUBLISHING=false` keeps publishing active.
+- The MongoDB due-post publisher runs automatically after startup.
+- Publish-now posts, future schedules, approval releases, campaigns, retries, and recovered stale jobs use the same durable path.
+- A sweep runs every `DUE_POST_POLL_MS` milliseconds; the default is 10 seconds.
+- Redis is optional. When configured, BullMQ lowers dispatch latency, while MongoDB remains the correctness fallback.
 
-- subscription plans
-- admin roles and permissions
-- superadmin
-- platform content rules
-- default AI provider configs
+Do not use the obsolete `ENABLE_SCHEDULED_PUBLISHING` variable. Old `ENABLE_SCHEDULED_PUBLISHING=false` values are ignored so existing deployments do not silently strand posts. Use `PAUSE_PUBLISHING=true` only for an intentional emergency stop.
 
-You can also run the seeders individually:
-
-```bash
-npm run seed:plans
-npm run seed:permissions
-npm run seed:superadmin
-npm run seed:platform-rules
-npm run seed:ai-providers
-```
-
-## 4. Configure OAuth/social APIs
-
-For each platform, create an app in the provider dashboard and add the production callback URLs shown in `.env.example` and `INTEGRATION_SETUP.md`.
-
-Common examples:
-
-```text
-https://your-domain.com/auth/google/callback
-https://your-domain.com/dashboard/actions/social/facebook/callback
-Use the Facebook/Meta callback at https://your-domain.com/dashboard/actions/social/facebook/callback for Facebook, Instagram, and WhatsApp discovery
-https://your-domain.com/dashboard/actions/social/linkedin/callback
-https://your-domain.com/dashboard/actions/social/tiktok/callback
-https://your-domain.com/dashboard/actions/social/youtube/callback
-https://your-domain.com/dashboard/actions/social/google-business/callback
-https://your-domain.com/dashboard/actions/social/pinterest/callback
-https://your-domain.com/dashboard/actions/social/x/callback
-https://your-domain.com/dashboard/actions/social/threads/callback
-```
-
-Paste provider client IDs/secrets into `.env` only. Never commit `.env`.
-
-## 5. Configure billing
-
-Configure Pesapal before enabling paid self-service checkout:
+Optional tuning:
 
 ```env
-BILLING_PROVIDER=pesapal
-CHECKOUT_DEFAULT_PROVIDER=pesapal
+DUE_POST_POLL_MS=10000
+DUE_POST_CONCURRENCY=3
+POST_PUBLISH_CONCURRENCY=3
+PUBLISHING_STALE_MS=900000
+SOCIAL_PROVIDER_TIMEOUT_MS=300000
 ```
 
-Set the Pesapal consumer key/secret, IPN ID, IPN URL, and callback URL in `.env`. Do not enable paid plans until Pesapal sandbox/live verification succeeds.
+## 3. AI generation runtime
 
-## 6. Configure AI routing
-
-OpenAI is the only active provider — every plan tier's `aiConfig` defaults and falls back to `openai`/`local`. Set:
+For a normal one-service deployment:
 
 ```env
-AI_TEXT_PROVIDER=openai
-AI_IMAGE_PROVIDER=openai
-AI_VIDEO_PROVIDER=openai
-OPENAI_API_KEY=
+AI_GENERATION_WORKER_MODE=web
+AI_GENERATION_POLL_MS=2500
+AI_CONTENT_GENERATION_CONCURRENCY=2
+AI_VIDEO_GENERATION_CONCURRENCY=1
+AI_IMAGE_GENERATION_CONCURRENCY=3
 ```
 
-Other provider adapters (Gemini, DeepSeek, Groq, Anthropic, Mistral, Replicate, Stability, Fal) exist and are tested, but are inert until you add their env vars — don't set `AI_TEXT_PROVIDER`/etc. to anything but `openai` or `local` unless you've also added that provider's key.
+The web process then recovers and processes queued AI jobs automatically without blocking HTTP startup.
 
-Seed AI provider configs and plans after any change to `src/services/subscription/defaultPlans.js`:
+For a larger deployment with a separate AI worker:
 
-```bash
-npm run seed:ai-providers
-npm run seed:plans
+- Web service: `AI_GENERATION_WORKER_MODE=external`
+- Worker service command: `npm run worker:ai`
+
+Use `AI_GENERATION_WORKER_MODE=off` only for maintenance. The obsolete `ENABLE_AI_GENERATION_WORKER` and `RUN_AI_GENERATION_WORKER_IN_WEB` variables are no longer required; old false values cannot silently disable the default web worker.
+
+AI generation uses MongoDB and does not require Redis.
+
+## 4. Optional Redis publishing worker
+
+A separate publishing worker is optional and requires Redis:
+
+```env
+REDIS_URL=rediss://user:password@host:port
+QUEUE_PREFIX=autobrand
 ```
 
-Plan AI routing is stored in `SubscriptionPlan.aiConfig` and `PlanAiConfig`.
-
-## 7. Run the server
-
-```bash
-npm start
-```
-
-The server includes graceful shutdown handling for SIGINT and SIGTERM. It also runs an in-process scheduler that publishes due posts every 60 seconds — no extra process needed for scheduled publishing.
-
-Separately, retry jobs (queued from the admin console or the composer's retry action) go through a Redis-backed queue that needs its own running process:
+Worker command:
 
 ```bash
 npm run worker
 ```
 
-On Render/Railway/Fly.io this needs to be configured as a second service (a "background worker" / "worker" process type pointed at `npm run worker`), since those platforms don't read `Procfile` the way Heroku does — check your platform's docs for how it defines additional process types. On Heroku, the `Procfile`'s `worker:` line is picked up automatically; scale it with `heroku ps:scale worker=1`.
+Do not start the publishing worker without a working Redis configuration. The web process can publish correctly without it.
 
-Health check:
+## 5. Install, validate, and seed
+
+Use the lock file:
+
+```bash
+npm ci
+npm run lint
+npm test
+npm run security:static
+npm run seed
+```
+
+Run verification in CI before deploying when the production platform installs with development tooling omitted.
+
+## 6. Public media storage
+
+External social providers must be able to fetch images and videos over public HTTPS.
+
+Recommended production configuration:
+
+```env
+PUBLIC_APP_URL=https://your-domain.example
+GENERATED_MEDIA_STORAGE=gridfs
+GENERATED_MEDIA_GRIDFS_BUCKET=autobrand_generated_media
+# Optional external CDN instead of the built-in MongoDB-backed public media route:
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+```
+
+Generated files are stored in MongoDB GridFS by default and streamed from `/uploads/db/...`, including HTTP byte-range support for video. This prevents Media records from pointing at files deleted by a restart or redeploy. Cloudinary remains optional.
+
+Facebook Page image/video publishing can upload GridFS or local media bytes directly. Instagram image/carousel publishing requires Meta to fetch the asset from a public HTTPS URL, so `PUBLIC_APP_URL` must be a real public HTTPS origin (or Cloudinary must be configured). During local development, use a public HTTPS tunnel for Instagram. A localhost Instagram blocker never cancels an otherwise valid Facebook Page publish.
+
+## 7. OAuth and social apps
+
+Create provider applications and register the exact HTTPS callback URLs from `.env.example`. A callback mismatch, missing permission, expired token, unreviewed app permission, inaccessible media URL, or disconnected account will prevent a real provider publication.
+
+Current version defaults in this build:
+
+```env
+FACEBOOK_GRAPH_VERSION=v25.0
+LINKEDIN_VERSION=202607
+THREADS_GRAPH_VERSION=v1.0
+```
+
+Connect real accounts from the dashboard after deployment. Seeded mock accounts are excluded from production composers and cannot be published.
+
+See `INTEGRATION_SETUP.md` for each provider's variables and route.
+
+
+### Existing Meta connections after this repair
+
+Reconnect Facebook/Instagram once from **Dashboard → Social Accounts**. The repaired OAuth flow always requests Facebook Page and Instagram publishing scopes, checks `/me/permissions`, and marks a linked Instagram profile as connected only when Meta actually granted `instagram_basic` and `instagram_content_publish`. Older Instagram records without a verified grant are automatically changed to **Needs reconnect** instead of silently failing.
+
+After deploying, run:
+
+```bash
+npm run repair:publishing
+npm run diagnose:publishing -- --limit=10 --live
+```
+
+## 8. Start commands
+
+One-service deployment:
+
+```bash
+npm start
+```
+
+Optional process layout:
+
+```text
+web:      npm start
+worker:   npm run worker       # only with Redis
+aiworker: npm run worker:ai    # only when web uses AI_GENERATION_WORKER_MODE=external
+```
+
+Health endpoint:
 
 ```text
 GET /health
 ```
 
-## 7b. Heroku-specific steps
+Scheduled publishing requires an always-running service. Hosting plans that sleep or scale to zero can delay due posts until the process wakes.
+
+## 9. Production smoke test
+
+After deploying:
+
+1. Confirm `/health` returns success.
+2. Confirm startup logs say the due-post publisher is active.
+3. Confirm startup logs say the in-web AI worker is active, or confirm the external worker is running.
+4. Connect one real social account and verify its status is `connected`, not `mock` or `expired`.
+5. Create a text-only post and use Publish now.
+6. Confirm the post moves through `scheduled` → `publishing` → `published`, or stores a precise provider error.
+7. Schedule a post at least two minutes ahead and verify the UTC database time matches `APP_TIME_ZONE`.
+8. Test one public HTTPS image and one video.
+9. Restart the service and confirm queued/stale jobs recover.
+10. Test approval with “Publish after approval.”
+
+
+## 10. Publishing diagnosis and recovery
+
+Use the database-backed diagnostic before guessing at provider configuration:
 
 ```bash
-heroku create your-app-name
-heroku addons:create heroku-redis:mini
+npm run diagnose:publishing -- --limit=10
 ```
 
-The Redis add-on sets a `REDIS_URL` config var automatically — the app reads that directly (falls back to `REDIS_HOST`/`REDIS_PORT` for local dev, so nothing else to configure).
-
-Set every required var from `.env.example` (`APP_URL`, `MONGO_URI`, the 5 secrets, `SUPERADMIN_*`, `PESAPAL_*`, `OPENAI_API_KEY`, each social platform you're enabling):
+To also make non-mutating identity requests to the selected Facebook Pages and Instagram profiles:
 
 ```bash
-heroku config:set NODE_ENV=production APP_URL=https://your-app-name.herokuapp.com ...
+npm run diagnose:publishing -- --limit=10 --live
 ```
 
-Push and scale both process types (the `Procfile` already defines `web` and `worker`):
+The report never prints decrypted tokens. It shows the requested action, post status, selected accounts, token presence/expiry, media files that exist or are missing, per-platform readiness blockers, provider errors, and publish results.
+
+For a database created by an older build, run once after installing dependencies:
 
 ```bash
-git push heroku main
-heroku ps:scale web=1 worker=1
-heroku run npm run seed
+npm run repair:publishing
+npm start
 ```
 
-Eco/Basic dynos sleep after 30 minutes of inactivity — a sleeping web dyno means the in-process post scheduler isn't running either, so scheduled posts on a free/eco plan can be delayed until the next request wakes the dyno. Use a paid dyno tier (or an external uptime ping) if scheduled publishing needs to be reliably on time.
+The repair command requeues completed AI jobs whose generated files disappeared, retries generated-post publish handoffs, and runs the due-post publisher. The normal web service then regenerates requeued media automatically.
 
-## 8. Reverse proxy notes
+When updating an existing installation, preserve the real `.env`, database, and `public/uploads` directory. Do not replace those runtime data files with template values.
 
-Use a reverse proxy such as Nginx, Caddy, Render, Railway, Fly.io, Heroku, or a container platform.
+## 11. Troubleshooting
 
-Required proxy settings:
+A post remaining in `draft` usually means form validation or AI generation did not complete. A post remaining in `pending_approval` still needs approval. A post remaining in `scheduled` beyond the poll interval means the web process is not running, publishing is paused, or MongoDB is unavailable. A post in `failed` contains the provider-specific error in `errorMessage` and `publishResults`.
 
-- terminate HTTPS
-- forward `Host`
-- forward `X-Forwarded-Proto`
-- forward `X-Forwarded-For`
-- enforce upload size limits that match the app
+Expected live logs for Publish now are: `[composer] AI post queued`, `[generation] post handed to publishing`, `[publishing] due-post sweep found work`, `[publishing] provider request starting`, and then provider success/failure. If the first line says `requestedAction: save`, the browser submitted Save draft rather than Publish now. If Instagram reports a public HTTPS media blocker while Facebook is ready, Facebook is still attempted and recorded independently.
 
-## 9. Post-deployment smoke test
+Never replace a provider error with a mock success. Fix the account permission, token, callback, media URL, app review, or provider configuration named by the stored error.
 
-Check:
 
-1. `/health`
-2. public landing page
-3. `/pricing`
-4. signup with a selected plan
-5. Google OAuth signup/login
-6. dashboard load
-7. Brand Brain create/edit
-8. social account connect page
-9. billing page
-10. admin plans page
-11. dashboard 404 page
-12. public 404 page
+## Stable social-token encryption key
 
-## 10. Operational notes
+`TOKEN_ENCRYPTION_KEY` encrypts Facebook, Instagram and other provider tokens stored in MongoDB. It must remain unchanged across restarts and deployments. Changing or removing it makes existing tokens unreadable.
 
-Recommended next production steps:
+Generate it once and preserve it in `.env` or the hosting secrets dashboard:
 
-- Connect a real email provider (Postmark, SES, Resend, SendGrid) — password reset and email verification are in-app-only until this is wired up; see `src/controllers/authController.js`.
-- Run `npm audit fix` in a normal network environment before the first deploy (two known-vulnerable transitive dependencies as of this writing: `form-data`, `morgan`).
-- Add analytics collection workers and dashboards.
-- Add provider health checks and alerting.
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
 
-## Pesapal deployment checklist
+During a planned rotation, set the new key as `TOKEN_ENCRYPTION_KEY` and keep the old key temporarily in `TOKEN_ENCRYPTION_KEY_PREVIOUS`. In local development only, if the variable is blank, the app persists a key in `.autobrand-token-key`; keep that file when replacing source code. If the old key has already been lost, reconnect provider accounts once after configuring the stable key.
 
-1. Deploy the app on a public HTTPS domain.
-2. Set `APP_URL` and `PUBLIC_APP_URL` to that HTTPS domain.
-3. Register `https://your-domain.com/dashboard/billing/pesapal/ipn` in Pesapal and save the returned IPN ID.
-4. Set `BILLING_PROVIDER=pesapal` and `CHECKOUT_DEFAULT_PROVIDER=pesapal`.
-5. Add `PESAPAL_CONSUMER_KEY`, `PESAPAL_CONSUMER_SECRET`, and `PESAPAL_IPN_ID`.
-6. Set callback and cancellation URLs:
-   - `PESAPAL_CALLBACK_URL=https://your-domain.com/dashboard/billing/pesapal/callback`
-   - `PESAPAL_CANCELLATION_URL=https://your-domain.com/dashboard/billing?cancelled=1`
-7. Run a sandbox payment before switching to `PESAPAL_ENVIRONMENT=production`.
-8. Confirm that `/dashboard/billing/pesapal/ipn` returns a JSON response with status `200` after notification processing.
+## Connectivity resilience (v7)
+
+Redis is optional. For the standard one-service deployment, leave it disabled:
+
+```env
+REDIS_ENABLED=false
+REDIS_URL=
+REDIS_HOST=
+```
+
+A non-empty `REDIS_URL` enables Redis automatically. Host/port mode requires `REDIS_ENABLED=true` and a running Redis server.
+
+Before starting the app, verify MongoDB and optional Redis reachability:
+
+```bash
+npm run diagnose:connectivity
+```
+
+During an Atlas outage, `/health` remains `200`, while `/readyz` returns `503` until MongoDB reconnects. AI generation and publishing jobs are not marked failed or rescheduled merely because the database is offline. Workers back off and resume automatically.
+
+Useful tuning variables:
+
+```env
+MONGO_WORKER_BACKOFF_MIN_MS=5000
+MONGO_WORKER_BACKOFF_MAX_MS=120000
+MONGO_WORKER_LOG_INTERVAL_MS=60000
+MONGO_SERVER_SELECTION_TIMEOUT_MS=15000
+MONGO_CONNECT_TIMEOUT_MS=15000
+MONGO_SOCKET_TIMEOUT_MS=45000
+MONGO_IP_FAMILY=
+```
+
+For Windows `ENOTFOUND` failures, run `ipconfig /flushdns`, then `npm run diagnose:connectivity`. If needed, switch the computer DNS resolver, disable a VPN/proxy temporarily, copy a fresh Atlas Drivers URI, and confirm Atlas Network Access.

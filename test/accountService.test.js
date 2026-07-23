@@ -44,8 +44,9 @@ test('password reset and password validation enforce account security basics', (
   assert.equal(user.emailVerificationTokenHash, hashToken(verifyToken));
   assert.equal(user.passwordResetTokenHash, hashToken(resetToken));
   assert.equal(user.passwordResetExpiresAt.getTime(), now + 15 * 60 * 1000);
-  assert.equal(validatePassword('long-enough'), 'long-enough');
-  assert.throws(() => validatePassword('short'), /at least 8/);
+  assert.equal(validatePassword('long-enough1'), 'long-enough1');
+  assert.throws(() => validatePassword('short'), /at least 12/);
+  assert.throws(() => validatePassword('password1234'), /too common/);
 });
 
 test('delete account request stores reviewable account state without deleting the user', () => {

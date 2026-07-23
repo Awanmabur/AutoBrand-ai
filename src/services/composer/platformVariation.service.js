@@ -50,12 +50,10 @@ async function createPlatformVariation({ baseContent = {}, brand, platform, acco
 
 async function createPlatformVariations({ baseContent, brand, platforms = [], accounts = [] }) {
   const selected = platforms.length ? platforms : [...new Set(accounts.map((account) => account.platform).filter(Boolean))];
-  const variations = [];
-  for (const platform of selected) {
+  return Promise.all(selected.map(async (platform) => {
     const account = accounts.find((item) => item.platform === platform)?._id;
-    variations.push(await createPlatformVariation({ baseContent, brand, platform, account }));
-  }
-  return variations;
+    return createPlatformVariation({ baseContent, brand, platform, account });
+  }));
 }
 
 module.exports = { adaptCaption, createPlatformVariation, createPlatformVariations };

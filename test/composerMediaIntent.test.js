@@ -2,14 +2,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { resolveComposerMediaIntent, mediaIntentAllowsType } = require('../src/services/composer/mediaIntent.service');
 
-test('video post format forces video output and disables generated image intent', () => {
+test('video post format keeps image references available for image-to-video generation', () => {
   const body = resolveComposerMediaIntent({ type: 'video', mediaPreset: 'image-3', imageCount: 3, externalMediaType: 'image', generateImage: 'on' });
   assert.equal(body.type, 'video');
   assert.equal(body.mediaPreset, 'video');
   assert.equal(body.imageCount, 1);
   assert.equal(body.mediaFormat, 'short_video');
-  assert.equal(body.externalMediaType, 'video');
-  assert.deepEqual(body.__mediaIntent.allowedMediaTypes, ['video']);
+  assert.equal(body.externalMediaType, 'image');
+  assert.deepEqual(body.__mediaIntent.allowedMediaTypes, ['image', 'video']);
+  assert.equal(mediaIntentAllowsType(body.__mediaIntent, 'image'), true);
+  assert.equal(mediaIntentAllowsType(body.__mediaIntent, 'video'), true);
   assert.equal(body.__mediaIntent.shouldGenerateImage, false);
   assert.equal(body.__mediaIntent.shouldGenerateVideo, true);
 });

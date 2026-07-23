@@ -150,6 +150,14 @@ const dashboardNoticeMessages = {
   x_connected: { kind: 'success', title: 'X connected', message: 'X account connected successfully.' },
   youtube_connected: { kind: 'success', title: 'YouTube connected', message: 'YouTube account connected successfully.' },
   linkedin_connected: { kind: 'success', title: 'LinkedIn connected', message: 'LinkedIn account connected successfully.' },
+  video_generation_queued: { kind: 'success', title: 'Video generation started', message: 'The post was saved immediately. Its video will appear automatically in Content Library when rendering finishes.' },
+  post_generation_queued: { kind: 'success', title: 'Generation started', message: 'The post was saved immediately. AI content and media will update on the same card in Content Library.' },
+  post_generation_publish_queued: { kind: 'success', title: 'Generation and publishing started', message: 'AI is creating the post. As soon as its media is ready, the same post will be sent to every selected live social account.' },
+  post_generation_schedule_queued: { kind: 'success', title: 'Generation and scheduling started', message: 'AI is creating the post now. The completed post will keep the selected schedule time and publish through the durable scheduler.' },
+  publish_queued: { kind: 'success', title: 'Publishing started', message: 'The post is queued durably and will update automatically when each connected platform responds.' },
+  generation_then_schedule: { kind: 'success', title: 'Generation queued for schedule', message: 'AI generation will finish first, then the completed post will be scheduled at the selected time.' },
+  generation_then_publish: { kind: 'success', title: 'Generation queued for publishing', message: 'AI generation will finish first, then the completed post will publish automatically.' },
+  approval_required: { kind: 'warning', title: 'Approval required', message: 'The intended publish time was preserved. Approve the completed post before it can be published.' },
   tiktok_synced: { kind: 'success', title: 'TikTok synced', message: 'TikTok account details were refreshed.' },
   updated: { kind: 'success', title: 'Updated', message: 'The record was updated successfully.' },
   disconnected: { kind: 'warning', title: 'Disconnected', message: 'The account was disconnected from publishing.' },
@@ -654,6 +662,18 @@ navLinks.forEach((link) => {
 });
 navLinks = navLinks.filter((link) => link.isConnected);
 let currentPage = 'overview';
+const contentLibraryState = {
+  page: 1,
+  limit: 48,
+  nextCursor: '',
+  hasMore: false,
+  loading: false,
+  pendingTimer: null,
+  type: '',
+  status: ''
+};
+let calendarPublishTimer = null;
+let calendarPublishAttempts = 0;
 
 function normalizePageId(pageId) {
   const resolved = aliasPageId(pageId);
@@ -886,13 +906,202 @@ function renderMediaDashboard(page = {}) {
 }
 
 function renderContentLibraryDashboard(page = {}) {
-  return renderMediaLibraryShell(page, {
+  const cards = Array.isArray(page.cards) ? page.cards : [];
+  const grid = mediaLibraryGrid(cards, 'No saved posts yet');
+  const shell = renderMediaLibraryShell(page, {
     kicker: 'content library',
     title: 'Content Library',
-    description: 'Saved posts use the same Media & Images card layout, spacing, thumbnails and actions.',
+    description: 'Every saved post remains available. AI text, image, carousel, and video jobs update on the same cards while generation continues in the background.',
     emptyMessage: 'No saved posts yet',
     action: `<a class="btn btn-primary" href="/dashboard/quick-create">${icon('plus')}New post</a>`
   });
+  const liveControls = `<div class="media-filter-bar">
+      <select data-content-library-type aria-label="Filter posts by type">
+        <option value="">All post types</option>
+        <option value="video">Videos</option>
+        <option value="carousel">Carousels</option>
+        <option value="image">Images</option>
+        <option value="text">Text posts</option>
+      </select>
+      <select data-content-library-status aria-label="Filter posts by status">
+        <option value="">All statuses</option>
+        <option value="generating">Generating</option>
+        <option value="generation_failed">Generation failed</option>
+        <option value="draft">Draft</option>
+        <option value="scheduled">Scheduled</option>
+        <option value="published">Published</option>
+        <option value="failed">Publish failed</option>
+      </select>
+      <span class="badge" data-content-library-live-status>Loading live posts…</span>
+    </div>
+    <div data-content-library-grid>${grid}</div>
+    <div class="row-actions" data-content-library-pagination>
+      <button class="btn btn-ghost" type="button" data-content-library-more hidden>Load more posts</button>
+    </div>`;
+  return shell.replace(grid, liveControls);
+}
+
+function stopContentLibraryPolling() {
+  if (contentLibraryState.pendingTimer) clearTimeout(contentLibraryState.pendingTimer);
+  contentLibraryState.pendingTimer = null;
+}
+
+function stopCalendarPublishPolling() {
+  if (calendarPublishTimer) clearTimeout(calendarPublishTimer);
+  calendarPublishTimer = null;
+  calendarPublishAttempts = 0;
+}
+
+function dueCalendarPostIds() {
+  const dueCutoff = Date.now() + 60 * 1000;
+  return new Set((dashboardCalendar.posts || [])
+    .filter((post) => {
+      if (post.status === 'publishing') return true;
+      if (post.status !== 'scheduled' || !post.scheduledAt) return false;
+      const scheduledAt = new Date(post.scheduledAt).getTime();
+      return Number.isFinite(scheduledAt) && scheduledAt <= dueCutoff;
+    })
+    .map((post) => String(post.id)));
+}
+
+async function pollCalendarPublishState() {
+  if (currentPage !== 'calendar') return stopCalendarPublishPolling();
+  const pendingIds = dueCalendarPostIds();
+  if (!pendingIds.size || calendarPublishAttempts >= 24) return stopCalendarPublishPolling();
+  calendarPublishAttempts += 1;
+
+  try {
+    const response = await fetch('/dashboard/api/posts?limit=48', {
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin'
+    });
+    if (!response.ok) throw new Error('Calendar status refresh failed.');
+    const payload = await response.json();
+    const currentCards = new Map((payload.cards || []).map((card) => [String(card.id), String(card.status || '').toLowerCase()]));
+    const resolved = [...pendingIds].some((id) => currentCards.has(id) && !['scheduled', 'publishing'].includes(currentCards.get(id)));
+    if (resolved) {
+      location.reload();
+      return;
+    }
+  } catch (error) {
+    // Keep the existing calendar usable and retry quietly.
+  }
+
+  calendarPublishTimer = setTimeout(pollCalendarPublishState, 5000);
+}
+
+function startCalendarPublishPolling() {
+  stopCalendarPublishPolling();
+  if (dueCalendarPostIds().size) calendarPublishTimer = setTimeout(pollCalendarPublishState, 2500);
+}
+
+function contentLibraryApiUrl({ append = false } = {}) {
+  const query = new URLSearchParams({ limit: String(contentLibraryState.limit) });
+  if (append && contentLibraryState.nextCursor) query.set('cursor', contentLibraryState.nextCursor);
+  if (contentLibraryState.type) query.set('type', contentLibraryState.type);
+  if (contentLibraryState.status) query.set('status', contentLibraryState.status);
+  return `/dashboard/api/posts?${query.toString()}`;
+}
+
+function mergeContentLibraryCards(existing = [], incoming = []) {
+  const records = [];
+  const seen = new Set();
+  [...existing, ...incoming].forEach((card) => {
+    const key = String(card?.id || `${card?.title || ''}:${card?.description || ''}`);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    records.push(card);
+  });
+  return records;
+}
+
+async function loadContentLibraryPosts({ append = false, silent = false } = {}) {
+  if (contentLibraryState.loading || currentPage !== 'content-library') return;
+  contentLibraryState.loading = true;
+  const statusNode = pageRoot.querySelector('[data-content-library-live-status]');
+  const moreButton = pageRoot.querySelector('[data-content-library-more]');
+  if (!silent && statusNode) statusNode.textContent = 'Refreshing posts…';
+  if (moreButton) moreButton.disabled = true;
+
+  try {
+    const response = await fetch(contentLibraryApiUrl({ append }), {
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin'
+    });
+    if (!response.ok) throw new Error(`Content Library refresh failed (${response.status}).`);
+    const payload = await response.json();
+    if (!payload.ok) throw new Error(payload.message || 'Content Library refresh failed.');
+
+    const page = pages['content-library'];
+    const incomingCards = payload.cards || [];
+    page.cards = append
+      ? mergeContentLibraryCards(page.cards || [], incomingCards)
+      : silent
+        ? mergeContentLibraryCards(incomingCards, page.cards || [])
+        : incomingCards;
+    if (append) contentLibraryState.page += 1;
+    else if (!silent) contentLibraryState.page = 1;
+    if (!silent || append) {
+      contentLibraryState.nextCursor = payload.nextCursor || '';
+      contentLibraryState.hasMore = Boolean(payload.hasMore);
+    }
+
+    const grid = pageRoot.querySelector('[data-content-library-grid]');
+    if (grid) grid.innerHTML = mediaLibraryGrid(page.cards, 'No saved posts match these filters');
+    if (moreButton) {
+      moreButton.hidden = !contentLibraryState.hasMore;
+      moreButton.disabled = false;
+    }
+    if (statusNode) {
+      const pending = Number(payload.pendingCount || 0);
+      statusNode.textContent = pending
+        ? `${pending} generation ${pending === 1 ? 'job is' : 'jobs are'} running · ${payload.total} posts`
+        : `${payload.total} posts · Live`;
+    }
+
+    bindActions();
+    if (searchInput?.value) applyDashboardSearch(searchInput.value);
+    stopContentLibraryPolling();
+    if (Number(payload.pendingCount || 0) > 0 && currentPage === 'content-library') {
+      contentLibraryState.pendingTimer = setTimeout(() => {
+        loadContentLibraryPosts({ append: false, silent: true });
+      }, 5000);
+    }
+  } catch (error) {
+    if (statusNode) statusNode.textContent = error.message || 'Live refresh unavailable';
+    if (moreButton) moreButton.disabled = false;
+  } finally {
+    contentLibraryState.loading = false;
+  }
+}
+
+function initLiveContentLibrary() {
+  stopContentLibraryPolling();
+  contentLibraryState.page = 1;
+  contentLibraryState.nextCursor = '';
+  contentLibraryState.hasMore = false;
+  contentLibraryState.type = '';
+  contentLibraryState.status = '';
+  const typeFilter = pageRoot.querySelector('[data-content-library-type]');
+  const statusFilter = pageRoot.querySelector('[data-content-library-status]');
+  const moreButton = pageRoot.querySelector('[data-content-library-more]');
+
+  typeFilter?.addEventListener('change', () => {
+    contentLibraryState.type = typeFilter.value;
+    contentLibraryState.page = 1;
+    contentLibraryState.nextCursor = '';
+    loadContentLibraryPosts();
+  });
+  statusFilter?.addEventListener('change', () => {
+    contentLibraryState.status = statusFilter.value;
+    contentLibraryState.page = 1;
+    contentLibraryState.nextCursor = '';
+    loadContentLibraryPosts();
+  });
+  moreButton?.addEventListener('click', () => {
+    loadContentLibraryPosts({ append: true });
+  });
+  loadContentLibraryPosts();
 }
 
 function renderApprovalsHandoffDashboard(page = {}) {
@@ -1365,10 +1574,11 @@ function socialAccountRecord(account = {}) {
     editMethod: 'post',
     actions: account.id ? [
       { label: 'Reconnect', action: `/dashboard/actions/social/${account.id}/reconnect`, method: 'post', kind: 'reconnect' },
-      { label: 'Disconnect', action: `/dashboard/actions/social/${account.id}/disconnect`, method: 'post', kind: 'disconnect', destructive: true }
+      { label: 'Disconnect', action: `/dashboard/actions/social/${account.id}/disconnect`, method: 'post', kind: 'disconnect', destructive: true },
+      { label: 'Remove permanently', action: `/dashboard/actions/social/${account.id}/remove`, method: 'post', kind: 'remove', destructive: true }
     ] : [],
-    deleteAction: account.id ? `/dashboard/actions/social/${account.id}/disconnect` : '',
-    deleteLabel: 'Disconnect',
+    deleteAction: account.id ? `/dashboard/actions/social/${account.id}/remove` : '',
+    deleteLabel: 'Remove permanently',
     deleteMethod: 'post',
     editFields: [
       { name: 'accountName', label: 'Account name', type: 'text', value: account.accountName || '', required: true },
@@ -1450,20 +1660,21 @@ function openSocialPlatformModal(platformKey) {
   const platform = socialPlatforms.find((item) => item.key === platformKey);
   if (!platform) return;
   const accounts = dashboardSocialAccounts.filter((account) => account.platform === platform.key);
+  const connectedAccounts = accounts.filter((account) => account.status === 'connected');
   const connectUrl = socialConnectUrl(platform);
   const isOAuth = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'google_business', 'pinterest', 'x', 'threads'].includes(platform.key);
   const record = normalizeRecordCard({
     kind: 'social-platform',
     title: platform.name,
     description: platform.description,
-    tag: accounts.length ? `${accounts.length} connected` : 'not connected',
+    tag: connectedAccounts.length ? `${connectedAccounts.length} connected` : 'not connected',
     href: '/dashboard/social',
     actionHref: isOAuth ? connectUrl : '',
-    actionLabel: accounts.length ? 'Add another' : platform.primaryAction,
+    actionLabel: connectedAccounts.length ? 'Add another' : platform.primaryAction,
     details: {
       Platform: platform.name,
       Type: platform.kind === 'oauth' ? 'OAuth' : 'API',
-      Status: accounts.length ? `${accounts.length} connected` : 'Not connected',
+      Status: connectedAccounts.length ? `${connectedAccounts.length} connected` : 'Not connected',
       Description: platform.description,
       'Connected accounts': accounts.map((account) => `${account.accountName || account.platform} · ${account.status}`)
     }
@@ -1474,8 +1685,8 @@ function openSocialPlatformModal(platformKey) {
   modalTitle.textContent = platform.name;
   modalBody.innerHTML = cardDetailHtml(record);
   modalActions.innerHTML = isOAuth
-    ? `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><a class="btn btn-primary" href="${escapeHtml(connectUrl)}">${escapeHtml(accounts.length ? 'Add another' : platform.primaryAction)}</a>`
-    : `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><button class="btn btn-primary" type="button" data-social-connect="${escapeHtml(platform.key)}">${escapeHtml(accounts.length ? 'Add another' : platform.primaryAction)}</button>`;
+    ? `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><a class="btn btn-primary" href="${escapeHtml(connectUrl)}">${escapeHtml(connectedAccounts.length ? 'Add another' : platform.primaryAction)}</a>`
+    : `<button class="btn btn-ghost" type="button" data-close-modal>Close</button><button class="btn btn-primary" type="button" data-social-connect="${escapeHtml(platform.key)}">${escapeHtml(connectedAccounts.length ? 'Add another' : platform.primaryAction)}</button>`;
   bindActions();
 }
 
@@ -1734,6 +1945,122 @@ function fullComposerHtml() {
   return wrapper.innerHTML;
 }
 
+function initSmartDestinationForm(form) {
+  if (!form || form.dataset.smartDestinationReady === 'true') return;
+  form.dataset.smartDestinationReady = 'true';
+  const brandSelect = form.querySelector('select[name="brand"]');
+  const platformLabels = Array.from(form.querySelectorAll('[data-platform-option], .platform-option'));
+  const platformInputs = platformLabels
+    .map((label) => label.querySelector('input[name="platforms"]'))
+    .filter(Boolean);
+  const platformSelects = Array.from(form.querySelectorAll('select[data-smart-platform-select]'));
+  const accountOptions = Array.from(form.querySelectorAll('.target-account-option'));
+
+  function brandAllowed(csv, brandId) {
+    const allowed = String(csv || '').split(',').map((item) => item.trim()).filter(Boolean);
+    return !brandId || !allowed.length || allowed.includes(String(brandId));
+  }
+
+  function selectedPlatforms() {
+    const checked = platformInputs.filter((input) => input.checked && !input.disabled).map((input) => input.value);
+    const selected = platformSelects.map((select) => select.value).filter(Boolean);
+    return [...new Set([...checked, ...selected])];
+  }
+
+  function ensurePlatformSelection() {
+    if (platformInputs.some((input) => input.checked && !input.disabled)) return;
+    const first = platformInputs.find((input) => !input.disabled && !input.closest('[hidden]'));
+    if (first) first.checked = true;
+  }
+
+  function sync() {
+    const brandId = brandSelect?.value || '';
+    platformLabels.forEach((label) => {
+      const input = label.querySelector('input[name="platforms"]');
+      if (!input) return;
+      const allowed = brandAllowed(label.dataset.brands, brandId);
+      label.hidden = !allowed;
+      label.style.display = allowed ? '' : 'none';
+      input.disabled = !allowed;
+      if (!allowed) input.checked = false;
+    });
+
+    platformSelects.forEach((select) => {
+      const options = Array.from(select.options);
+      options.forEach((option) => {
+        const allowed = brandAllowed(option.dataset.brands, brandId);
+        option.disabled = !allowed;
+        option.hidden = !allowed;
+      });
+      if (!select.value || select.selectedOptions[0]?.disabled) {
+        const first = options.find((option) => !option.disabled);
+        select.value = first?.value || '';
+      }
+      select.disabled = !options.some((option) => !option.disabled);
+    });
+
+    ensurePlatformSelection();
+    const selected = selectedPlatforms();
+    const visibleByPlatform = new Map();
+    accountOptions.forEach((label) => {
+      const input = label.querySelector('input[name="targetAccounts"]');
+      const brandMatches = !brandId || String(label.dataset.brand || '') === String(brandId);
+      const platformMatches = !selected.length || selected.includes(label.dataset.platform);
+      const visible = brandMatches && platformMatches;
+      label.hidden = !visible;
+      label.style.display = visible ? '' : 'none';
+      if (input) {
+        input.disabled = !visible;
+        if (!visible) input.checked = false;
+      }
+      if (visible && input) {
+        const group = visibleByPlatform.get(label.dataset.platform) || [];
+        group.push(input);
+        visibleByPlatform.set(label.dataset.platform, group);
+      }
+    });
+
+    selected.forEach((platform) => {
+      const candidates = visibleByPlatform.get(platform) || [];
+      if (candidates.length && !candidates.some((input) => input.checked)) candidates[0].checked = true;
+    });
+    const selectedAccountCount = accountOptions.filter((label) => {
+      const input = label.querySelector('input[name="targetAccounts"]');
+      return input && input.checked && !input.disabled;
+    }).length;
+
+    form.querySelectorAll('button[name="action"][value="publish"], button[name="action"][value="schedule"]').forEach((button) => {
+      button.disabled = selectedAccountCount === 0;
+      button.title = selectedAccountCount === 0 ? 'Connect and select a live destination for this brand first.' : '';
+    });
+    const platformRequiredButtons = form.querySelectorAll('button[type="submit"]:not([name="action"][value="save"]):not([name="action"][value="regenerate"])');
+    if (platformInputs.length || platformSelects.length) {
+      platformRequiredButtons.forEach((button) => {
+        if (!button.name || !['publish', 'schedule'].includes(button.value)) {
+          button.disabled = selectedPlatforms().length === 0;
+        }
+      });
+    }
+  }
+
+  brandSelect?.addEventListener('change', sync);
+  platformInputs.forEach((input) => input.addEventListener('change', sync));
+  platformSelects.forEach((select) => select.addEventListener('change', sync));
+  accountOptions.forEach((label) => label.querySelector('input[name="targetAccounts"]')?.addEventListener('change', (event) => {
+    if (event.target.checked) {
+      const platform = label.dataset.platform;
+      const matching = platformInputs.find((input) => input.value === platform && !input.disabled);
+      if (matching) matching.checked = true;
+    }
+    sync();
+  }));
+  sync();
+}
+
+function initSmartDestinationForms(root = document) {
+  Array.from((root || document).querySelectorAll('form.smart-destination-form, form.composer-form')).forEach(initSmartDestinationForm);
+}
+
 function initSmartComposer(root = document) {
   const scope = root || document;
   const brandSelect = scope.querySelector('select[name="brand"]');
@@ -1771,7 +2098,13 @@ function initSmartComposer(root = document) {
     });
     accountOptions.forEach((item) => {
       const platformAllowed = !selectedPlatforms.length || selectedPlatforms.includes(item.dataset.platform);
-      item.style.display = (!brand || item.dataset.brand === brand) && platformAllowed ? '' : 'none';
+      const visible = (!brand || item.dataset.brand === brand) && platformAllowed;
+      item.style.display = visible ? '' : 'none';
+      const input = item.querySelector('input[name="targetAccounts"]');
+      if (input) {
+        input.disabled = !visible;
+        if (!visible) input.checked = false;
+      }
     });
     mediaOptions.forEach((item) => {
       // Media can be reused across a user's brands for reposting already generated assets.
@@ -1908,6 +2241,15 @@ function initSmartComposer(root = document) {
     renderPreview();
   });
   platformOptions.forEach((input) => input.addEventListener('change', () => {
+    syncBrandFilters();
+    renderPreview();
+  }));
+  accountOptions.forEach((item) => item.querySelector('input[name="targetAccounts"]')?.addEventListener('change', (event) => {
+    if (event.target.checked) {
+      const platform = item.dataset.platform;
+      const matchingPlatform = platformOptions.find((input) => input.value === platform);
+      if (matchingPlatform && !matchingPlatform.checked) matchingPlatform.checked = true;
+    }
     syncBrandFilters();
     renderPreview();
   }));
@@ -2288,6 +2630,11 @@ function renderPage(pageId, options = {}) {
   }
   hideDrawer();
   bindActions();
+  if (safePageId === 'content-library') initLiveContentLibrary();
+  else stopContentLibraryPolling();
+  if (safePageId === 'calendar') startCalendarPublishPolling();
+  else stopCalendarPublishPolling();
+  initSmartDestinationForms(pageRoot);
   if (safePageId === 'quick-create') initSmartComposer(pageRoot);
   if (searchInput?.value) applyDashboardSearch(searchInput.value);
   const createdBrand = new URLSearchParams(location.search).get('brand_created');
@@ -2648,6 +2995,8 @@ function calendarPostPreviewHtml(post = {}, card = calendarPostToCard(post)) {
       ${detailGroup('Publishing details', [
         detailRow('Targets', escapeHtml(accountList.join(', ') || 'No target accounts saved')),
         detailRow('Results', escapeHtml(resultList.join(' | ') || 'No publish results yet')),
+        detailRow('Last error', escapeHtml(post.errorMessage || post.generationActionError || 'No publishing error saved')),
+        detailRow('Generation', escapeHtml([post.generationStatus, post.generationActionStatus].filter(Boolean).join(' / ') || 'Not generated by AI')),
         detailRow('Media files', escapeHtml(mediaItems.map((item) => [item.name, item.type].filter(Boolean).join(' - ')).join(', ') || 'No attached files'))
       ])}
     </div>`;

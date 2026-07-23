@@ -1,6 +1,10 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
+const fs = require('fs').promises;
+const path = require('path');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
+const { downloadRemoteBuffer } = require('./remoteFetch.service');
 
 class XProviderError extends Error {
   constructor(message, response) {
@@ -13,13 +17,18 @@ class XProviderError extends Error {
 const AUTH_BASE = 'https://x.com/i/oauth2/authorize';
 const TOKEN_URL = 'https://api.x.com/2/oauth2/token';
 const API_BASE = 'https://api.x.com/2';
-const DEFAULT_SCOPES = ['tweet.read', 'tweet.write', 'users.read', 'offline.access'];
+const DEFAULT_SCOPES = ['tweet.read', 'tweet.write', 'users.read', 'offline.access', 'media.write'];
 
 function configuredScopes() {
-  return String(env.xScopes || DEFAULT_SCOPES.join(' '))
+  const scopes = String(env.xScopes || DEFAULT_SCOPES.join(' '))
     .split(/[\s,]+/)
     .map((scope) => scope.trim())
     .filter(Boolean);
+  // Keep older deployments functional after media publishing was added.
+  for (const required of DEFAULT_SCOPES) {
+    if (!scopes.includes(required)) scopes.push(required);
+  }
+  return scopes;
 }
 
 function isPlaceholder(value) {
@@ -100,7 +109,7 @@ async function parseXResponse(response, fallback) {
 
 async function exchangeToken(body) {
   if (!env.xClientSecret && env.xClientId && !body.has('client_id')) body.set('client_id', env.xClientId);
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
     headers: tokenHeaders(),
     body
@@ -142,7 +151,7 @@ async function accessTokenFor(account) {
 
 async function xJson(pathname, { accessToken, method = 'GET', body } = {}) {
   const url = /^https?:\/\//i.test(pathname) ? pathname : `${API_BASE}${pathname}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -151,6 +160,137 @@ async function xJson(pathname, { accessToken, method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined
   });
   return parseXResponse(response, `X / Twitter API error: ${response.status}`);
+}
+
+
+function mediaForPost(post = {}) {
+  return (post.media || []).filter((media) => media && ['image', 'video'].includes(String(media.fileType || '').toLowerCase()));
+}
+
+function localMediaPath(media = {}) {
+  const value = String(media.fileUrl || '').split('?')[0];
+  if (!value || /^https?:\/\//i.test(value)) return '';
+  const relative = value.replace(/^public[\\/]/, '').replace(/^[/\\]+/, '');
+  const publicRoot = path.resolve(__dirname, '..', '..', 'public');
+  const absolute = path.resolve(publicRoot, relative);
+  if (!absolute.startsWith(`${publicRoot}${path.sep}`)) return '';
+  return absolute;
+}
+
+async function mediaBinary(media, downloadRemote = downloadRemoteBuffer) {
+  if (/^https?:\/\//i.test(String(media.fileUrl || ''))) {
+    return downloadRemote(media.fileUrl, {
+      allowedMimePrefixes: ['image/', 'video/'],
+      maxBytes: 512 * 1024 * 1024
+    });
+  }
+  const filePath = localMediaPath(media);
+  if (!filePath) throw new XProviderError('X media file path is invalid. Upload the asset again.');
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat) throw new XProviderError('X media file was not found. Upload or regenerate the asset.');
+  return {
+    buffer: await fs.readFile(filePath),
+    size: stat.size,
+    mimeType: media.mimeType || (String(media.fileType) === 'video' ? 'video/mp4' : 'image/jpeg')
+  };
+}
+
+async function xForm(pathname, { accessToken, method = 'POST', form } = {}) {
+  const url = /^https?:\/\//i.test(pathname) ? pathname : `${API_BASE}${pathname}`;
+  const response = await fetchWithTimeout(url, {
+    method,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form
+  });
+  return parseXResponse(response, `X / Twitter media API error: ${response.status}`);
+}
+
+async function uploadSimpleMedia({ accessToken, media, downloadRemote = downloadRemoteBuffer }) {
+  const binary = await mediaBinary(media, downloadRemote);
+  const mimeType = String(binary.mimeType || media.mimeType || 'image/jpeg').toLowerCase();
+  const mediaCategory = mimeType === 'image/gif' ? 'tweet_gif' : 'tweet_image';
+  const data = await xJson('/media/upload', {
+    accessToken,
+    method: 'POST',
+    body: {
+      media: binary.buffer.toString('base64'),
+      media_category: mediaCategory,
+      media_type: mimeType,
+      shared: false
+    }
+  });
+  const mediaId = data.data?.id || data.data?.media_id_string || data.media_id_string;
+  if (!mediaId) throw new XProviderError('X did not return a media ID after image upload.', data);
+  return String(mediaId);
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(milliseconds || 0))));
+}
+
+async function waitForMediaProcessing({ accessToken, mediaId, processingInfo }) {
+  let info = processingInfo || {};
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const state = String(info.state || '').toLowerCase();
+    if (!state || state === 'succeeded') return;
+    if (state === 'failed') {
+      const message = info.error?.message || info.error?.name || 'X video processing failed.';
+      throw new XProviderError(message, info);
+    }
+    await sleep(Math.min(15, Math.max(1, Number(info.check_after_secs || 2))) * 1000);
+    const status = await xJson(`/media/upload?command=STATUS&media_id=${encodeURIComponent(mediaId)}`, { accessToken });
+    info = status.data?.processing_info || {};
+  }
+  throw new XProviderError('X video processing did not finish before the publishing timeout.');
+}
+
+async function uploadChunkedVideo({ accessToken, media, downloadRemote = downloadRemoteBuffer }) {
+  const binary = await mediaBinary(media, downloadRemote);
+  const mimeType = String(binary.mimeType || media.mimeType || 'video/mp4').toLowerCase();
+  if (!mimeType.startsWith('video/')) throw new XProviderError('X video upload received a non-video asset.');
+
+  const initialized = await xJson('/media/upload/initialize', {
+    accessToken,
+    method: 'POST',
+    body: {
+      media_type: mimeType,
+      total_bytes: Number(binary.size || binary.buffer.length),
+      media_category: 'tweet_video',
+      shared: false
+    }
+  });
+  const mediaId = initialized.data?.id || initialized.data?.media_id_string || initialized.media_id_string;
+  if (!mediaId) throw new XProviderError('X did not return a media ID for the video upload.', initialized);
+
+  const chunkBytes = 4 * 1024 * 1024;
+  for (let offset = 0, segmentIndex = 0; offset < binary.buffer.length; offset += chunkBytes, segmentIndex += 1) {
+    const chunk = binary.buffer.subarray(offset, Math.min(offset + chunkBytes, binary.buffer.length));
+    const appendForm = new FormData();
+    appendForm.set('segment_index', String(segmentIndex));
+    appendForm.set('media', new Blob([chunk], { type: mimeType }), media.fileName || `video-${segmentIndex}.mp4`);
+    await xForm(`/media/upload/${encodeURIComponent(mediaId)}/append`, { accessToken, form: appendForm });
+  }
+
+  const finalized = await xJson(`/media/upload/${encodeURIComponent(mediaId)}/finalize`, {
+    accessToken,
+    method: 'POST'
+  });
+  await waitForMediaProcessing({
+    accessToken,
+    mediaId: String(mediaId),
+    processingInfo: finalized.data?.processing_info
+  });
+  return String(mediaId);
+}
+
+async function uploadPostMedia({ post, accessToken, downloadRemote = downloadRemoteBuffer }) {
+  const media = mediaForPost(post);
+  const videos = media.filter((item) => String(item.fileType).toLowerCase() === 'video');
+  if (videos.length) return [await uploadChunkedVideo({ accessToken, media: videos[0], downloadRemote })];
+  const images = media.filter((item) => String(item.fileType).toLowerCase() === 'image').slice(0, 4);
+  const mediaIds = [];
+  for (const image of images) mediaIds.push(await uploadSimpleMedia({ accessToken, media: image, downloadRemote }));
+  return mediaIds;
 }
 
 async function exchangeCodeForXAccount({ code, state }) {
@@ -195,16 +335,25 @@ function postText(post) {
   return combined.slice(0, 280) || 'AutoBrand update';
 }
 
-async function publishXPost({ post, account }) {
+async function publishXPost({ post, account, downloadRemote = downloadRemoteBuffer }) {
   const accessToken = await accessTokenFor(account);
   if (!accessToken) throw new XProviderError('X / Twitter access token is missing. Reconnect the account.');
+
+  const attachedMedia = mediaForPost(post);
+  if (attachedMedia.length && Array.isArray(account.permissions) && account.permissions.length && !account.permissions.includes('media.write')) {
+    throw new XProviderError('Reconnect the X account to grant the media.write permission required for image and video posts.');
+  }
+  const mediaIds = await uploadPostMedia({ post, accessToken, downloadRemote });
+  const body = { text: postText(post) };
+  if (mediaIds.length) body.media = { media_ids: mediaIds };
 
   const data = await xJson('/tweets', {
     accessToken,
     method: 'POST',
-    body: { text: postText(post) }
+    body
   });
-  return { id: data.data?.id || `x_${post._id}` };
+  const id = data.data?.id || `x_${post._id}`;
+  return { id, platformPostUrl: data.data?.id ? `https://x.com/i/web/status/${data.data.id}` : '' };
 }
 
 async function syncXAccount({ account }) {
@@ -232,5 +381,5 @@ module.exports = {
   publishXPost,
   syncXAccount,
   XProviderError,
-  __private: { signState, verifyState, postText }
+  __private: { signState, verifyState, postText, localMediaPath, mediaBinary, uploadPostMedia }
 };

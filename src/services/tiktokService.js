@@ -1,8 +1,10 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
+const { downloadRemoteBuffer } = require('./remoteFetch.service');
 
 class TikTokProviderError extends Error {
   constructor(message) {
@@ -59,7 +61,7 @@ function verifyState(state) {
   const [body, sig] = String(state || '').split('.');
   if (!body || !sig) throw new TikTokProviderError('TikTok OAuth state is missing or invalid. Start the connection again.');
   const expected = crypto.createHmac('sha256', env.cookieSecret || env.jwtRefreshSecret).update(body).digest('base64url');
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+  if (Buffer.byteLength(sig) !== Buffer.byteLength(expected) || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
     throw new TikTokProviderError('TikTok OAuth state is invalid. Start the connection again.');
   }
   return JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
@@ -91,7 +93,7 @@ function buildTikTokAuthUrl({ brandId, userId }) {
 }
 
 async function tikTokJson(pathname, { method = 'GET', accessToken, body } = {}) {
-  const response = await fetch(`${API_BASE}${pathname}`, {
+  const response = await fetchWithTimeout(`${API_BASE}${pathname}`, {
     method,
     headers: {
       Authorization: accessToken ? `Bearer ${accessToken}` : undefined,
@@ -124,7 +126,7 @@ async function exchangeCodeForTikTokAccount({ code, state }) {
     code_verifier: parsedState.codeVerifier
   });
 
-  const response = await fetch(`${API_BASE}/oauth/token/`, {
+  const response = await fetchWithTimeout(`${API_BASE}/oauth/token/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
@@ -159,17 +161,47 @@ async function exchangeCodeForTikTokAccount({ code, state }) {
   };
 }
 
-function publicVideoUrl(post) {
+function videoMedia(post) {
   const media = Array.isArray(post.media) ? post.media : [];
-  const video = media.find((item) => item.fileType === 'video' && /^https?:\/\//i.test(item.fileUrl || ''));
-  return video?.fileUrl || '';
+  return media.find((item) => item.fileType === 'video' && item.fileUrl) || null;
 }
 
-function localVideoPath(post) {
-  const media = Array.isArray(post.media) ? post.media : [];
-  const video = media.find((item) => item.fileType === 'video' && item.fileUrl && !/^https?:\/\//i.test(item.fileUrl));
-  if (!video) return '';
-  return path.join(__dirname, '..', '..', 'public', String(video.fileUrl).replace(/^\/+/, ''));
+function localVideoPathFromMedia(media) {
+  if (!media?.fileUrl || /^https?:\/\//i.test(media.fileUrl)) return '';
+  const publicRoot = path.resolve(__dirname, '..', '..', 'public');
+  const absolute = path.resolve(publicRoot, String(media.fileUrl).replace(/^\/+/, ''));
+  if (absolute !== publicRoot && !absolute.startsWith(`${publicRoot}${path.sep}`)) return '';
+  return absolute;
+}
+
+async function videoUploadSource(post) {
+  const media = videoMedia(post);
+  if (!media) throw new TikTokProviderError('TikTok needs a video file. Generate or upload a video before publishing.');
+
+  const localPath = localVideoPathFromMedia(media);
+  if (localPath) {
+    const stat = await fs.stat(localPath).catch(() => null);
+    if (!stat) throw new TikTokProviderError('TikTok local video file was not found. Regenerate the video.');
+    return {
+      buffer: await fs.readFile(localPath),
+      size: stat.size,
+      mimeType: media.mimeType || 'video/mp4'
+    };
+  }
+
+  if (/^https?:\/\//i.test(media.fileUrl)) {
+    const downloaded = await downloadRemoteBuffer(media.fileUrl, {
+      allowedMimePrefixes: ['video/'],
+      maxBytes: 500 * 1024 * 1024
+    });
+    return {
+      buffer: downloaded.buffer,
+      size: downloaded.size,
+      mimeType: downloaded.mimeType || media.mimeType || 'video/mp4'
+    };
+  }
+
+  throw new TikTokProviderError('TikTok video path is invalid. Regenerate or upload the video again.');
 }
 
 async function queryCreatorInfo({ account }) {
@@ -183,8 +215,15 @@ async function publishTikTokVideo({ post, account }) {
   const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
   if (!accessToken) throw new TikTokProviderError('TikTok access token is missing. Reconnect TikTok.');
 
-  const creator = await queryCreatorInfo({ account }).catch(() => ({}));
-  const privacy = creator.privacy_level_options?.includes('PUBLIC_TO_EVERYONE') ? 'PUBLIC_TO_EVERYONE' : (creator.privacy_level_options?.[0] || 'SELF_ONLY');
+  const creator = await queryCreatorInfo({ account });
+  const privacyOptions = Array.isArray(creator.privacy_level_options) ? creator.privacy_level_options : [];
+  if (!privacyOptions.length) throw new TikTokProviderError('TikTok did not return allowed privacy options. Reconnect the account and confirm Content Posting API access.');
+  const requestedPrivacy = String(post.platformMetadata?.tiktok?.privacyLevel || '').trim();
+  const privacy = privacyOptions.includes(requestedPrivacy)
+    ? requestedPrivacy
+    : privacyOptions.includes('PUBLIC_TO_EVERYONE')
+      ? 'PUBLIC_TO_EVERYONE'
+      : privacyOptions[0];
   const title = String(post.caption || post.description || post.title || 'AutoBrand video').slice(0, 2100);
   const postInfo = {
     title,
@@ -192,46 +231,34 @@ async function publishTikTokVideo({ post, account }) {
     disable_duet: false,
     disable_comment: false,
     disable_stitch: false,
-    video_cover_timestamp_ms: 1000
+    video_cover_timestamp_ms: 1000,
+    brand_content_toggle: Boolean(post.platformMetadata?.tiktok?.paidPartnership),
+    brand_organic_toggle: post.platformMetadata?.tiktok?.promotesOwnBrand !== false,
+    is_aigc: Boolean(post.aiProvider || post.platformMetadata?.generation?.provider || post.platformMetadata?.generation?.jobId)
   };
 
-  const videoUrl = publicVideoUrl(post);
-  if (videoUrl) {
-    const init = await tikTokJson('/post/publish/video/init/', {
-      method: 'POST',
-      accessToken,
-      body: {
-        post_info: postInfo,
-        source_info: { source: 'PULL_FROM_URL', video_url: videoUrl }
-      }
-    });
-    return { id: init.data?.publish_id || `tiktok_${post._id}`, raw: init };
-  }
-
-  const filePath = localVideoPath(post);
-  if (!filePath) throw new TikTokProviderError('TikTok needs a video file or public video URL. Generate/upload a video before publishing.');
-  const stat = await fs.stat(filePath).catch(() => null);
-  if (!stat) throw new TikTokProviderError('TikTok local video file was not found. Regenerate the video.');
-
-  const chunkSize = stat.size;
+  // FILE_UPLOAD is the reliable default. PULL_FROM_URL requires TikTok domain
+  // ownership verification and otherwise fails even when the URL is public.
+  const source = await videoUploadSource(post);
+  const chunkSize = source.size;
   const init = await tikTokJson('/post/publish/video/init/', {
     method: 'POST',
     accessToken,
     body: {
       post_info: postInfo,
-      source_info: { source: 'FILE_UPLOAD', video_size: stat.size, chunk_size: chunkSize, total_chunk_count: 1 }
+      source_info: { source: 'FILE_UPLOAD', video_size: source.size, chunk_size: chunkSize, total_chunk_count: 1 }
     }
   });
   const uploadUrl = init.data?.upload_url;
   if (!uploadUrl) throw new TikTokProviderError('TikTok did not return a video upload URL.');
-  const buffer = await fs.readFile(filePath);
-  const uploadResponse = await fetch(uploadUrl, {
+  const uploadResponse = await fetchWithTimeout(uploadUrl, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Range': `bytes 0-${stat.size - 1}/${stat.size}`
+      'Content-Type': source.mimeType,
+      'Content-Length': String(source.size),
+      'Content-Range': `bytes 0-${source.size - 1}/${source.size}`
     },
-    body: buffer
+    body: source.buffer
   });
   if (!uploadResponse.ok) {
     const text = await uploadResponse.text().catch(() => '');

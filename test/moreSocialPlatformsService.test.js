@@ -193,13 +193,14 @@ test('X OAuth uses PKCE and maps the authenticated user profile', async () => {
     xClientId: 'x_client',
     xClientSecret: 'x_secret',
     xCallbackUrl: 'http://localhost:3000/social/x/callback',
-    xScopes: 'tweet.read tweet.write users.read offline.access'
+    xScopes: 'tweet.read tweet.write users.read offline.access media.write'
   }, async () => {
     const authUrl = new URL(buildXAuthUrl({ brandId: 'brand_1', userId: 'user_1' }));
     assert.equal(authUrl.origin + authUrl.pathname, 'https://x.com/i/oauth2/authorize');
     assert.equal(authUrl.searchParams.get('client_id'), 'x_client');
     assert.equal(authUrl.searchParams.get('code_challenge_method'), 'S256');
     assert.match(authUrl.searchParams.get('scope'), /tweet\.write/);
+    assert.match(authUrl.searchParams.get('scope'), /media\.write/);
     const state = xPrivate.verifyState(authUrl.searchParams.get('state'));
     assert.equal(state.brandId, 'brand_1');
     assert.ok(state.codeVerifier);

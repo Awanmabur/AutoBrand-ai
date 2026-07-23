@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { uploadBuffer } = require('./cloudinaryService');
+const { downloadRemoteBuffer } = require('./remoteFetch.service');
 let sharp = null;
 
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
@@ -33,7 +34,8 @@ function localPublicFilePath(fileUrl) {
   const cleaned = String(fileUrl).split('?')[0].replace(/^\/+/, '');
   const publicRoot = path.join(__dirname, '..', '..', 'public');
   const absolute = path.normalize(path.join(publicRoot, cleaned.replace(/^public[\\/]/, '')));
-  if (!absolute.startsWith(publicRoot)) return '';
+  const relative = path.relative(publicRoot, absolute);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return '';
   return absolute;
 }
 
@@ -69,9 +71,11 @@ async function imageInput(media) {
   const local = localPublicFilePath(media?.fileUrl);
   if (local) return local;
   if (/^https?:\/\//i.test(media?.fileUrl || '')) {
-    const response = await fetch(media.fileUrl);
-    if (!response.ok) throw new Error(`Could not fetch source image: ${response.status} ${response.statusText}`);
-    return Buffer.from(await response.arrayBuffer());
+    const downloaded = await downloadRemoteBuffer(media.fileUrl, {
+      allowedMimePrefixes: ['image/'],
+      maxBytes: 30 * 1024 * 1024
+    });
+    return downloaded.buffer;
   }
   throw new Error('A local or public image URL is required for media transforms.');
 }

@@ -54,6 +54,7 @@ const {
 } = require('../../services/youtubeService');
 const { applySocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
 const { notifyAccountDisconnected } = require('../../services/notification.service');
+const { cleanupDisconnectedDestination } = require('../../services/social/socialDestinationCleanup.service');
 
 const socialPlatforms = [
   { key: 'facebook', name: 'Facebook Pages', shortName: 'Facebook', icon: 'f', description: 'Connect Pages through Facebook OAuth and publish directly.', active: true, kind: 'oauth', primaryAction: 'Connect Pages', hint: 'Opens Facebook, choose Pages, then returns here ready to publish.' },
@@ -63,7 +64,7 @@ const socialPlatforms = [
   { key: 'pinterest', name: 'Pinterest Board', shortName: 'Pinterest', icon: 'p', description: 'Publish campaign images as pins on selected boards.', active: true, kind: 'oauth', primaryAction: 'Open Pinterest', hint: 'Opens Pinterest authorization and saves accessible boards.', setupHint: 'Add PINTEREST_CLIENT_ID, PINTEREST_CLIENT_SECRET, and the Pinterest callback URL before connecting boards.' },
   { key: 'tiktok', name: 'TikTok Account', shortName: 'TikTok', icon: 'tt', description: 'Connect TikTok with OAuth and publish short-form videos.', active: true, kind: 'oauth', primaryAction: 'Open TikTok', hint: 'Opens TikTok authorization, then returns here ready for video publishing.' },
   { key: 'youtube', name: 'YouTube Shorts', shortName: 'YouTube', icon: 'yt', description: 'Connect with Google OAuth and upload short-form videos.', active: true, kind: 'oauth', primaryAction: 'Open YouTube', hint: 'Opens Google authorization, choose your YouTube channel, then publish videos.' },
-  { key: 'x', name: 'X / Twitter', shortName: 'X', icon: 'x', description: 'Publish short posts and campaign updates to X.', active: true, kind: 'oauth', primaryAction: 'Open X', hint: 'Opens X authorization with OAuth 2.0 PKCE and saves the authenticated profile.', setupHint: 'Add X_CLIENT_ID, optional X_CLIENT_SECRET, X_CALLBACK_URL, and X_SCOPES=tweet.read tweet.write users.read offline.access.' },
+  { key: 'x', name: 'X / Twitter', shortName: 'X', icon: 'x', description: 'Publish short posts and campaign updates to X.', active: true, kind: 'oauth', primaryAction: 'Open X', hint: 'Opens X authorization with OAuth 2.0 PKCE and saves the authenticated profile.', setupHint: 'Add X_CLIENT_ID, optional X_CLIENT_SECRET, X_CALLBACK_URL, and X_SCOPES=tweet.read tweet.write users.read offline.access media.write.' },
   { key: 'threads', name: 'Threads', shortName: 'Threads', icon: 'th', description: 'Publish conversation-first posts to Threads.', active: true, kind: 'oauth', primaryAction: 'Open Threads', hint: 'Opens Threads authorization and saves the connected Threads profile.', setupHint: 'Add THREADS_APP_ID, THREADS_APP_SECRET, THREADS_CALLBACK_URL, and use an HTTPS domain for Threads OAuth.' }
 ];
 
@@ -135,6 +136,7 @@ async function upsertConnectedAccount(account, brand) {
       providerMeta: account.providerMeta,
       permissions: account.permissions || defaultPermissionsForPlatform(platform),
       status: account.status || 'connected',
+      healthStatus: account.healthStatus || (account.status === 'needs_reconnect' ? 'failed' : 'healthy'),
       lastSyncAt: new Date()
     },
     { upsert: true, new: true }
@@ -328,10 +330,14 @@ async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn
     }
 
     const skipped = accounts.length - allowedAccounts.length;
+    const reconnectRequired = savedAccounts.filter((account) => account.status === 'needs_reconnect');
     if (skipped > 0) {
-      return res.redirect(`/dashboard/social?notice=${encodeURIComponent(`${savedAccounts.length} ${serviceName} account(s) connected. ${skipped} skipped because your plan is full.`)}&account=${primary._id}`);
+      return res.redirect(`/dashboard/social?notice=${encodeURIComponent(`${savedAccounts.length} ${serviceName} account(s) saved. ${skipped} skipped because your plan is full.`)}&account=${primary._id}`);
     }
-    return res.redirect(`/dashboard/social?notice=${encodeURIComponent(notice)}&account=${primary._id}`);
+    const finalNotice = reconnectRequired.length
+      ? `${notice} ${reconnectRequired.map((account) => account.accountName).join(', ')} still needs reconnect because Meta did not grant all publishing permissions.`
+      : notice;
+    return res.redirect(`/dashboard/social?notice=${encodeURIComponent(finalNotice)}&account=${primary._id}`);
   } catch (error) {
     if (error.name === providerErrorName) {
       return res.redirect(303, socialRedirectTarget(req, { error: error.message }));
@@ -684,7 +690,12 @@ async function updateAccount(req, res, next) {
     if (accessToken) update.accessTokenEncrypted = encryptToken(accessToken);
     if (refreshToken) update.refreshTokenEncrypted = encryptToken(refreshToken);
 
-    await SocialAccount.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, update, { new: true, runValidators: true });
+    const updatedAccount = await SocialAccount.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user._id },
+      update,
+      { new: true, runValidators: true }
+    );
+    if (updatedAccount && updatedAccount.status !== 'connected') await cleanupDisconnectedDestination(updatedAccount);
     return res.redirect(`/dashboard/social?notice=updated&account=${req.params.id}`);
   } catch (error) {
     return next(error);
@@ -702,12 +713,25 @@ async function disconnect(req, res, next) {
       { new: true }
     );
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await cleanupDisconnectedDestination(account);
     await notifyAccountDisconnected({
       user: req.user,
       account,
       health: { status: 'disabled', message: `${account.accountName || account.platform} was disconnected.` }
     });
     return res.redirect(`/dashboard/social?notice=disconnected&account=${account._id}`);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function remove(req, res, next) {
+  try {
+    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await cleanupDisconnectedDestination(account);
+    await account.deleteOne();
+    return res.redirect('/dashboard/social?notice=removed');
   } catch (error) {
     return next(error);
   }
@@ -774,6 +798,7 @@ async function healthCheck(req, res, next) {
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const health = await applySocialAccountHealth(account);
     if (health.status !== 'connected') {
+      await cleanupDisconnectedDestination(account);
       await notifyAccountDisconnected({ user: req.user, account, health });
     }
     return res.redirect(`/dashboard/social?notice=${encodeURIComponent(`health_${health.status}`)}&account=${account._id}`);
@@ -800,6 +825,7 @@ module.exports = {
   pinterestConnect,
   pinterestSync,
   reconnect,
+  remove,
   showAccount,
   storeMock,
   threadsCallback,

@@ -29,11 +29,18 @@ async function checkProviders(user) {
     timed('openai', 'health_check', user, checkOpenAI),
     timed('cloudinary', 'health_check', user, checkCloudinary),
     timed('redis', 'health_check', user, async () => {
+      if (!env.redisConfigured) {
+        return {
+          ok: true,
+          configured: false,
+          message: 'Redis is disabled. MongoDB publishing fallback is active.'
+        };
+      }
       const ok = await canReachRedis();
       return {
         ok,
         configured: true,
-        message: ok ? `Redis reachable at ${env.redisHost}:${env.redisPort}.` : `Redis not reachable at ${env.redisHost}:${env.redisPort}.`
+        message: ok ? 'Redis is reachable.' : 'Redis is configured but unavailable; MongoDB fallback is active.'
       };
     })
   ]);

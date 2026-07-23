@@ -1,3 +1,4 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const path = require('path');
 const env = require('../config/env');
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
@@ -84,7 +85,7 @@ async function instagramRequest(pathname, { method = 'GET', body, params } = {})
       if (value !== undefined && value !== null && value !== '') requestBody.set(key, value);
     });
   }
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: requestBody ? { 'Content-Type': 'application/x-www-form-urlencoded' } : undefined,
     body: requestBody

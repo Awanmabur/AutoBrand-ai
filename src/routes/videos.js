@@ -1,10 +1,12 @@
 const express = require('express');
 const videoController = require('../controllers/videoController');
 const requireAuth = require('../middlewares/auth');
+const requireVerified = require('../middlewares/requireVerified');
 
 const router = express.Router();
 
 router.use(requireAuth);
+router.use(requireVerified);
 router.post('/auto-generate', videoController.storeAutoVideo);
 router.post('/clean-generate', videoController.storeCleanVideo);
 router.post('/image-to-video', videoController.storeImageToVideo);

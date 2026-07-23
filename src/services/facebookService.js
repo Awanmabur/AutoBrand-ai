@@ -1,3 +1,4 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
@@ -6,6 +7,7 @@ try { sharp = require('sharp'); } catch (error) { sharp = null; }
 const env = require('../config/env');
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
+const { gridFsIdFromUrl, readGridFsBuffer } = require('./gridFsMediaStorage.service');
 
 const graphVersion = env.facebookGraphVersion.startsWith('v') ? env.facebookGraphVersion : `v${env.facebookGraphVersion}`;
 const graphBaseUrl = `https://graph.facebook.com/${graphVersion}`;
@@ -19,10 +21,18 @@ function hasFacebookBusinessLoginConfig() {
 }
 
 function configuredFacebookScopes() {
-  return String(env.facebookScopes || 'pages_show_list,pages_manage_posts,pages_read_engagement')
+  const required = [
+    'pages_show_list',
+    'pages_manage_posts',
+    'pages_read_engagement',
+    'instagram_basic',
+    'instagram_content_publish'
+  ];
+  const configured = String(env.facebookScopes || '')
     .split(/[\s,]+/)
     .map((scope) => scope.trim())
     .filter(Boolean);
+  return [...new Set([...required, ...configured])];
 }
 
 function normalizeDomain(value) {
@@ -299,7 +309,7 @@ function safeFileName(value, fallback = 'upload') {
 }
 
 async function fetchBuffer(url) {
-  const response = await fetch(url, {});
+  const response = await fetchWithTimeout(url, {});
   if (!response.ok) throw new FacebookProviderError(`Could not fetch media URL before Facebook upload: ${response.status} ${response.statusText}`);
   return {
     buffer: Buffer.from(await response.arrayBuffer()),
@@ -308,6 +318,17 @@ async function fetchBuffer(url) {
 }
 
 async function readMediaBuffer(media) {
+  const gridFsId = gridFsIdFromUrl(media?.fileUrl);
+  if (gridFsId) {
+    const stored = await readGridFsBuffer(gridFsId);
+    return {
+      buffer: stored.buffer,
+      contentType: media.mimeType || stored.contentType || 'application/octet-stream',
+      fileName: media.fileName || stored.fileName,
+      diskFileName: stored.fileName
+    };
+  }
+
   const localPath = localPublicFilePath(media?.fileUrl);
   if (localPath) {
     const diskFileName = path.basename(localPath);
@@ -397,7 +418,7 @@ async function graphFormRequest(pathname, { params, fields } = {}) {
     else form.set(key, String(value));
   });
   form.delete('fileName');
-  const response = await fetch(url, { method: 'POST', body: form });
+  const response = await fetchWithTimeout(url, { method: 'POST', body: form });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.error) {
     const message = payload.error?.message || `Facebook Graph API upload failed with ${response.status}.`;
@@ -424,7 +445,7 @@ async function graphRequest(path, { method = 'GET', params, body } = {}) {
     });
   }
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: requestBody ? { 'Content-Type': 'application/x-www-form-urlencoded' } : undefined,
     body: requestBody
@@ -443,8 +464,8 @@ function tokenExpiresAt(userTokenResponse) {
   return userTokenResponse.expires_in ? new Date(Date.now() + userTokenResponse.expires_in * 1000) : undefined;
 }
 
-function normalizePage(page, parsed, userTokenResponse) {
-  const permissions = Array.isArray(page.tasks) ? page.tasks : [];
+function normalizePage(page, parsed, userTokenResponse, grantedPermissions = []) {
+  const permissions = [...new Set([...(Array.isArray(page.tasks) ? page.tasks : []), ...grantedPermissions])];
   return {
     ...parsed,
     platform: 'facebook',
@@ -458,9 +479,11 @@ function normalizePage(page, parsed, userTokenResponse) {
   };
 }
 
-function normalizeInstagramAccount({ instagram, page, parsed, userTokenResponse }) {
+function normalizeInstagramAccount({ instagram, page, parsed, userTokenResponse, grantedPermissions = [] }) {
   if (!instagram?.id) return null;
   const username = instagram.username || instagram.name || '';
+  const requiredPermissions = ['instagram_basic', 'instagram_content_publish'];
+  const missingPermissions = requiredPermissions.filter((permission) => !grantedPermissions.includes(permission));
   return {
     ...parsed,
     platform: 'instagram',
@@ -469,12 +492,18 @@ function normalizeInstagramAccount({ instagram, page, parsed, userTokenResponse 
     accessTokenEncrypted: encryptToken(page.access_token || userTokenResponse.access_token),
     refreshTokenEncrypted: encryptToken(userTokenResponse.access_token),
     tokenExpiresAt: tokenExpiresAt(userTokenResponse),
-    permissions: ['instagram_basic', 'instagram_content_publish'],
-    status: 'connected'
+    permissions: grantedPermissions,
+    providerMeta: {
+      linkedFacebookPageId: page.id || '',
+      missingPermissions,
+      permissionGrantVerifiedAt: new Date()
+    },
+    status: missingPermissions.length ? 'needs_reconnect' : 'connected',
+    healthStatus: missingPermissions.length ? 'failed' : 'healthy'
   };
 }
 
-async function linkedInstagramAccounts({ pages, parsed, userTokenResponse }) {
+async function linkedInstagramAccounts({ pages, parsed, userTokenResponse, grantedPermissions = [] }) {
   const accounts = [];
   const seen = new Set();
 
@@ -489,7 +518,7 @@ async function linkedInstagramAccounts({ pages, parsed, userTokenResponse }) {
     }).catch(() => ({}));
 
     const instagram = details.instagram_business_account || page.instagram_business_account;
-    const account = normalizeInstagramAccount({ instagram, page, parsed, userTokenResponse });
+    const account = normalizeInstagramAccount({ instagram, page, parsed, userTokenResponse, grantedPermissions });
     if (account && !seen.has(account.accountId)) {
       seen.add(account.accountId);
       accounts.push(account);
@@ -497,6 +526,15 @@ async function linkedInstagramAccounts({ pages, parsed, userTokenResponse }) {
   }
 
   return accounts;
+}
+
+async function grantedFacebookPermissions(accessToken) {
+  const response = await graphRequest('/me/permissions', {
+    params: { access_token: accessToken }
+  }).catch(() => ({ data: [] }));
+  return (response.data || [])
+    .filter((item) => item?.status === 'granted' && item.permission)
+    .map((item) => item.permission);
 }
 
 async function exchangeCodeForPageAccounts({ code, state }) {
@@ -527,6 +565,8 @@ async function exchangeCodeForPageAccounts({ code, state }) {
     }
   });
 
+  const grantedPermissions = await grantedFacebookPermissions(userTokenResponse.access_token);
+
   const pagesResponse = await graphRequest('/me/accounts', {
     params: {
       access_token: userTokenResponse.access_token,
@@ -539,8 +579,8 @@ async function exchangeCodeForPageAccounts({ code, state }) {
     throw new FacebookProviderError('No Facebook Pages were returned. Make sure the logged-in Facebook user manages a Page and granted Page permissions.');
   }
 
-  const accounts = pages.map((page) => normalizePage(page, parsed, userTokenResponse));
-  accounts.push(...await linkedInstagramAccounts({ pages, parsed, userTokenResponse }));
+  const accounts = pages.map((page) => normalizePage(page, parsed, userTokenResponse, grantedPermissions));
+  accounts.push(...await linkedInstagramAccounts({ pages, parsed, userTokenResponse, grantedPermissions }));
 
   return accounts;
 }
@@ -576,6 +616,43 @@ async function connectFacebookPageToken({ brandId, userId, pageAccessToken, page
     accessTokenEncrypted: encryptToken(pageAccessToken),
     permissions: Array.isArray(page.tasks) && page.tasks.length ? page.tasks : ['manual_page_token'],
     status: 'connected'
+  };
+}
+
+async function verifyMetaPublishingAccount({ account }) {
+  if (!account) throw new FacebookProviderError('Meta account is missing.');
+  const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
+  if (!accessToken) throw new FacebookProviderError('Meta access token is missing. Reconnect this account.');
+  const accountId = String(account.accountId || '').trim();
+  if (!accountId) throw new FacebookProviderError('Meta provider account ID is missing. Reconnect this account.');
+
+  if (account.platform === 'instagram') {
+    const profile = await graphRequest(`/${encodeURIComponent(accountId)}`, {
+      params: {
+        fields: 'id,username,name',
+        access_token: accessToken
+      }
+    });
+    return {
+      platform: 'instagram',
+      accountId: profile.id || accountId,
+      accountName: profile.username ? `@${String(profile.username).replace(/^@/, '')}` : (profile.name || account.accountName),
+      raw: profile
+    };
+  }
+
+  const page = await graphRequest(`/${encodeURIComponent(accountId)}`, {
+    params: {
+      fields: 'id,name,tasks',
+      access_token: accessToken
+    }
+  });
+  return {
+    platform: 'facebook',
+    accountId: page.id || accountId,
+    accountName: page.name || account.accountName,
+    tasks: page.tasks || [],
+    raw: page
   };
 }
 
@@ -787,5 +864,6 @@ module.exports = {
   exchangeCodeForPageAccounts,
   exchangeCodeForPageAccount,
   connectFacebookPageToken,
-  publishFacebookPost
+  publishFacebookPost,
+  verifyMetaPublishingAccount
 };

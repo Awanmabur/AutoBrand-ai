@@ -14,12 +14,6 @@ test('publishYouTubeVideo uploads a public video URL through YouTube resumable u
 
   global.fetch = async (url, options = {}) => {
     calls.push({ url: String(url), options });
-    if (String(url) === 'https://cdn.example.test/video.mp4') {
-      return new Response(videoBytes, {
-        status: 200,
-        headers: { 'content-type': 'video/mp4' }
-      });
-    }
     if (String(url).includes('/upload/youtube/v3/videos')) {
       return new Response(JSON.stringify({}), {
         status: 200,
@@ -44,21 +38,26 @@ test('publishYouTubeVideo uploads a public video URL through YouTube resumable u
       },
       account: {
         accessTokenEncrypted: encryptToken('youtube_access_token')
-      }
+      },
+      downloadRemote: async () => ({
+        buffer: videoBytes,
+        size: videoBytes.length,
+        mimeType: 'video/mp4'
+      })
     });
 
     assert.equal(result.id, 'youtube_video_1');
-    assert.equal(calls[1].options.headers['X-Upload-Content-Type'], 'video/mp4');
-    assert.match(calls[1].url, /\/upload\/youtube\/v3\/videos/);
-    assert.equal(calls[1].options.headers['X-Upload-Content-Length'], String(videoBytes.length));
-    const metadata = JSON.parse(calls[1].options.body);
+    assert.equal(calls[0].options.headers['X-Upload-Content-Type'], 'video/mp4');
+    assert.match(calls[0].url, /\/upload\/youtube\/v3\/videos/);
+    assert.equal(calls[0].options.headers['X-Upload-Content-Length'], String(videoBytes.length));
+    const metadata = JSON.parse(calls[0].options.body);
     assert.equal(metadata.snippet.title, 'Remote video');
     assert.equal(metadata.snippet.categoryId, '22');
     assert.equal(metadata.status.privacyStatus, 'public');
     assert.equal(metadata.status.selfDeclaredMadeForKids, undefined);
     assert.equal(metadata.snippet.tags, undefined);
-    assert.equal(calls[2].options.method, 'PUT');
-    assert.equal(calls[2].options.body.length, videoBytes.length);
+    assert.equal(calls[1].options.method, 'PUT');
+    assert.equal(calls[1].options.body.length, videoBytes.length);
   } finally {
     global.fetch = originalFetch;
     env.youtubeDefaultPrivacy = originalPrivacy;
@@ -70,12 +69,6 @@ test('publishYouTubeVideo includes detailed Google API upload session errors', a
   const videoBytes = Buffer.from('fake mp4 bytes');
 
   global.fetch = async (url) => {
-    if (String(url) === 'https://cdn.example.test/video.mp4') {
-      return new Response(videoBytes, {
-        status: 200,
-        headers: { 'content-type': 'video/mp4' }
-      });
-    }
     if (String(url).includes('/upload/youtube/v3/videos')) {
       return Response.json({
         error: {
@@ -99,7 +92,12 @@ test('publishYouTubeVideo includes detailed Google API upload session errors', a
         },
         account: {
           accessTokenEncrypted: encryptToken('youtube_access_token')
-        }
+        },
+        downloadRemote: async () => ({
+          buffer: videoBytes,
+          size: videoBytes.length,
+          mimeType: 'video/mp4'
+        })
       }),
       /invalidCategoryId: Invalid category/
     );

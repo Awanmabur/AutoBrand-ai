@@ -1,10 +1,12 @@
 const express = require('express');
 const postController = require('../controllers/postController');
 const requireAuth = require('../middlewares/auth');
+const requireVerified = require('../middlewares/requireVerified');
 
 const router = express.Router();
 
 router.use(requireAuth);
+router.use(requireVerified);
 router.post('/handoff', postController.createHandoff);
 router.post('/bulk-reschedule', postController.bulkReschedule);
 router.post('/', postController.createPost);

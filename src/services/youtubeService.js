@@ -1,6 +1,8 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
+const { downloadRemoteBuffer } = require('./remoteFetch.service');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
 
@@ -77,7 +79,7 @@ function buildYouTubeAuthUrl({ brandId, userId }) {
 }
 
 async function exchangeToken(body) {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
@@ -116,7 +118,7 @@ async function accessTokenFor(account) {
 }
 
 async function youtubeJson(pathname, { accessToken, method = 'GET', body } = {}) {
-  const response = await fetch(`${API_BASE}${pathname}`, {
+  const response = await fetchWithTimeout(`${API_BASE}${pathname}`, {
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -219,27 +221,18 @@ function localVideoPath(media) {
   return absolute;
 }
 
-async function fetchRemoteVideo(media) {
-  const response = await fetch(media.fileUrl);
-  if (!response.ok) {
-    throw new YouTubeProviderError(`Could not download video URL for YouTube upload: ${response.status} ${response.statusText}`);
-  }
-  const contentType = response.headers.get('content-type') || media.mimeType || 'video/mp4';
-  if (!String(contentType).toLowerCase().startsWith('video/')) {
-    throw new YouTubeProviderError(`YouTube expected a video URL, but received ${contentType}.`);
-  }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  return {
-    buffer,
-    size: buffer.length,
-    mimeType: contentType.split(';')[0] || 'video/mp4'
-  };
+async function fetchRemoteVideo(media, downloadRemote = downloadRemoteBuffer) {
+  const downloaded = await downloadRemote(media.fileUrl, {
+    allowedMimePrefixes: ['video/'],
+    maxBytes: 500 * 1024 * 1024
+  });
+  return { buffer: downloaded.buffer, size: downloaded.size, mimeType: downloaded.mimeType || 'video/mp4' };
 }
 
-async function videoUploadSource(post) {
+async function videoUploadSource(post, { downloadRemote = downloadRemoteBuffer } = {}) {
   const video = videoMedia(post);
   if (!video) return '';
-  if (/^https?:\/\//i.test(video.fileUrl)) return fetchRemoteVideo(video);
+  if (/^https?:\/\//i.test(video.fileUrl)) return fetchRemoteVideo(video, downloadRemote);
 
   const filePath = localVideoPath(video);
   if (!filePath) return '';
@@ -252,17 +245,17 @@ async function videoUploadSource(post) {
   };
 }
 
-async function publishYouTubeVideo({ post, account }) {
+async function publishYouTubeVideo({ post, account, downloadRemote = downloadRemoteBuffer }) {
   if (String(post.type || '').toLowerCase() !== 'video') {
     throw new YouTubeProviderError('YouTube only supports video posts. Generate or upload a video first.');
   }
-  const uploadSource = await videoUploadSource(post);
+  const uploadSource = await videoUploadSource(post, { downloadRemote });
   if (!uploadSource) throw new YouTubeProviderError('YouTube needs an MP4 video file. Generate/upload a video before publishing.');
   const accessToken = await accessTokenFor(account);
 
   const metadata = youtubeUploadMetadata(post);
 
-  const init = await fetch(`${UPLOAD_API_BASE}/videos?part=snippet,status&uploadType=resumable`, {
+  const init = await fetchWithTimeout(`${UPLOAD_API_BASE}/videos?part=snippet,status&uploadType=resumable`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -279,7 +272,7 @@ async function publishYouTubeVideo({ post, account }) {
   const uploadUrl = init.headers.get('location');
   if (!uploadUrl) throw new YouTubeProviderError('YouTube did not return an upload URL.');
 
-  const upload = await fetch(uploadUrl, {
+  const upload = await fetchWithTimeout(uploadUrl, {
     method: 'PUT',
     headers: {
       'Content-Type': uploadSource.mimeType,

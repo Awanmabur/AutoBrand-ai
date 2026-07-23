@@ -2,6 +2,7 @@ const { mediaContext } = require('./mediaInsightService');
 const { activeProvider, generateJsonText, generateImage, checkProviders } = require('./aiProviderService');
 const { generateContentBundle } = require('./aiContentGeneration.service');
 
+const { zonedDateForDayOffset } = require('../utils/timeZone');
 function normalizeGeneratedPost(raw, fallbackInput) {
   const fallback = fallbackPost(fallbackInput);
   const hashtags = Array.isArray(raw.hashtags)
@@ -245,10 +246,8 @@ function buildScheduleSlots({ startDate, days = 7, postsPerDay = 1, preferredSlo
   const hour = hourForSlot(preferredSlot);
   for (let day = 0; day < Number(days || 7); day += 1) {
     for (let count = 0; count < Number(postsPerDay || 1); count += 1) {
-      const when = new Date(start);
-      when.setDate(start.getDate() + day);
-      when.setHours(hour + count * 2, 0, 0, 0);
-      if (when < new Date()) when.setDate(when.getDate() + 1);
+      let when = zonedDateForDayOffset({ date: start, dayOffset: day, hour: hour + count * 2, minute: 0 });
+      if (when < new Date()) when = zonedDateForDayOffset({ date: start, dayOffset: day + 1, hour: hour + count * 2, minute: 0 });
       slots.push(when);
     }
   }

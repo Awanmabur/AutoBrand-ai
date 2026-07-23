@@ -7,7 +7,7 @@ const AuditLog = require('../models/AuditLog');
 const ApiLog = require('../models/ApiLog');
 const Payment = require('../models/Payment');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
-const { enqueuePost } = require('../services/schedulerService');
+const { dispatchScheduledPost } = require('../services/postDispatchService');
 const { activatePlanForUser } = require('../services/subscription.service');
 
 async function index(req, res) {
@@ -65,12 +65,15 @@ async function retryPost(req, res, next) {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
-    post.status = 'publishing';
+    post.status = 'scheduled';
     post.retryCount = Number(post.retryCount || 0) + 1;
     post.errorMessage = undefined;
     post.scheduledAt = new Date();
+    post.scheduleVersion = Number(post.scheduleVersion || 0) + 1;
+    post.publishingStartedAt = undefined;
+    post.publishingAttemptId = '';
     await post.save();
-    await enqueuePost(post);
+    await dispatchScheduledPost(post, { userId: post.createdBy || req.user?._id });
     await AuditLog.create({
       user: req.user._id,
       action: 'admin_retry_post',

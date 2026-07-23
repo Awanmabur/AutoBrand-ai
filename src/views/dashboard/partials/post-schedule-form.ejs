@@ -2,21 +2,29 @@
   <div class="card-head">
     <div>
       <h3>Schedule a real post</h3>
-      <p>Creates a Post document with status changes handled by the existing publishing flow.</p>
+      <p>Uses only live destinations for the selected brand and the same publishing flow as Quick Create.</p>
     </div>
     <a class="btn btn-ghost" href="/dashboard/content-library">Drafts</a>
   </div>
   <% if (!brands.length) { %>
     <p class="empty-state">Create a brand first before scheduling posts.</p>
+  <% } else if (!platformOptions.length) { %>
+    <p class="empty-state">Connect at least one live social destination before scheduling posts.</p>
+    <a class="btn btn-primary" href="/dashboard/social">Connect social account</a>
   <% } else { %>
-    <form action="/dashboard/actions/posts" method="post" class="real-form-grid">
+    <form action="/dashboard/actions/posts" method="post" class="real-form-grid smart-destination-form">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="creationMode" value="ai">
       <input type="hidden" name="generateImage" value="on">
       <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
-      <label>Platform<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
+      <label>Platform<select name="platform" data-smart-platform-select required><% platformOptions.forEach((platform) => { %><option value="<%= platform.key %>" data-brands="<%= platform.brandIds.join(',') %>"><%= platform.label %></option><% }) %></select></label>
       <label>Output<select name="mediaPreset"><option value="image-1">Image</option><option value="carousel-3">Carousel</option><option value="video">Video</option><option value="text">Text</option></select></label>
-      <label>Schedule time<input name="scheduledAt" type="datetime-local"></label>
+      <label>Schedule time<input name="scheduledAt" type="datetime-local" required></label>
+      <fieldset class="composer-fieldset full"><legend>Exact connected destinations</legend><div class="composer-check-grid channel-spaced-grid">
+        <% socialAccounts.forEach((account) => { %>
+          <label class="composer-check-card target-account-option" data-brand="<%= account.brandId || '' %>" data-platform="<%= account.platform %>"><input name="targetAccounts" type="checkbox" value="<%= account.id %>"><span><strong><%= account.accountName %></strong><small><%= account.platform %> / <%= account.brandName || 'Workspace' %></small></span></label>
+        <% }) %>
+      </div></fieldset>
       <label class="full">Goal<input name="goal" placeholder="What should this post achieve?"></label>
       <label class="full">Caption override<textarea name="caption" rows="4" placeholder="Leave empty to generate from Brand Brain"></textarea></label>
       <div class="real-form-actions full">

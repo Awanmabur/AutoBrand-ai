@@ -317,3 +317,38 @@ PESAPAL_REDIRECT_MODE=TOP_WINDOW
 ```
 
 Paid plans remain pending until Pesapal transaction status verification confirms payment. The IPN route is public and CSRF-exempt so Pesapal can post payment notifications.
+
+
+## Publishing diagnostics
+
+```bash
+npm run diagnose:publishing -- --limit=10
+npm run diagnose:publishing -- --limit=10 --live
+npm run repair:publishing
+```
+
+`--live` verifies the selected Facebook/Instagram provider identities without printing tokens. Generated assets use MongoDB GridFS by default, so restarts do not delete them. Instagram image/carousel publishing still requires a public HTTPS `PUBLIC_APP_URL` (or Cloudinary); localhost is not reachable by Meta. Existing Instagram accounts from older builds must be reconnected once so the repaired flow can verify `instagram_content_publish`.
+
+
+### Publishing credential stability
+
+Social access tokens are encrypted at rest. Keep `TOKEN_ENCRYPTION_KEY` stable across restarts. Local development automatically persists a missing key to `.autobrand-token-key`, while production requires an explicit key. Run `npm run repair:publishing` to stop old retry loops and identify accounts that need reconnection.
+
+## Smart publishing destinations and resilient runtime (v7)
+
+Post, campaign, Growth Studio, calendar and handoff forms now use a shared live-destination catalogue. Disconnected, removed, expired, permission-blocked, mock and token-decryption-failed social records remain visible only in Social management and are excluded from publishing forms. Campaigns and generated posts store exact account IDs, and disconnect/removal reconciles existing scheduled content automatically.
+
+See `SMART_PLATFORM_INTELLIGENCE_REPORT_2026-07-23.md` for destination behavior and `PLATFORM_CONNECTIVITY_RECOVERY_REPORT_2026-07-23.md` for MongoDB/Redis resilience and recovery.
+
+
+## Connectivity diagnostics
+
+Redis is optional. Leave `REDIS_ENABLED=false`, `REDIS_URL=` and `REDIS_HOST=` for the built-in MongoDB publishing fallback. A Redis URL enables Redis automatically; host/port mode requires `REDIS_ENABLED=true` and a real Redis server.
+
+Run this before debugging workers or publishing:
+
+```bash
+npm run diagnose:connectivity
+```
+
+If MongoDB disconnects, AI generation and scheduled publishing pause with exponential backoff and resume automatically after reconnection. `/health` remains available, `/readyz` reports database readiness, and normal pages return a fast 503 rather than hanging through repeated server-selection timeouts.

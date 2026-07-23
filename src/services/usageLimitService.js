@@ -2,6 +2,7 @@ const Brand = require('../models/Brand');
 const ClientApprovalLink = require('../models/ClientApprovalLink');
 const UsageLog = require('../models/UsageLog');
 const AiVideoJob = require('../models/AiVideoJob');
+const AiJob = require('../models/AiJob');
 const Media = require('../models/Media');
 const SocialAccount = require('../models/SocialAccount');
 const TeamMember = require('../models/TeamMember');
@@ -86,13 +87,36 @@ async function assertCanGenerateText(user) {
   return assertLimit(user, 'maxAiTextGenerations', count, 'AI text generation(s) per month');
 }
 
+async function countGeneratedImages(userId, start) {
+  const [usage] = await UsageLog.aggregate([
+    { $match: { user: userId, action: 'ai_generate_image', createdAt: { $gte: start } } },
+    { $group: { _id: null, count: { $sum: { $cond: [{ $gt: [{ $ifNull: ['$metadata.count', 0] }, 0] }, '$metadata.count', 1] } } } }
+  ]);
+  return Number(usage?.count || 0);
+}
+
+async function countPendingGeneratedImages(userId, start) {
+  const [usage] = await AiJob.aggregate([
+    {
+      $match: {
+        user: userId,
+        taskType: 'post_content_generation',
+        status: { $in: ['queued', 'running'] },
+        createdAt: { $gte: start }
+      }
+    },
+    { $group: { _id: null, count: { $sum: { $ifNull: ['$metadata.plan.imagesToGenerate', 0] } } } }
+  ]);
+  return Number(usage?.count || 0);
+}
+
 async function assertCanGenerateImage(user, requestedCount = 1) {
-  const count = await UsageLog.countDocuments({
-    user: user._id,
-    action: 'ai_generate_image',
-    createdAt: { $gte: monthStart() }
-  });
-  return assertLimit(user, 'maxAiImageGenerations', count, 'AI image generation(s) per month', requestedCount);
+  const start = monthStart();
+  const [generated, pending] = await Promise.all([
+    countGeneratedImages(user._id, start),
+    countPendingGeneratedImages(user._id, start)
+  ]);
+  return assertLimit(user, 'maxAiImageGenerations', generated + pending, 'AI image generation(s) per month', requestedCount);
 }
 
 async function assertCanSchedulePost(user, requestedCount = 1) {
@@ -105,8 +129,21 @@ async function assertCanSchedulePost(user, requestedCount = 1) {
 }
 
 async function assertCanCreateVideo(user) {
-  const count = await AiVideoJob.countDocuments({ createdBy: user._id, mode: { $ne: 'avatar_video' }, createdAt: { $gte: monthStart() } });
-  return assertLimit(user, 'maxAiVideoGenerations', count, 'AI video generation(s) per month');
+  const start = monthStart();
+  const [studioVideos, postVideos] = await Promise.all([
+    AiVideoJob.countDocuments({ createdBy: user._id, mode: { $ne: 'avatar_video' }, createdAt: { $gte: start } }),
+    AiJob.countDocuments({
+      user: user._id,
+      taskType: { $in: ['post_content_generation', 'post_video_generation'] },
+      $or: [
+        { taskType: 'post_video_generation' },
+        { 'metadata.plan.needsVideo': true }
+      ],
+      status: { $ne: 'cancelled' },
+      createdAt: { $gte: start }
+    })
+  ]);
+  return assertLimit(user, 'maxAiVideoGenerations', studioVideos + postVideos, 'AI video generation(s) per month');
 }
 
 async function assertCanCreateAvatarVideo(user, requestedCount = 1) {

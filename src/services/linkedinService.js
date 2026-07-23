@@ -1,6 +1,8 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
+const { downloadRemoteBuffer } = require('./remoteFetch.service');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
 
@@ -18,7 +20,7 @@ const API_BASE = 'https://api.linkedin.com';
 const REST_BASE = `${API_BASE}/rest`;
 const USERINFO_URL = `${API_BASE}/v2/userinfo`;
 const DEFAULT_SCOPES = ['openid', 'profile', 'email', 'w_member_social'];
-const DEFAULT_VERSION = '202605';
+const DEFAULT_VERSION = '202607';
 
 function configuredScopes() {
   return String(env.linkedinScopes || DEFAULT_SCOPES.join(' '))
@@ -89,7 +91,7 @@ async function parseLinkedInResponse(response, fallback) {
 }
 
 async function exchangeToken(body) {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
@@ -135,7 +137,7 @@ function restHeaders(accessToken, extra = {}) {
 
 async function linkedinRest(pathname, { accessToken, method = 'GET', body, headers = {} } = {}) {
   const url = /^https?:\/\//i.test(pathname) ? pathname : `${REST_BASE}${pathname}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: restHeaders(accessToken, {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -157,7 +159,7 @@ function decodeJwtPayload(token) {
 }
 
 async function getLinkedInProfile(accessToken, tokenData = {}) {
-  const response = await fetch(USERINFO_URL, {
+  const response = await fetchWithTimeout(USERINFO_URL, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
   if (response.ok) return response.json().catch(() => ({}));
@@ -278,18 +280,14 @@ function localMediaPath(media) {
   return absolute;
 }
 
-async function mediaBinary(media, expectedType) {
+async function mediaBinary(media, expectedType, downloadRemote = downloadRemoteBuffer) {
   if (!media?.fileUrl) throw new LinkedInProviderError(`LinkedIn needs a ${expectedType} media file before publishing.`);
   if (/^https?:\/\//i.test(media.fileUrl)) {
-    const response = await fetch(media.fileUrl);
-    if (!response.ok) throw new LinkedInProviderError(`Could not download LinkedIn ${expectedType} media: ${response.status} ${response.statusText}`);
-    const fallbackMime = expectedType === 'image' ? 'image/png' : 'video/mp4';
-    const mimeType = (response.headers.get('content-type') || media.mimeType || fallbackMime).split(';')[0];
-    if (!String(mimeType).toLowerCase().startsWith(`${expectedType}/`)) {
-      throw new LinkedInProviderError(`LinkedIn expected ${expectedType} media, but received ${mimeType}.`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    return { buffer, size: buffer.length, mimeType };
+    const downloaded = await downloadRemote(media.fileUrl, {
+      allowedMimePrefixes: [`${expectedType}/`],
+      maxBytes: expectedType === 'image' ? 30 * 1024 * 1024 : 200 * 1024 * 1024
+    });
+    return { buffer: downloaded.buffer, size: downloaded.size, mimeType: downloaded.mimeType };
   }
 
   const filePath = localMediaPath(media);
@@ -304,7 +302,7 @@ async function mediaBinary(media, expectedType) {
 }
 
 async function putLinkedInUpload({ uploadUrl, accessToken, buffer, mimeType }) {
-  const response = await fetch(uploadUrl, {
+  const response = await fetchWithTimeout(uploadUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -320,8 +318,8 @@ async function putLinkedInUpload({ uploadUrl, accessToken, buffer, mimeType }) {
   return response;
 }
 
-async function uploadLinkedInImage({ accessToken, owner, media }) {
-  const source = await mediaBinary(media, 'image');
+async function uploadLinkedInImage({ accessToken, owner, media, downloadRemote = downloadRemoteBuffer }) {
+  const source = await mediaBinary(media, 'image', downloadRemote);
   const init = await linkedinRest('/images?action=initializeUpload', {
     method: 'POST',
     accessToken,
@@ -334,8 +332,8 @@ async function uploadLinkedInImage({ accessToken, owner, media }) {
   return image;
 }
 
-async function uploadLinkedInVideo({ accessToken, owner, media }) {
-  const source = await mediaBinary(media, 'video');
+async function uploadLinkedInVideo({ accessToken, owner, media, downloadRemote = downloadRemoteBuffer }) {
+  const source = await mediaBinary(media, 'video', downloadRemote);
   const init = await linkedinRest('/videos?action=initializeUpload', {
     method: 'POST',
     accessToken,
@@ -374,10 +372,10 @@ function mediaTitle(post) {
   return cleanText(post.title || post.caption, 200, 'AutoBrand media');
 }
 
-async function linkedInContent({ post, accessToken, owner }) {
+async function linkedInContent({ post, accessToken, owner, downloadRemote = downloadRemoteBuffer }) {
   const videos = mediaForType(post, 'video');
   if (String(post.type || '').toLowerCase() === 'video' && videos.length) {
-    const video = await uploadLinkedInVideo({ accessToken, owner, media: videos[0] });
+    const video = await uploadLinkedInVideo({ accessToken, owner, media: videos[0], downloadRemote });
     return { media: { title: mediaTitle(post), id: video } };
   }
 
@@ -385,7 +383,7 @@ async function linkedInContent({ post, accessToken, owner }) {
   if (images.length > 1) {
     const uploaded = [];
     for (const image of images) {
-      uploaded.push(await uploadLinkedInImage({ accessToken, owner, media: image }));
+      uploaded.push(await uploadLinkedInImage({ accessToken, owner, media: image, downloadRemote }));
     }
     return {
       multiImage: {
@@ -397,16 +395,16 @@ async function linkedInContent({ post, accessToken, owner }) {
     };
   }
   if (images.length === 1) {
-    const image = await uploadLinkedInImage({ accessToken, owner, media: images[0] });
+    const image = await uploadLinkedInImage({ accessToken, owner, media: images[0], downloadRemote });
     return { media: { title: mediaTitle(post), id: image } };
   }
   return null;
 }
 
-async function publishLinkedInPost({ post, account }) {
+async function publishLinkedInPost({ post, account, downloadRemote = downloadRemoteBuffer }) {
   const accessToken = await accessTokenFor(account);
   const author = linkedinAuthorUrn(account);
-  const content = await linkedInContent({ post, accessToken, owner: author });
+  const content = await linkedInContent({ post, accessToken, owner: author, downloadRemote });
   const body = {
     author,
     commentary: postCommentary(post),
@@ -421,7 +419,7 @@ async function publishLinkedInPost({ post, account }) {
   };
   if (content) body.content = content;
 
-  const response = await fetch(`${REST_BASE}/posts`, {
+  const response = await fetchWithTimeout(`${REST_BASE}/posts`, {
     method: 'POST',
     headers: restHeaders(accessToken, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(body)

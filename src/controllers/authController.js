@@ -1,6 +1,14 @@
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 const RefreshToken = require('../models/RefreshToken');
-const { issueAuthTokens, rotateRefreshToken, setAuthCookies, clearAuthCookies } = require('../services/authService');
+const {
+  issueAuthTokens,
+  rotateRefreshToken,
+  revokeAllSessions,
+  setAuthCookies,
+  clearAuthCookies
+} = require('../services/authService');
 const { hashToken } = require('../services/tokenService');
 const {
   createEmailVerificationToken,
@@ -19,6 +27,25 @@ const { getPublicPricingCards } = require('../services/pricing.service');
 const { attachSelectedPlanAfterSignup, resolveSignupPlan } = require('../services/signupPlan.service');
 const { validatePassword } = require('../services/account/account.service');
 const env = require('../config/env');
+const { sendPasswordResetEmail, sendVerificationEmail } = require('../services/emailService');
+
+const DUMMY_PASSWORD_HASH = '$2a$12$rQ0wqYXgCB6aQqGg32rQtehO11sO2qfVfHKv0YkTyMl6o9gQJsK5K';
+
+async function auditAuth(req, action, user, metadata = {}) {
+  await AuditLog.create({
+    user: user?._id,
+    action,
+    entityType: 'User',
+    entityId: user?._id,
+    ipAddress: String(req.ip || '').slice(0, 100),
+    userAgent: String(req.get('user-agent') || '').slice(0, 500),
+    metadata
+  }).catch(() => {});
+}
+
+function loginLockDate() {
+  return new Date(Date.now() + env.loginLockMinutes * 60 * 1000);
+}
 
 function safeRedirectPath(value, fallback = '/dashboard') {
   const raw = String(value || '').trim();
@@ -106,8 +133,9 @@ async function register(req, res, next) {
     });
 
     await user.setPassword(password);
-    createEmailVerificationToken(user);
+    const verificationToken = createEmailVerificationToken(user);
     await user.save();
+    await sendVerificationEmail({ user, token: verificationToken });
 
     const planAction = await attachSelectedPlanAfterSignup(user, selectedPlan.slug);
     user.lastLoginAt = new Date();
@@ -119,6 +147,13 @@ async function register(req, res, next) {
     const redirectUrl = appendQuery(nextPath || planAction.nextUrl || '/dashboard', { onboarding: 1 });
     return res.redirect(redirectUrl);
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(422).render('auth/register', {
+        title: 'Create account', layout: 'layouts/auth', form: req.body,
+        pricingPlans: await getPublicPricingCards(), selectedPlan: await resolveSignupPlan(req.body.plan || 'free-trial'),
+        error: 'That email is already registered. Log in instead.'
+      });
+    }
     return next(error);
   }
 }
@@ -126,24 +161,47 @@ async function register(req, res, next) {
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email: normalizeEmail(email) });
-    const isValid = user ? await user.verifyPassword(password) : false;
+    const normalizedEmail = normalizeEmail(email);
+    const user = await User.findOne({ email: normalizedEmail });
     const nextPath = safeRedirectPath(req.body.next || req.query.next, '/dashboard');
 
-    if (!isValid || user.status === 'suspended') {
+    if (!user) {
+      await bcrypt.compare(String(password || ''), DUMMY_PASSWORD_HASH);
+      await auditAuth(req, 'auth.login_failed', null, { emailHash: hashToken(normalizedEmail) });
       return res.status(422).render('auth/login', {
-        title: 'Login',
-        layout: 'layouts/auth',
-        form: { ...req.body, next: nextPath },
-        error: 'Invalid email or password.'
+        title: 'Login', layout: 'layouts/auth', form: { ...req.body, next: nextPath }, error: 'Invalid email or password.'
       });
     }
 
+    if (user.isLoginLocked()) {
+      await auditAuth(req, 'auth.login_blocked', user, { lockUntil: user.lockUntil });
+      return res.status(429).render('auth/login', {
+        title: 'Login', layout: 'layouts/auth', form: { email, next: nextPath }, error: 'Too many attempts. Try again later.'
+      });
+    }
+
+    const isValid = await user.verifyPassword(password);
+    if (!isValid || user.status !== 'active') {
+      user.failedLoginAttempts = Number(user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= env.loginMaxFailures) {
+        user.lockUntil = loginLockDate();
+        user.failedLoginAttempts = 0;
+      }
+      await user.save();
+      await auditAuth(req, 'auth.login_failed', user, { locked: Boolean(user.lockUntil && user.lockUntil > new Date()) });
+      return res.status(422).render('auth/login', {
+        title: 'Login', layout: 'layouts/auth', form: { email, next: nextPath }, error: 'Invalid email or password.'
+      });
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
     user.lastLoginAt = new Date();
     await user.save();
 
     const tokens = await issueAuthTokens(user, req);
     setAuthCookies(res, tokens);
+    await auditAuth(req, 'auth.login_succeeded', user);
     return res.redirect(nextPath);
   } catch (error) {
     return next(error);
@@ -286,10 +344,14 @@ async function logout(req, res, next) {
     const refreshToken = req.cookies.refreshToken;
 
     if (refreshToken) {
-      await RefreshToken.updateOne({ tokenHash: hashToken(refreshToken) }, { revokedAt: new Date() });
+      await RefreshToken.updateOne(
+        { tokenHash: hashToken(refreshToken) },
+        { $set: { revokedAt: new Date(), revokeReason: 'logout' } }
+      );
     }
 
     clearAuthCookies(res);
+    await auditAuth(req, 'auth.logout', req.user);
     return res.redirect('/');
   } catch (error) {
     return next(error);
@@ -313,7 +375,8 @@ async function refresh(req, res, next) {
 async function logoutAll(req, res, next) {
   try {
     if (req.user) {
-      await RefreshToken.updateMany({ user: req.user._id, revokedAt: null }, { revokedAt: new Date() });
+      await revokeAllSessions(req.user._id, 'logout_all', { incrementVersion: true });
+      await auditAuth(req, 'auth.logout_all', req.user);
     }
     clearAuthCookies(res);
     return res.redirect('/');
@@ -330,25 +393,25 @@ async function forgot(req, res, next) {
   try {
     const email = normalizeEmail(req.body.email);
     const user = await User.findOne({ email });
-    const isProduction = env.nodeEnv === 'production';
-    let actionUrl = '/auth/login';
+    let developmentActionUrl = '/auth/login';
 
     if (user) {
       const resetToken = createPasswordResetToken(user);
       await user.save();
-      // TODO: send resetToken via a real email provider instead of exposing it below.
-      if (!isProduction) {
-        actionUrl = `/auth/reset-password?token=${resetToken}`;
+      const delivery = await sendPasswordResetEmail({ user, token: resetToken });
+      if (!delivery.delivered && env.allowDevelopmentEmailLinks) {
+        developmentActionUrl = `/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
       }
+      await auditAuth(req, 'auth.password_reset_requested', user);
+    } else {
+      await bcrypt.compare('not-a-real-password', DUMMY_PASSWORD_HASH);
     }
 
     return res.render('auth/check-email', {
       title: 'Reset password',
       layout: 'layouts/auth',
-      message: isProduction
-        ? 'If that email exists, a password reset link has been sent. Check your inbox.'
-        : 'If the email exists, a password reset link will be sent. Email delivery is not connected yet, so development shows the link here.',
-      actionUrl
+      message: 'If that email exists, a password reset link has been sent. Check your inbox.',
+      actionUrl: developmentActionUrl
     });
   } catch (error) {
     return next(error);
@@ -391,7 +454,8 @@ async function reset(req, res, next) {
     user.passwordResetTokenHash = undefined;
     user.passwordResetExpiresAt = undefined;
     await user.save();
-    await RefreshToken.updateMany({ user: user._id, revokedAt: null }, { revokedAt: new Date() });
+    await revokeAllSessions(user._id, 'password_reset');
+    await auditAuth(req, 'auth.password_reset_completed', user);
 
     return res.redirect('/auth/login');
   } catch (error) {
@@ -436,6 +500,7 @@ async function verifyEmail(req, res, next) {
     user.emailVerificationTokenHash = undefined;
     user.emailVerificationExpiresAt = undefined;
     await user.save();
+    await auditAuth(req, 'auth.email_verified', user);
 
     return res.redirect('/dashboard');
   } catch (error) {
@@ -460,17 +525,14 @@ async function resendVerification(req, res, next) {
 
     const token = createEmailVerificationToken(user);
     await user.save();
-
-    const isProduction = env.nodeEnv === 'production';
+    const delivery = await sendVerificationEmail({ user, token });
     const targetEmail = user.pendingEmail || user.email;
-    // TODO: send `token` via a real email provider instead of exposing it below.
+    await auditAuth(req, 'auth.verification_resent', user, { targetEmail });
     return res.render('auth/check-email', {
       title: 'Verify email',
       layout: 'layouts/auth',
-      message: isProduction
-        ? `A verification link has been sent to ${targetEmail}.`
-        : `A verification link has been prepared for ${targetEmail}. Email delivery is not connected yet, so development shows the link here.`,
-      actionUrl: isProduction ? '/dashboard' : verificationUrl(token)
+      message: `A verification link has been sent to ${targetEmail}.`,
+      actionUrl: !delivery.delivered && env.allowDevelopmentEmailLinks ? verificationUrl(token) : '/dashboard'
     });
   } catch (error) {
     return next(error);

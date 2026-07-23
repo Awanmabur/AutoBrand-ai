@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Approval = require('../../models/Approval');
 const ClientApprovalLink = require('../../models/ClientApprovalLink');
 const { hashToken } = require('../tokenService');
+const { dispatchScheduledPost } = require('../postDispatchService');
 
 function makeApprovalToken() {
   return crypto.randomBytes(32).toString('hex');
@@ -89,7 +90,14 @@ async function submitDecision({ token, decision, decisionNote = '', resolvedBy }
         ? 'rejected'
         : 'pending_approval';
     link.post.handoffStatus = decision;
+    if (decision === 'approved' && link.post.publishAfterApproval) {
+      link.post.scheduledAt = link.post.scheduledAt || new Date();
+      link.post.scheduleVersion = Number(link.post.scheduleVersion || 0) + 1;
+      link.post.publishingStartedAt = undefined;
+      link.post.publishingAttemptId = '';
+    }
     await link.post.save();
+    if (decision === 'approved' && link.post.publishAfterApproval) await dispatchScheduledPost(link.post, { userId: link.post.createdBy || undefined });
   }
   if (link.campaign) {
     link.campaign.status = decision === 'approved' ? 'approved' : decision === 'rejected' ? 'rejected' : 'changes_requested';
@@ -102,6 +110,11 @@ async function submitDecision({ token, decision, decisionNote = '', resolvedBy }
 async function requestApproval({ post, requestedBy, reviewerEmail, reviewerName, note, publishAfterApproval = false }) {
   post.approvalRequired = true;
   post.publishAfterApproval = publishAfterApproval;
+  post.handoffStatus = 'sent';
+  if (publishAfterApproval && !post.scheduledAt) post.scheduledAt = new Date();
+  post.scheduleVersion = Number(post.scheduleVersion || 0) + 1;
+  post.publishingStartedAt = undefined;
+  post.publishingAttemptId = '';
   post.status = 'pending_approval';
   await post.save();
   const approval = await Approval.create({

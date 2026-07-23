@@ -5,6 +5,20 @@ const Campaign = require('../models/Campaign');
 const Notification = require('../models/Notification');
 const { requestApproval: requestApprovalService, requestCampaignApproval, resolveApprovalToken, submitDecision } = require('../services/approvals/approval.service');
 const { assertCanCreateApprovalLink } = require('../services/usageLimitService');
+const { dispatchScheduledPost } = require('../services/postDispatchService');
+
+
+async function notifySafely(payload) {
+  try {
+    await Notification.create(payload);
+  } catch (error) {
+    console.warn('[approvals] notification could not be saved', {
+      type: payload?.type,
+      entityId: payload?.entityId ? String(payload.entityId) : undefined,
+      message: error?.message
+    });
+  }
+}
 
 async function index(req, res) {
   return res.redirect(303, '/dashboard/approvals');
@@ -25,7 +39,7 @@ async function requestApproval(req, res, next) {
         note: req.body.note
       });
 
-      await Notification.create({
+      await notifySafely({
         user: req.user._id,
         type: 'approval_requested',
         title: 'Campaign approval requested',
@@ -50,7 +64,7 @@ async function requestApproval(req, res, next) {
       publishAfterApproval: req.body.publishAfterApproval === 'on'
     });
 
-    await Notification.create({
+    await notifySafely({
       user: req.user._id,
       type: 'approval_requested',
       title: 'Approval requested',
@@ -82,10 +96,18 @@ async function resolve(req, res, next) {
     await approval.save();
 
     if (approval.post) {
+      approval.post.handoffStatus = req.body.status;
       if (req.body.status === 'approved') approval.post.status = approval.post.publishAfterApproval ? 'scheduled' : 'approved';
       if (req.body.status === 'rejected') approval.post.status = 'rejected';
       if (req.body.status === 'changes_requested') approval.post.status = 'draft';
+      if (req.body.status === 'approved' && approval.post.publishAfterApproval) {
+        approval.post.scheduledAt = approval.post.scheduledAt || new Date();
+        approval.post.scheduleVersion = Number(approval.post.scheduleVersion || 0) + 1;
+        approval.post.publishingStartedAt = undefined;
+        approval.post.publishingAttemptId = '';
+      }
       await approval.post.save();
+      if (req.body.status === 'approved' && approval.post.publishAfterApproval) await dispatchScheduledPost(approval.post, { userId: approval.post.createdBy || req.user?._id });
     }
     if (approval.campaign) {
       if (req.body.status === 'approved') approval.campaign.status = 'approved';
@@ -103,7 +125,7 @@ async function resolve(req, res, next) {
       });
     }
 
-    await Notification.create({
+    await notifySafely({
       user: approval.requestedBy,
       type: 'approval_resolved',
       title: 'Approval updated',
@@ -150,7 +172,7 @@ async function publicDecision(req, res, next) {
   try {
     const link = await submitDecision({ token: req.params.token, decision: req.body.decision, decisionNote: req.body.decisionNote });
     if (link.approval?.requestedBy) {
-      await Notification.create({
+      await notifySafely({
         user: link.approval.requestedBy,
         type: req.body.decision === 'approved' ? 'approval_approved' : req.body.decision === 'rejected' ? 'approval_rejected' : 'approval_changes_requested',
         title: 'Client review submitted',

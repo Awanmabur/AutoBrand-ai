@@ -23,7 +23,7 @@ function withLinkedInEnv(fn) {
     env.linkedinClientSecret = 'linkedin_secret';
     env.linkedinCallbackUrl = 'http://localhost:3000/social/linkedin/callback';
     env.linkedinScopes = 'openid profile email w_member_social w_organization_social r_organization_social';
-    env.linkedinVersion = '202605';
+    env.linkedinVersion = '202607';
     try {
       await fn();
     } finally {
@@ -108,7 +108,7 @@ test('publishLinkedInPost creates a text post through the versioned Posts API', 
     });
 
     assert.equal(result.id, 'urn:li:share:1');
-    assert.equal(calls[0].options.headers['Linkedin-Version'], '202605');
+    assert.equal(calls[0].options.headers['Linkedin-Version'], '202607');
     const body = JSON.parse(calls[0].options.body);
     assert.equal(body.author, 'urn:li:person:person_1');
     assert.equal(body.commentary, 'A practical update for customers #Brand');
@@ -127,9 +127,6 @@ test('publishLinkedInPost uploads image media before creating the post', withLin
   global.fetch = async (url, options = {}) => {
     const target = String(url);
     calls.push({ url: target, options });
-    if (target === 'https://cdn.example.test/image.png') {
-      return new Response(imageBytes, { status: 200, headers: { 'content-type': 'image/png' } });
-    }
     if (target.includes('/rest/images?action=initializeUpload')) {
       return Response.json({ value: { uploadUrl: 'https://upload.linkedin.test/image', image: 'urn:li:image:abc' } });
     }
@@ -155,7 +152,12 @@ test('publishLinkedInPost uploads image media before creating the post', withLin
         accountId: 'urn:li:organization:12345',
         accessTokenEncrypted: encryptToken('linkedin_access'),
         permissions: ['w_organization_social']
-      }
+      },
+      downloadRemote: async () => ({
+        buffer: imageBytes,
+        size: imageBytes.length,
+        mimeType: 'image/png'
+      })
     });
 
     assert.equal(result.id, 'urn:li:share:2');

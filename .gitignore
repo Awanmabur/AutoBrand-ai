@@ -16,3 +16,5 @@ temp/
 coverage/
 .nyc_output/
 *.zip
+
+.autobrand-token-key

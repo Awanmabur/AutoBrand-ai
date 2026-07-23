@@ -1,7 +1,5 @@
 const AdminRole = require('../models/AdminRole');
-const TeamMember = require('../models/TeamMember');
 const AppError = require('../utils/AppError');
-const { permissionsForTeamRole } = require('../services/team/teamAccess.service');
 
 const ROLE_PERMISSIONS = {
   super_admin: ['*'],
@@ -25,16 +23,11 @@ async function getPermissions(user) {
   const direct = Array.isArray(user.permissions) ? user.permissions : [];
   const rolePermissions = ROLE_PERMISSIONS[user.role] || [];
   let adminRolePermissions = [];
-  let teamPermissions = [];
   if (user.adminRole) {
     const role = await AdminRole.findById(user.adminRole);
     if (role?.isActive) adminRolePermissions = role.permissions || [];
   }
-  if (user._id) {
-    const memberships = await TeamMember.find({ user: user._id, status: 'active' }).select('role permissions').lean();
-    teamPermissions = memberships.flatMap((member) => permissionsForTeamRole(member.role, member.permissions));
-  }
-  return [...new Set([...rolePermissions, ...direct, ...adminRolePermissions, ...teamPermissions])];
+  return [...new Set([...rolePermissions, ...direct, ...adminRolePermissions])];
 }
 
 function hasPermission(permissions, permission) {

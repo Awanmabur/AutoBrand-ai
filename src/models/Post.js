@@ -76,6 +76,9 @@ const postSchema = new mongoose.Schema(
       index: true
     },
     scheduledAt: { type: Date, index: true },
+    scheduleVersion: { type: Number, default: 0, index: true },
+    publishingStartedAt: { type: Date, index: true },
+    publishingAttemptId: { type: String, default: '' },
     publishedAt: { type: Date },
     platformPostId: { type: String },
     platformPostUrl: { type: String },

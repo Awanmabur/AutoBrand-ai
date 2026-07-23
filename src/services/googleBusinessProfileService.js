@@ -1,6 +1,8 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
+const { publicMediaUrl } = require('./publicMediaUrlService');
 
 class GoogleBusinessProfileError extends Error {
   constructor(message, response) {
@@ -85,7 +87,7 @@ async function parseGoogleResponse(response, fallback) {
 }
 
 async function exchangeToken(body) {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
@@ -128,7 +130,7 @@ async function accessTokenFor(account) {
 }
 
 async function googleJson(url, { accessToken, method = 'GET', body } = {}) {
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -158,8 +160,9 @@ function accountParts(account) {
 
 function googleMedia(post) {
   const media = Array.isArray(post.media) ? post.media : [];
-  const image = media.find((item) => item.fileType === 'image' && /^https?:\/\//i.test(item.fileUrl || ''));
-  return image ? [{ mediaFormat: 'PHOTO', sourceUrl: image.fileUrl }] : undefined;
+  const image = media.find((item) => item.fileType === 'image' && item.fileUrl);
+  const sourceUrl = image ? publicMediaUrl(image.fileUrl) : '';
+  return sourceUrl ? [{ mediaFormat: 'PHOTO', sourceUrl }] : undefined;
 }
 
 function locationName(location) {

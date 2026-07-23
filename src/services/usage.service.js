@@ -3,6 +3,7 @@ const Brand = require('../models/Brand');
 const ClientApprovalLink = require('../models/ClientApprovalLink');
 const UsageLog = require('../models/UsageLog');
 const AiVideoJob = require('../models/AiVideoJob');
+const AiJob = require('../models/AiJob');
 const Media = require('../models/Media');
 const Post = require('../models/Post');
 const SocialAccount = require('../models/SocialAccount');
@@ -86,6 +87,31 @@ async function countUsageLog(userId, actions, start, end) {
   });
 }
 
+async function countImageUsage(userId, start, end) {
+  const [usage] = await UsageLog.aggregate([
+    { $match: { user: userId, action: 'ai_generate_image', createdAt: { $gte: start, $lt: end } } },
+    { $group: { _id: null, count: { $sum: { $cond: [{ $gt: [{ $ifNull: ['$metadata.count', 0] }, 0] }, '$metadata.count', 1] } } } }
+  ]);
+  return Number(usage?.count || 0);
+}
+
+async function countVideoUsage(userId, start, end) {
+  const [studioVideos, postVideos] = await Promise.all([
+    AiVideoJob.countDocuments({ createdBy: userId, mode: { $ne: 'avatar_video' }, createdAt: { $gte: start, $lt: end } }),
+    AiJob.countDocuments({
+      user: userId,
+      taskType: { $in: ['post_content_generation', 'post_video_generation'] },
+      $or: [
+        { taskType: 'post_video_generation' },
+        { 'metadata.plan.needsVideo': true }
+      ],
+      status: { $ne: 'cancelled' },
+      createdAt: { $gte: start, $lt: end }
+    })
+  ]);
+  return studioVideos + postVideos;
+}
+
 async function buildLiveUsageCounts(user) {
   const userId = user._id || user;
   const { start, end } = monthWindow();
@@ -110,8 +136,8 @@ async function buildLiveUsageCounts(user) {
     Post.countDocuments({ createdBy: userId, workflowMode: 'auto', createdAt: { $gte: start, $lt: end } }),
     Post.countDocuments({ createdBy: userId, workflowMode: 'handoff', createdAt: { $gte: start, $lt: end } }),
     countUsageLog(userId, ['ai_generate_post', 'ai_generate_content'], start, end),
-    countUsageLog(userId, ['ai_generate_image'], start, end),
-    AiVideoJob.countDocuments({ createdBy: userId, mode: { $ne: 'avatar_video' }, createdAt: { $gte: start, $lt: end } }),
+    countImageUsage(userId, start, end),
+    countVideoUsage(userId, start, end),
     AiVideoJob.countDocuments({ createdBy: userId, mode: 'avatar_video', createdAt: { $gte: start, $lt: end } }),
     activeStorageMb(userId),
     ClientApprovalLink.countDocuments({ createdBy: userId, createdAt: { $gte: start, $lt: end } })

@@ -1,6 +1,8 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
+const { publicMediaUrl } = require('./publicMediaUrlService');
 
 class ThreadsProviderError extends Error {
   constructor(message, response) {
@@ -88,7 +90,7 @@ async function parseThreadsResponse(response, fallback) {
 }
 
 async function exchangeShortLivedToken(code) {
-  const response = await fetch(`${GRAPH_BASE}/oauth/access_token`, {
+  const response = await fetchWithTimeout(`${GRAPH_BASE}/oauth/access_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -107,7 +109,7 @@ async function exchangeLongLivedToken(shortAccessToken) {
   url.searchParams.set('grant_type', 'th_exchange_token');
   url.searchParams.set('client_secret', env.threadsAppSecret);
   url.searchParams.set('access_token', shortAccessToken);
-  const response = await fetch(url.toString());
+  const response = await fetchWithTimeout(url.toString());
   return parseThreadsResponse(response, `Threads long-lived token request failed: ${response.status}`);
 }
 
@@ -115,7 +117,7 @@ async function refreshLongLivedToken(currentAccessToken) {
   const url = new URL(`${GRAPH_BASE}/refresh_access_token`);
   url.searchParams.set('grant_type', 'th_refresh_token');
   url.searchParams.set('access_token', currentAccessToken);
-  const response = await fetch(url.toString());
+  const response = await fetchWithTimeout(url.toString());
   return parseThreadsResponse(response, `Threads token refresh failed: ${response.status}`);
 }
 
@@ -144,7 +146,7 @@ async function threadsGraph(pathname, { accessToken, method = 'GET', body } = {}
   const url = /^https?:\/\//i.test(pathname) ? pathname : graphUrl(pathname);
   const payload = body ? new URLSearchParams({ ...body, access_token: accessToken }) : undefined;
   const finalUrl = !body && accessToken ? `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(accessToken)}` : url;
-  const response = await fetch(finalUrl, {
+  const response = await fetchWithTimeout(finalUrl, {
     method,
     headers: body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : undefined,
     body: payload
@@ -197,7 +199,10 @@ async function exchangeCodeForThreadsAccount({ code, state }) {
 
 function firstPublicImage(post) {
   const media = Array.isArray(post.media) ? post.media : [];
-  return media.find((item) => item.fileType === 'image' && /^https?:\/\//i.test(item.fileUrl || ''));
+  const image = media.find((item) => item.fileType === 'image' && item.fileUrl);
+  if (!image) return null;
+  const url = publicMediaUrl(image.fileUrl);
+  return url ? { ...image, publicFileUrl: url } : null;
 }
 
 function postText(post) {
@@ -210,7 +215,7 @@ function postText(post) {
 async function createThreadsContainer({ accountId, accessToken, post }) {
   const image = firstPublicImage(post);
   const body = image
-    ? { media_type: 'IMAGE', image_url: image.fileUrl, text: postText(post) }
+    ? { media_type: 'IMAGE', image_url: image.publicFileUrl, text: postText(post) }
     : { media_type: 'TEXT', text: postText(post) };
   return threadsGraph(`/${encodeURIComponent(accountId)}/threads`, { accessToken, method: 'POST', body });
 }

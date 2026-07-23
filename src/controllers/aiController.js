@@ -8,6 +8,7 @@ const { createPlatformVariations } = require('../services/composer/platformVaria
 const { spendCredits } = require('../services/creditService');
 const { generateImageAsset } = require('../services/aiContentService');
 const { assertCanGenerateImage, assertCanGenerateText } = require('../services/usageLimitService');
+const { resolvePublishingTargets } = require('../services/social/socialDestination.service');
 const {
   creditsForGeneration,
   generateContentBundle,
@@ -482,16 +483,24 @@ async function generateCampaign(req, res, next) {
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     await assertCanGenerateText(req.user);
+    const targets = await resolvePublishingTargets({
+      ownerId: req.user._id,
+      brandId: brand._id,
+      requestedPlatforms: splitList(req.body.platforms),
+      requestedAccountIds: req.body.targetAccounts || [],
+      requireReady: true,
+      allowPlatformDefaults: true
+    });
     const requestedOutput = req.body.outputType
       || (Number(req.body.durationDays || 7) >= 30 ? '30_day_content_calendar' : req.body.campaignType || '7_day_campaign');
     const result = await generateContentBundle({
       ...req.body,
       outputType: requestedOutput,
       brand,
-      platforms: splitList(req.body.platforms, ['facebook', 'instagram'])
+      platforms: targets.platforms
     });
-    const controls = result.controls || normalizeGenerationControls({ ...req.body, outputType: requestedOutput });
-    const platforms = controls.platforms || splitList(req.body.platforms, ['facebook', 'instagram']);
+    const controls = result.controls || normalizeGenerationControls({ ...req.body, outputType: requestedOutput, platforms: targets.platforms });
+    const platforms = targets.platforms;
     const credits = creditsForGeneration(controls);
     const aiPlan = campaignPlanDetails(result);
     const campaign = await Campaign.create({
@@ -501,6 +510,7 @@ async function generateCampaign(req, res, next) {
       goal: req.body.goal || controls.campaignType || controls.outputType,
       description: req.body.description || result.description || 'Generated from the AI Generator.',
       platforms,
+      targetAccounts: targets.accountIds,
       postingFrequency: req.body.postingFrequency || brand.postingFrequency || '1 post per day',
       status: 'draft',
       aiPlan
@@ -520,6 +530,9 @@ async function generateCampaign(req, res, next) {
   } catch (error) {
     if (error.status === 402) {
       return res.redirect(`/dashboard/billing?error=${encodeURIComponent(error.message)}`);
+    }
+    if (error.code === 'PUBLISHING_TARGETS_UNAVAILABLE') {
+      return res.redirect(`/dashboard/campaigns?error=${encodeURIComponent(error.message)}`);
     }
     return next(error);
   }

@@ -27,13 +27,23 @@ const userSchema = new mongoose.Schema(
     emailChangeRequestedAt: { type: Date },
     accountDeletionStatus: { type: String, enum: ['none', 'requested', 'cancelled', 'completed'], default: 'none', index: true },
     accountDeletionRequestedAt: { type: Date },
-    accountDeletionReason: { type: String, maxlength: 1000 }
+    accountDeletionReason: { type: String, maxlength: 1000 },
+    tokenVersion: { type: Number, default: 0, min: 0 },
+    failedLoginAttempts: { type: Number, default: 0, min: 0 },
+    lockUntil: { type: Date },
+    passwordChangedAt: { type: Date }
   },
   { timestamps: true }
 );
 
 userSchema.methods.setPassword = async function setPassword(password) {
   this.passwordHash = await bcrypt.hash(password, 12);
+  this.passwordChangedAt = new Date();
+  this.tokenVersion = Number(this.tokenVersion || 0) + 1;
+};
+
+userSchema.methods.isLoginLocked = function isLoginLocked() {
+  return Boolean(this.lockUntil && this.lockUntil > new Date());
 };
 
 userSchema.methods.verifyPassword = function verifyPassword(password) {

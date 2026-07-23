@@ -1,10 +1,12 @@
 const express = require('express');
 const requireAuth = require('../middlewares/auth');
+const requireVerified = require('../middlewares/requireVerified');
 const aiController = require('../controllers/aiController');
 
 const router = express.Router();
 
 router.use(requireAuth);
+router.use(requireVerified);
 router.post('/generate-image', aiController.generateImage);
 router.post('/generate-content', aiController.generatePost);
 router.post('/generate-post', aiController.generatePost);

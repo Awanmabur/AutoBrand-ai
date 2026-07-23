@@ -1,6 +1,7 @@
 const Brand = require('../../models/Brand');
 const User = require('../../models/User');
 const Post = require('../../models/Post');
+const AiJob = require('../../models/AiJob');
 const AiVideoJob = require('../../models/AiVideoJob');
 const Campaign = require('../../models/Campaign');
 const SocialAccount = require('../../models/SocialAccount');
@@ -27,6 +28,7 @@ const { updateBrandPerformanceMemoryForOwner } = require('../../services/analyti
 const { buildBrandChecklist } = require('../../services/brandBrain/brandScore.service');
 const { suggestBestTimes } = require('../../services/scheduling/bestTime.service');
 const { capabilityList, evaluateSocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
+const { PLATFORM_CATALOG, buildComposerDestinationCatalog, isRealSocialAccount } = require('../../services/social/socialDestination.service');
 const { buildAnalyticsDashboard } = require('../../services/analytics/analyticsDashboard.service');
 const { defaultMessage, defaultTitle } = require('../../utils/errorResponse');
 
@@ -44,10 +46,6 @@ function titleCase(value) {
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .trim();
-}
-
-function isRealSocialAccount(account) {
-  return account.status !== 'mock' && !String(account.accountName || '').toLowerCase().includes('(development)');
 }
 
 function initials(name = '') {
@@ -80,6 +78,25 @@ function scriptJson(value) {
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
+}
+
+function serializeSocialAccount(account) {
+  const health = evaluateSocialAccountHealth(account);
+  return {
+    id: account._id.toString(),
+    brandId: account.brand?._id?.toString() || String(account.brand || ''),
+    brandName: account.brand?.name || '',
+    platform: account.platform,
+    accountName: account.accountName,
+    accountId: account.accountId || '',
+    permissions: account.permissions || [],
+    status: account.status,
+    health,
+    capabilities: health.capabilities,
+    lastSyncAt: account.lastSyncAt,
+    lastHealthCheckAt: account.lastHealthCheckAt,
+    tokenExpiresAt: account.tokenExpiresAt
+  };
 }
 
 function dashboardErrorFromRequest(req) {
@@ -504,7 +521,10 @@ function serializeCalendarPost(post) {
     canRetry: post.status === 'failed',
     canBulkReschedule: ['scheduled', 'failed', 'cancelled', 'draft'].includes(post.status || ''),
     retryCount: post.retryCount || 0,
-    errorMessage: post.errorMessage || ''
+    errorMessage: post.errorMessage || '',
+    generationStatus: post.platformMetadata?.generation?.status || '',
+    generationActionStatus: post.platformMetadata?.generation?.actionStatus || '',
+    generationActionError: post.platformMetadata?.generation?.actionError || ''
   };
 }
 
@@ -740,12 +760,31 @@ function postCard(post, options = {}) {
   const postMedia = mediaListFromRecords(post.media || [], post.type);
   const postId = recordId(post);
   const when = post.scheduledAt || post.publishedAt || post.updatedAt || post.createdAt;
-  const defaultActions = postId ? [
+  const generation = post.platformMetadata?.generation || {};
+  const generationStatus = String(generation.status || '').toLowerCase();
+  const generationKind = String(generation.kind || post.type || 'post').toLowerCase();
+  const isVideoGeneration = ['video', 'reel', 'avatar_video'].includes(generationKind);
+  const generationLabel = isVideoGeneration ? 'video' : 'post';
+  const availablePlatforms = [...new Set((options.availablePlatforms || [])
+    .map((platform) => String(platform || '').trim().toLowerCase())
+    .filter(Boolean))];
+  const editablePlatform = availablePlatforms.includes(String(post.platform || '').toLowerCase())
+    ? String(post.platform || '').toLowerCase()
+    : availablePlatforms[0] || '';
+  const isGenerating = ['queued', 'running'].includes(generationStatus);
+  const displayStatus = isGenerating
+    ? generationStatus === 'running' ? `Generating ${generationLabel}` : `${titleCase(generationLabel)} queued`
+    : generationStatus === 'failed'
+      ? 'Generation failed'
+      : titleCase(post.status || 'draft');
+  const defaultActions = !postId ? [] : isGenerating ? [
+    { label: 'Cancel', action: `/dashboard/actions/posts/${postId}/cancel`, method: 'post', kind: 'cancel' }
+  ] : [
     { label: (post.status === 'published' ? 'Repost' : 'Publish now'), action: `/dashboard/actions/posts/${postId}/publish-now`, method: 'post', kind: 'publish' },
     { label: 'Duplicate', action: `/dashboard/actions/posts/${postId}/duplicate`, method: 'post', kind: 'duplicate' },
     { label: 'Schedule', action: `/dashboard/actions/posts/${postId}/schedule`, method: 'post', kind: 'schedule' },
     { label: 'Cancel', action: `/dashboard/actions/posts/${postId}/cancel`, method: 'post', kind: 'cancel' }
-  ] : [];
+  ];
   const editAction = Object.prototype.hasOwnProperty.call(options, 'editAction') && options.editAction !== undefined
     ? options.editAction
     : postId ? `/dashboard/actions/posts/${postId}?_method=PUT` : '';
@@ -754,11 +793,12 @@ function postCard(post, options = {}) {
     : postId ? `/dashboard/actions/posts/${postId}?_method=DELETE` : '';
   return card(
     postTitle(post),
-    options.description || `${postDescription(post)}${when ? ` · ${formatDateTime(when)}` : ''}`,
-    titleCase(post.status || 'draft'),
+    options.description || `${isGenerating ? `The post is saved and its ${generationLabel} is generating in the background.` : postDescription(post)}${when ? ` · ${formatDateTime(when)}` : ''}`,
+    displayStatus,
     {
       id: postId,
       kind: 'post',
+      status: post.status || 'draft',
       href: options.href || '/dashboard/content-library',
       editHref: options.editHref || '/dashboard/content-library',
       editAction,
@@ -771,9 +811,9 @@ function postCard(post, options = {}) {
         { name: 'title', label: 'Title', type: 'text', value: post.title || '', full: true },
         { name: 'caption', label: 'Caption', type: 'textarea', value: post.caption || '', rows: 5, full: true },
         { name: 'description', label: 'Description', type: 'textarea', value: post.description || '', rows: 3, full: true },
-        { name: 'platform', label: 'Platform', type: 'select', value: post.platform || 'facebook', options: ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube', 'x', 'threads', 'pinterest', 'google_business'] },
+        ...(availablePlatforms.length ? [{ name: 'platform', label: 'Platform', type: 'select', value: editablePlatform, options: availablePlatforms }] : []),
         { name: 'type', label: 'Type', type: 'select', value: post.type || 'text', options: ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'article', 'campaign', 'avatar_video'] },
-        { name: 'status', label: 'Status', type: 'select', value: post.status || 'draft', options: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'] },
+        { name: 'status', label: 'Status', type: 'select', value: post.status || 'draft', options: ['draft', 'scheduled', 'cancelled'] },
         { name: 'scheduledAt', label: 'Schedule time', type: 'datetime-local', value: dateTimeLocalValue(post.scheduledAt) },
         { name: 'hashtags', label: 'Hashtags', type: 'text', value: (post.hashtags || []).join(' '), full: true },
         { name: 'link', label: 'Link', type: 'url', value: post.link || '', full: true }
@@ -805,6 +845,12 @@ function postCard(post, options = {}) {
         'Publish URLs': post.platformMetadata?.publishUrls,
         'Publish blockers': post.platformMetadata?.publishReadiness?.blockers,
         'Publish warnings': post.platformMetadata?.publishReadiness?.warnings,
+        'Generation status': generationStatus ? titleCase(generationStatus) : '',
+        'Generation provider': generation.provider || '',
+        'Generation warning': generation.warning || '',
+        'Generation error': generation.error || '',
+        'Generation action status': generation.actionStatus ? titleCase(generation.actionStatus) : '',
+        'Generation action error': generation.actionError || '',
         Status: titleCase(post.status),
         'Scheduled at': post.scheduledAt ? formatDateTime(post.scheduledAt) : '',
         'Published at': post.publishedAt ? formatDateTime(post.publishedAt) : '',
@@ -872,7 +918,10 @@ function buildDashboardData({
   platformAdminView = false,
   dashboardError = null
 }) {
-  socialAccounts = socialAccounts.filter(isRealSocialAccount);
+  const allSocialAccounts = socialAccounts.filter(isRealSocialAccount);
+  const destinationCatalog = buildComposerDestinationCatalog(allSocialAccounts, { verifyEncryption: true });
+  const publishingAccounts = destinationCatalog.accounts;
+  socialAccounts = allSocialAccounts;
   const userName = user.name || user.email || 'User';
   const plan = currentPlan?.slug || user.plan || 'free-trial';
   const planName = currentPlan?.name || titleCase(plan);
@@ -884,10 +933,8 @@ function buildDashboardData({
   const scheduledCount = postStatus.scheduled || scheduledPosts.length || 0;
   const publishedCount = postStatus.published || 0;
   const failedCount = postStatus.failed || 0;
-  const connectedAccounts = socialStatus.connected || 0;
-  const connectedPlatforms = new Set(
-    socialAccounts.filter((account) => account.status === 'connected').map((account) => account.platform)
-  ).size;
+  const connectedAccounts = publishingAccounts.length;
+  const connectedPlatforms = destinationCatalog.platforms.length;
   const imageCount = mediaTypes.image || 0;
   const videoMediaCount = mediaTypes.video || 0;
   const mediaTotal = sum(Object.values(mediaTypes));
@@ -923,8 +970,8 @@ function buildDashboardData({
   const scheduledRows = scheduledPosts.map((post) =>
     row(postTitle(post), `${postDescription(post)} · ${formatDate(post.scheduledAt)}`, titleCase(post.status))
   );
-  const recentPostCards = recentPosts.map((post) => postCard(post));
-  const scheduledPostCards = scheduledPosts.map((post) => postCard(post));
+  const recentPostCards = recentPosts.map((post) => postCard(post, { availablePlatforms: destinationCatalog.platformKeys }));
+  const scheduledPostCards = scheduledPosts.map((post) => postCard(post, { availablePlatforms: destinationCatalog.platformKeys }));
   const analyticsRecordsForDashboard = Array.isArray(analyticsView.records) ? analyticsView.records : [];
   const campaignAnalyticsSummary = (campaign) => {
     const campaignId = recordId(campaign);
@@ -1575,6 +1622,7 @@ function buildDashboardData({
   const failedPostCards = failedPostRecords.map((post) => {
     const postId = recordId(post);
     return postCard(post, {
+      availablePlatforms: destinationCatalog.platformKeys,
       description: `${postDescription(post)} · ${truncate(post.errorMessage || 'No error message saved', 72)}`,
       href: platformAdminView ? '/dashboard/admin' : '/dashboard/content-library',
       editHref: platformAdminView ? '/dashboard/admin' : '/dashboard/content-library',
@@ -1804,7 +1852,7 @@ function buildDashboardData({
           ? card('Next best action', `${scheduledCount} scheduled post${scheduledCount === 1 ? '' : 's'} are ready on the live calendar.`, 'Calendar', { kind: 'next_action', href: '/dashboard/calendar', editHref: '/dashboard/calendar' })
           : card('Next best action', `${draftPosts} draft post${draftPosts === 1 ? '' : 's'} can be edited, scheduled or published.`, 'Drafts', { kind: 'next_action', href: '/dashboard/content-library', editHref: '/dashboard/content-library' });
   const handoffCards = brands.map((brand) => {
-    const targetCount = socialAccounts.filter((account) => String(account.brand?._id || account.brand) === String(brand._id)).length;
+    const targetCount = publishingAccounts.filter((account) => String(account.brand?._id || account.brand) === String(brand._id)).length;
     return card(
       brand.name,
       `${autoPostingSummary(brand)} · ${targetCount} connected target${targetCount === 1 ? '' : 's'}`,
@@ -1851,24 +1899,10 @@ function buildDashboardData({
         status: campaign.status || ''
       })),
       brandRecords: brands.map(brandRecord),
-      socialAccounts: socialAccounts.map((account) => {
-        const health = evaluateSocialAccountHealth(account);
-        return {
-          id: account._id.toString(),
-          brandId: account.brand?._id?.toString() || '',
-          brandName: account.brand?.name || '',
-          platform: account.platform,
-          accountName: account.accountName,
-          accountId: account.accountId || '',
-          permissions: account.permissions || [],
-          status: account.status,
-          health,
-          capabilities: health.capabilities,
-          lastSyncAt: account.lastSyncAt,
-          lastHealthCheckAt: account.lastHealthCheckAt,
-          tokenExpiresAt: account.tokenExpiresAt
-        };
-      }),
+      socialAccounts: socialAccounts.map(serializeSocialAccount),
+      publishingAccounts: publishingAccounts.map(serializeSocialAccount),
+      composerPlatforms: destinationCatalog.platforms,
+      supportedPlatforms: PLATFORM_CATALOG,
       media: media.map((asset) => ({
         id: asset._id.toString(),
         brandId: asset.brand?._id?.toString() || '',
@@ -2017,7 +2051,7 @@ function buildDashboardData({
         stats: [
           [compactNumber(brands.length), 'Ready brands', 'Brand Brain context'],
           [compactNumber(campaigns.length), 'Campaigns', 'Planning source'],
-          [compactNumber(socialAccounts.length), 'Social accounts', 'Publishing targets'],
+          [compactNumber(connectedAccounts), 'Live destinations', 'Ready for publishing'],
           [compactNumber(mediaTotal), 'Media assets', 'Creative source']
         ],
         cards: [
@@ -2401,6 +2435,7 @@ async function index(req, res, next) {
     const shouldLoadPlans = canViewPlanManagement(req.user);
     const canViewPlatformAdmin = requestedPage === 'admin' && Boolean(featureAccess?.capabilities?.canManageAdmin);
     const shouldLoadAdminPlans = shouldLoadPlans || canViewPlatformAdmin;
+    const recentPostLimit = requestedPage === 'content-library' ? 48 : 12;
 
     await updateBrandPerformanceMemoryForOwner(userId);
 
@@ -2450,9 +2485,9 @@ async function index(req, res, next) {
     ] = await Promise.all([
       Brand.find({ owner: userId, status: 'active' }).sort({ updatedAt: -1 }).limit(12).lean(),
       Campaign.find({ createdBy: userId, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
-      SocialAccount.find({ owner: userId }).populate('brand').sort({ updatedAt: -1 }).limit(16).lean(),
+      SocialAccount.find({ owner: userId }).populate('brand').sort({ updatedAt: -1 }).limit(200).lean(),
       Approval.find({ requestedBy: userId }).populate({ path: 'post', populate: [{ path: 'brand' }, { path: 'media' }, { path: 'targetAccounts' }] }).populate({ path: 'campaign', populate: { path: 'brand' } }).sort({ updatedAt: -1 }).limit(12).lean(),
-      Post.find({ createdBy: userId }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(12).lean(),
+      Post.find({ createdBy: userId }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(recentPostLimit).lean(),
       Post.find({ createdBy: userId, status: 'scheduled' }).populate('brand').populate('media').populate('targetAccounts').sort({ scheduledAt: 1 }).limit(12).lean(),
       Media.find({ uploadedBy: userId, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(80).lean(),
       AiVideoJob.find({ createdBy: userId }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
@@ -2564,9 +2599,15 @@ async function index(req, res, next) {
         view: calendarView,
         focusDay,
         bestTimeSuggestions: brands.slice(0, 4).flatMap((brand) => {
-          const platforms = Array.isArray(brand.autoPosting?.platforms) && brand.autoPosting.platforms.length
-            ? brand.autoPosting.platforms
-            : ['facebook', 'instagram', 'linkedin'];
+          const brandId = brand._id?.toString?.() || '';
+          const livePlatforms = buildComposerDestinationCatalog(
+            socialAccounts.filter((account) => String(account.brand?._id || account.brand || '') === brandId),
+            { verifyEncryption: true }
+          ).platformKeys;
+          const preferredPlatforms = Array.isArray(brand.autoPosting?.platforms)
+            ? brand.autoPosting.platforms.filter((platform) => livePlatforms.includes(platform))
+            : [];
+          const platforms = preferredPlatforms.length ? preferredPlatforms : livePlatforms;
           return platforms.slice(0, 2).flatMap((platform) => suggestBestTimes({ brand, platform, limit: 1 }).map((suggestion) => ({
             ...suggestion,
             brandId: brand._id?.toString?.() || '',
@@ -2617,4 +2658,115 @@ async function index(req, res, next) {
   }
 }
 
-module.exports = { index };
+function escapeRegex(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function encodePostsCursor(post) {
+  if (!post?._id || !post?.updatedAt) return '';
+  return Buffer.from(JSON.stringify({
+    updatedAt: new Date(post.updatedAt).toISOString(),
+    id: String(post._id)
+  })).toString('base64url');
+}
+
+function decodePostsCursor(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'));
+    const updatedAt = new Date(parsed.updatedAt);
+    const id = String(parsed.id || '');
+    if (Number.isNaN(updatedAt.getTime()) || !/^[a-f\d]{24}$/i.test(id)) return null;
+    return { updatedAt, id };
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function postsApi(req, res, next) {
+  try {
+    const rawLimit = Number(req.query.limit || 24);
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(48, Math.floor(rawLimit))) : 24;
+    const baseFilter = { createdBy: req.user._id };
+    const requestedType = String(req.query.type || '').trim().toLowerCase();
+    const requestedStatus = String(req.query.status || '').trim().toLowerCase();
+    const search = String(req.query.search || '').trim().slice(0, 120);
+    const cursor = decodePostsCursor(req.query.cursor);
+    const filterClauses = [];
+
+    if (requestedType) baseFilter.type = requestedType;
+    if (requestedStatus === 'generating') {
+      baseFilter['platformMetadata.generation.status'] = { $in: ['queued', 'running'] };
+    } else if (requestedStatus === 'generation_failed') {
+      baseFilter['platformMetadata.generation.status'] = 'failed';
+    } else if (requestedStatus) {
+      baseFilter.status = requestedStatus;
+    }
+    if (search) {
+      const pattern = new RegExp(escapeRegex(search), 'i');
+      filterClauses.push({ $or: [{ title: pattern }, { caption: pattern }, { description: pattern }, { hashtags: pattern }] });
+    }
+
+    const queryFilter = { ...baseFilter };
+    if (cursor) {
+      filterClauses.push({
+        $or: [
+          { updatedAt: { $lt: cursor.updatedAt } },
+          { updatedAt: cursor.updatedAt, _id: { $lt: cursor.id } }
+        ]
+      });
+    }
+    if (filterClauses.length) queryFilter.$and = filterClauses;
+
+    const [postRows, total, pendingCount, queuedJobCount, publishingPendingCount, publishingAccountRows] = await Promise.all([
+      Post.find(queryFilter)
+        .populate('brand')
+        .populate('media')
+        .populate('targetAccounts')
+        .sort({ updatedAt: -1, _id: -1 })
+        .limit(limit + 1)
+        .lean(),
+      Post.countDocuments(filterClauses.length && search ? { ...baseFilter, $and: filterClauses.slice(0, 1) } : baseFilter),
+      Post.countDocuments({
+        createdBy: req.user._id,
+        'platformMetadata.generation.status': { $in: ['queued', 'running'] }
+      }),
+      AiJob.countDocuments({
+        user: req.user._id,
+        taskType: { $in: ['post_content_generation', 'post_video_generation'] },
+        status: { $in: ['queued', 'running'] }
+      }),
+      Post.countDocuments({
+        createdBy: req.user._id,
+        $or: [
+          { status: 'publishing' },
+          { status: 'scheduled', scheduledAt: { $lte: new Date() } }
+        ]
+      }),
+      SocialAccount.find({ owner: req.user._id, status: 'connected' })
+        .select('_id brand platform accountName accountId accessTokenEncrypted tokenExpiresAt status permissions providerMeta healthStatus')
+        .lean()
+    ]);
+
+    const availablePlatforms = buildComposerDestinationCatalog(publishingAccountRows, { verifyEncryption: true }).platformKeys;
+    const hasMore = postRows.length > limit;
+    const posts = hasMore ? postRows.slice(0, limit) : postRows;
+    const nextCursor = hasMore ? encodePostsCursor(posts[posts.length - 1]) : '';
+
+    res.set('Cache-Control', 'no-store, private');
+    return res.json({
+      ok: true,
+      cards: posts.map((post) => postCard(post, { availablePlatforms })),
+      limit,
+      total,
+      hasMore,
+      nextCursor,
+      pendingCount: Math.max(pendingCount, queuedJobCount) + publishingPendingCount,
+      refreshedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+module.exports = { index, postsApi };

@@ -1,19 +1,60 @@
-# AutoBrand AI Continuation Notes
+# AutoBrand AI Publishing Implementation Notes
 
-This project is AutoBrand AI. Any notes from unrelated projects have been removed so future work starts from the correct product context.
+## Lifecycle
 
-## Completed Local End-To-End Upgrades
+```text
+composer publish/schedule request
+  -> AI job stores requestedAction + selected accounts
+  -> generation validates/regenerates real media files
+  -> generated post is handed to durable dispatch
+  -> MongoDB due publisher atomically claims the post
+  -> each selected platform is preflighted independently
+  -> provider calls run with bounded concurrency
+  -> per-account success/failure is persisted
+  -> only failed destinations are retried
+```
 
-- Template video renders now create real local MP4 files and save matching Media records.
-- Template render drafts now attach the rendered MP4 to the created video post.
-- Calendar posts can be dragged to another day to reschedule through the existing schedule endpoint.
-- Publishing failures now apply a platform-aware retry policy for temporary errors.
-- Brand Brain performance memory now updates from synced Analytics records.
-- Media resize and brand-variant actions now create actual local image outputs instead of only planned manifests.
-- The lint script is Windows-safe and checks all JavaScript files through Node.
+Redis is optional. MongoDB is the correctness fallback.
 
-## Still Provider-Gated
+## Missing-media recovery
 
-- Live social publishing requires configured and approved provider apps.
-- Hosted AI, clean video, avatar rendering, payment automation, and outbound email require real provider accounts and keys.
-- Those are deployment/configuration blockers, not places where the app should silently pretend success.
+Completed generation jobs are checked for disappeared local output. Missing generated records are archived, the job is returned to `queued`, and the original publish/schedule action is preserved. This is required for ephemeral hosts and for old databases that reference files no longer present under `public/uploads`.
+
+## Multi-platform isolation
+
+Readiness is not all-or-nothing. For example, an Instagram localhost-media blocker does not cancel a valid Facebook Page upload. The post keeps a published result for Facebook and a failed result for Instagram, and retry logic skips Facebook.
+
+## Media delivery
+
+- Facebook Pages: local image/video files can be uploaded directly as bytes.
+- Instagram: requires a public HTTPS image/video URL; use Cloudinary or a public tunnel for local development.
+- Public origin selection uses the first actually public value from `PUBLIC_APP_URL` and `APP_URL`.
+
+## Runtime diagnostics
+
+```bash
+npm run diagnose:publishing -- --limit=10
+npm run diagnose:publishing -- --limit=10 --live
+npm run repair:publishing
+```
+
+The live diagnostic checks Meta identities without printing tokens.
+
+## Default process model
+
+```env
+PAUSE_PUBLISHING=false
+AI_GENERATION_WORKER_MODE=web
+APP_TIME_ZONE=Africa/Kampala
+```
+
+The web service owns AI generation and durable publishing by default. Separate Redis/AI workers are optional scale components.
+
+## Resilient Runtime v7
+
+- Redis is opt-in for host/port deployments and auto-enabled by `REDIS_URL`.
+- ioredis errors are consumed and throttled; unavailable Redis uses MongoDB fallback.
+- Scheduled publishing and AI generation now use shared MongoDB connectivity classification and exponential backoff.
+- Workers wake immediately after Mongoose reconnects.
+- Database-dependent HTTP traffic fails fast with a clear 503 page during outages.
+- Added `npm run diagnose:connectivity` for MongoDB SRV, DNS, TCP, and Redis TCP diagnosis.

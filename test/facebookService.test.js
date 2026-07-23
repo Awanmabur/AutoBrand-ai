@@ -32,11 +32,12 @@ test('buildFacebookAuthUrl uses configured app and callback', () => {
   const url = new URL(buildFacebookAuthUrl({ brandId: 'brand', userId: 'user' }));
 
   assert.equal(url.host, 'www.facebook.com');
-  assert.equal(url.pathname, '/v20.0/dialog/oauth');
+  assert.equal(url.pathname, '/v25.0/dialog/oauth');
   assert.equal(url.searchParams.get('client_id'), 'app_123');
   assert.equal(url.searchParams.get('redirect_uri'), env.facebookCallbackUrl);
   assert.match(url.searchParams.get('scope'), /pages_manage_posts/);
-  assert.doesNotMatch(url.searchParams.get('scope'), /instagram_content_publish/);
+  assert.match(url.searchParams.get('scope'), /instagram_basic/);
+  assert.match(url.searchParams.get('scope'), /instagram_content_publish/);
   assert.doesNotMatch(url.searchParams.get('scope'), /whatsapp_business_messaging/);
 });
 
@@ -148,11 +149,12 @@ test('exchangeCodeForPageAccounts exchanges code and maps pages', async () => {
     assert.equal(accounts[0].accountName, 'Page One');
     assert.equal(accounts[0].status, 'connected');
     assert.ok(accounts[0].accessTokenEncrypted);
-    assert.equal(calls.length, 3);
-    assert.match(calls[1], /fields=id%2Cname%2Caccess_token%2Ctasks/);
-    assert.doesNotMatch(calls[1], /instagram_business_account/);
-    assert.match(calls[2], /instagram_business_account/);
-    assert.doesNotMatch(calls[1], /perms/);
+    assert.equal(calls.length, 4);
+    assert.match(calls[1], /\/me\/permissions/);
+    assert.match(calls[2], /fields=id%2Cname%2Caccess_token%2Ctasks/);
+    assert.doesNotMatch(calls[2], /instagram_business_account/);
+    assert.match(calls[3], /instagram_business_account/);
+    assert.doesNotMatch(calls[2], /perms/);
   } finally {
     global.fetch = originalFetch;
   }
@@ -170,6 +172,17 @@ test('exchangeCodeForPageAccounts also maps linked Instagram assets from Meta', 
     const target = String(url);
     if (target.includes('/oauth/access_token')) {
       return Response.json({ access_token: 'user_token', expires_in: 3600 });
+    }
+    if (target.includes('/me/permissions')) {
+      return Response.json({
+        data: [
+          { permission: 'pages_show_list', status: 'granted' },
+          { permission: 'pages_manage_posts', status: 'granted' },
+          { permission: 'pages_read_engagement', status: 'granted' },
+          { permission: 'instagram_basic', status: 'granted' },
+          { permission: 'instagram_content_publish', status: 'granted' }
+        ]
+      });
     }
     if (target.includes('/me/accounts')) {
       return Response.json({
@@ -193,6 +206,8 @@ test('exchangeCodeForPageAccounts also maps linked Instagram assets from Meta', 
     assert.equal(accounts.find((account) => account.platform === 'facebook').accountId, 'page_1');
     assert.equal(accounts.find((account) => account.platform === 'instagram').accountId, 'ig_1');
     assert.equal(accounts.find((account) => account.platform === 'instagram').accountName, '@classicacademy');
+    assert.equal(accounts.find((account) => account.platform === 'instagram').status, 'connected');
+    assert.equal(accounts.find((account) => account.platform === 'instagram').permissions.includes('instagram_content_publish'), true);
   } finally {
     global.fetch = originalFetch;
   }

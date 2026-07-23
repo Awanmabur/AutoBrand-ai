@@ -34,6 +34,7 @@ router.get('/brand-brain/:id', redirectToDashboardPage('brand-brain', { mode: 'v
 router.get('/content-library/:id/edit', redirectToDashboardPage('content-library', { mode: 'edit' }));
 router.get('/content-library/:id', redirectToDashboardPage('content-library', { mode: 'view' }));
 router.get('/analytics/export.csv', analyticsController.exportCsv);
+router.get('/api/posts', dashboardController.postsApi);
 
 router.get('/:page', dashboardController.index);
 

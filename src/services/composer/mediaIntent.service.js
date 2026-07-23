@@ -43,10 +43,24 @@ function formatFromPreset(kind, count) {
 
 function resolveComposerMediaIntent(body = {}) {
   const next = { ...body };
-  const requestedType = normalizePostType(next.type || next.postFormat || next.contentFormat || 'image');
   const parsed = parseMediaPreset(next.mediaPreset);
+  const submittedType = next.type || next.postFormat || next.contentFormat;
+  const inferredType = parsed.kind === 'video'
+    ? 'video'
+    : parsed.kind === 'text'
+      ? 'text'
+      : parsed.kind === 'carousel'
+        ? 'carousel'
+        : parsed.kind === 'image'
+          ? 'image'
+          : 'image';
+  const requestedType = normalizePostType(submittedType || inferredType);
   const bodyCount = Number(next.imageCount || next.imagesPerPostMax || 0);
   let count = parsed.count || bodyCount || 1;
+  // Post format is authoritative whenever the form submits it. The media preset
+  // refines count/output inside that format; it must not turn a video post into
+  // an image post or allow video media through an image-only post. When older
+  // clients omit the format entirely, the preset still provides a safe fallback.
   let type = requestedType;
   let mediaPreset = parsed.preset;
   let mediaFormat = next.mediaFormat || '';
@@ -59,11 +73,17 @@ function resolveComposerMediaIntent(body = {}) {
     mediaPreset = 'video';
     mediaFormat = 'short_video';
     count = 1;
-    allowedMediaTypes = ['video'];
+    // Video posts may use an existing MP4 directly or an image as the
+    // reference/keyframe for image-to-video generation. The final post is
+    // still reduced to video media after rendering, but filtering the image
+    // out here made image-to-video impossible before the renderer even ran.
+    allowedMediaTypes = ['image', 'video'];
     shouldGenerateVideo = true;
     next.generateImage = undefined;
     next.imageCount = 1;
-    next.externalMediaType = 'video';
+    next.externalMediaType = ['image', 'video'].includes(next.externalMediaType)
+      ? next.externalMediaType
+      : '';
   } else if (type === 'carousel') {
     count = clampCount(bodyCount > 0 ? bodyCount : parsed.count || 3, { min: 2, max: 5, fallback: 3 });
     mediaPreset = formatFromPreset('carousel', count);

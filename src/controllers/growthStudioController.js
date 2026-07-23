@@ -22,18 +22,33 @@ const {
 } = require('../services/growthStudioService');
 const { applyMediaToScenes, mediaContext } = require('../services/mediaInsightService');
 const { assertCanCreateVideo, assertPlanPageAccess } = require('../services/usageLimitService');
+const { resolvePublishingTargets } = require('../services/social/socialDestination.service');
+
+function targetIdsForPlatform(targets, platform) {
+  return (targets?.byPlatform?.[platform] || []).map((account) => account._id);
+}
+
+function withResolvedTargets(draft, targets) {
+  const platform = draft.platform || draft.platforms?.[0] || targets.platforms[0];
+  return {
+    ...draft,
+    platform,
+    platforms: [platform],
+    targetAccounts: targetIdsForPlatform(targets, platform)
+  };
+}
 
 async function index(req, res) {
   return res.redirect(303, '/dashboard/campaigns');
 }
 
-async function saveGrowthAsset({ req, brand, commonAsset, type, payload, campaignGoal, sourceMedia, mediaNote }) {
+async function saveGrowthAsset({ req, brand, commonAsset, type, payload, campaignGoal, sourceMedia, mediaNote, targets }) {
   const asset = await GrowthAsset.create({ ...commonAsset, type, ...payload });
   const saveTarget = String(req.body.saveTarget || 'asset');
 
   if (saveTarget === 'drafts') {
-    const drafts = draftsFromGrowthAsset({ asset, brand, platforms: req.body.platforms }).map((draft) => ({
-      ...draft,
+    const drafts = draftsFromGrowthAsset({ asset, brand, platforms: targets.platforms }).map((draft) => ({
+      ...withResolvedTargets(draft, targets),
       caption: `${draft.caption}${mediaNote || ''}`,
       media: sourceMedia ? [sourceMedia._id] : [],
       platformMetadata: {
@@ -53,13 +68,14 @@ async function saveGrowthAsset({ req, brand, commonAsset, type, payload, campaig
       ...campaignBrief({
         brand,
         campaignGoal: campaignGoal || payload.summary || asset.title,
-        platforms: req.body.platforms,
+        platforms: targets.platforms,
         durationDays: type === 'monthly_content_plan' ? 30 : 7
       }),
       name: asset.title,
       description: asset.summary,
       brand: brand._id,
-      createdBy: req.user._id
+      createdBy: req.user._id,
+      targetAccounts: targets.accountIds
     });
     return { redirect: '/dashboard/campaigns?created=growth_campaign' };
   }
@@ -73,6 +89,15 @@ async function run(req, res, next) {
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     await assertPlanPageAccess(req.user, 'campaigns', 'Growth Studio workflows');
 
+    const targets = await resolvePublishingTargets({
+      ownerId: req.user._id,
+      brandId: brand._id,
+      requestedPlatforms: req.body.platforms,
+      requestedAccountIds: req.body.targetAccounts || [],
+      requireReady: true
+    });
+    req.body.platforms = targets.platforms;
+
     const campaignGoal = req.body.campaignGoal;
     const action = req.body.actionType;
     const commonAsset = { owner: req.user._id, brand: brand._id };
@@ -81,16 +106,17 @@ async function run(req, res, next) {
 
     if (action === 'campaign_brief') {
       await Campaign.create({
-        ...campaignBrief({ brand, campaignGoal, platforms: req.body.platforms }),
+        ...campaignBrief({ brand, campaignGoal, platforms: targets.platforms }),
         brand: brand._id,
-        createdBy: req.user._id
+        createdBy: req.user._id,
+        targetAccounts: targets.accountIds
       });
       return res.redirect('/dashboard/campaigns?created=campaign');
     }
 
     if (action === 'draft_batch') {
-      const drafts = draftBatch({ brand, campaignGoal, platforms: req.body.platforms }).map((draft) => ({
-        ...draft,
+      const drafts = draftBatch({ brand, campaignGoal, platforms: targets.platforms }).map((draft) => ({
+        ...withResolvedTargets(draft, targets),
         caption: `${draft.caption}${mediaNote}`,
         media: sourceMedia ? [sourceMedia._id] : [],
         platformMetadata: sourceMedia ? { sourceMedia: sourceMedia._id, mediaPrompt: sourceMedia.aiPrompt, mediaInsights: sourceMedia.aiInsights } : {},
@@ -102,7 +128,7 @@ async function run(req, res, next) {
 
     if (action === 'video_storyboard') {
       await assertCanCreateVideo(req.user);
-      const storyboard = videoStoryboard({ brand, campaignGoal, platform: req.body.platforms, style: req.body.style });
+      const storyboard = videoStoryboard({ brand, campaignGoal, platform: targets.platforms[0], style: req.body.style });
       await AiVideoJob.create({
         ...storyboard,
         scenePlan: applyMediaToScenes(storyboard.scenePlan, sourceMedia ? [sourceMedia] : []),
@@ -122,7 +148,8 @@ async function run(req, res, next) {
         payload: brandAudit(brand),
         campaignGoal,
         sourceMedia,
-        mediaNote
+        mediaNote,
+        targets
       });
       return res.redirect(result.redirect);
     }
@@ -136,7 +163,8 @@ async function run(req, res, next) {
         payload: competitorSnapshot(brand, campaignGoal),
         campaignGoal,
         sourceMedia,
-        mediaNote
+        mediaNote,
+        targets
       });
       return res.redirect(result.redirect);
     }
@@ -150,7 +178,8 @@ async function run(req, res, next) {
         payload: offerAngles(brand, campaignGoal),
         campaignGoal,
         sourceMedia,
-        mediaNote
+        mediaNote,
+        targets
       });
       return res.redirect(result.redirect);
     }
@@ -169,7 +198,8 @@ async function run(req, res, next) {
         },
         campaignGoal,
         sourceMedia,
-        mediaNote
+        mediaNote,
+        targets
       });
       return res.redirect(result.redirect);
     }
@@ -193,13 +223,15 @@ async function run(req, res, next) {
         payload: growthActions[action](),
         campaignGoal,
         sourceMedia,
-        mediaNote
+        mediaNote,
+        targets
       });
       return res.redirect(result.redirect);
     }
 
     return res.redirect('/dashboard/campaigns');
   } catch (error) {
+    if (error.code === 'PUBLISHING_TARGETS_UNAVAILABLE') return res.redirect(`/dashboard/campaigns?error=${encodeURIComponent(error.message)}`);
     next(error);
   }
 }

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const fsSync = require('fs');
 const fs = require('fs/promises');
 const path = require('path');
 const zlib = require('zlib');
@@ -6,6 +7,7 @@ const { spawn } = require('child_process');
 let OpenAI;
 let Resvg = null;
 let sharp = null;
+let ffmpegBinary;
 try { ({ Resvg } = require('@resvg/resvg-js')); } catch (error) { Resvg = null; }
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
 const env = require('../../config/env');
@@ -13,6 +15,7 @@ const { isCloudinaryConfigured } = require('../../config/cloudinary');
 const { uploadBuffer } = require('../cloudinaryService');
 
 const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', '..', 'public', 'uploads', 'ai');
+const { saveBufferToGridFs } = require('../gridFsMediaStorage.service');
 const REQUEST_TIMEOUT_MS = 90000;
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLLS = 40;
@@ -50,30 +53,115 @@ function runCommand(command, args) {
   });
 }
 
+function resolveFfmpegBinary() {
+  if (ffmpegBinary !== undefined) return ffmpegBinary;
+  try {
+    ffmpegBinary = require('ffmpeg-static') || '';
+  } catch (error) {
+    ffmpegBinary = '';
+  }
+  if (ffmpegBinary && !fsSync.existsSync(ffmpegBinary)) ffmpegBinary = '';
+  ffmpegBinary = ffmpegBinary || process.env.FFMPEG_PATH || 'ffmpeg';
+  return ffmpegBinary;
+}
+
+async function localVideoInput(sourceMedia) {
+  const existingPath = localAbsolutePathFromUrl(sourceMedia?.fileUrl);
+  if (existingPath) {
+    try {
+      await fs.access(existingPath);
+      return { inputPath: existingPath, cleanup: async () => {} };
+    } catch (error) {
+      // A stale local URL must be downloaded or rejected instead of being sent
+      // to ffmpeg as a path that no longer exists.
+    }
+  }
+
+  if (!sourceMedia?.fileUrl) {
+    throw new Error('A source image is required for local fallback video generation.');
+  }
+
+  const reference = await imageBufferForVideoReference(sourceMedia);
+  if (!reference?.buffer?.length) {
+    throw new Error('The source image could not be downloaded for local fallback video generation.');
+  }
+
+  await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
+  const inputPath = path.join(GENERATED_UPLOAD_DIR, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-video-source.png`);
+  const normalized = sharp
+    ? await sharp(reference.buffer, { failOn: 'none' }).rotate().png().toBuffer()
+    : reference.buffer;
+  await fs.writeFile(inputPath, normalized);
+  return {
+    inputPath,
+    cleanup: async () => fs.unlink(inputPath).catch(() => {})
+  };
+}
+
 async function generateLocalVideo({ brand, sourceMedia, durationSeconds = 8, aspectRatio = '9:16', prompt }) {
-  const inputPath = localAbsolutePathFromUrl(sourceMedia?.fileUrl);
-  if (!inputPath) throw new Error('No local source image available for fallback video generation.');
+  const ffmpeg = resolveFfmpegBinary();
+  if (!ffmpeg) throw new Error('ffmpeg-static is unavailable, so the fallback MP4 renderer cannot run.');
+  const source = await localVideoInput(sourceMedia);
   await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
   const id = crypto.randomBytes(8).toString('hex');
   const filename = `${Date.now()}-${safeFilePart(brand?.name)}-${id}.mp4`;
   const outputPath = path.join(GENERATED_UPLOAD_DIR, filename);
-  const [w, h] = String(aspectRatio || '9:16') === '1:1' ? [1080, 1080] : String(aspectRatio || '').startsWith('16:9') ? [1280, 720] : [1080, 1920];
-  const filter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`;
-  await runCommand('ffmpeg', ['-y', '-loop', '1', '-i', inputPath, '-t', String(Number(durationSeconds || 8)), '-vf', filter, '-pix_fmt', 'yuv420p', '-movflags', '+faststart', outputPath]);
-  const stats = await fs.stat(outputPath);
-  return {
-    provider: 'local_ffmpeg',
-    providerModel: 'image-to-video-fallback',
-    providerJobId: `local-${id}`,
-    outputUrl: `/uploads/ai/${filename}`,
-    status: 'ready',
-    message: 'Local fallback video generated successfully.',
-    fileName: filename,
-    mimeType: 'video/mp4',
-    size: stats.size,
-    folder: 'local-video',
-    aiPrompt: prompt
-  };
+  const [w, h] = String(aspectRatio || '9:16') === '1:1' ? [720, 720] : String(aspectRatio || '').startsWith('16:9') ? [1280, 720] : [720, 1280];
+  const safeDuration = Math.max(4, Math.min(20, Number(durationSeconds || 8)));
+  const fps = 24;
+  const filter = [
+    `scale=${w}:${h}:force_original_aspect_ratio=decrease`,
+    `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+    `zoompan=z='min(zoom+0.0012,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${w}x${h}:fps=${fps}`,
+    'format=yuv420p'
+  ].join(',');
+
+  try {
+    await runCommand(ffmpeg, [
+      '-y',
+      '-loop', '1',
+      '-framerate', String(fps),
+      '-i', source.inputPath,
+      '-t', String(safeDuration),
+      '-vf', filter,
+      '-r', String(fps),
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '24',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      outputPath
+    ]);
+    const buffer = await fs.readFile(outputPath);
+    const saved = await saveGeneratedBuffer({
+      buffer,
+      mimeType: 'video/mp4',
+      brand,
+      prompt,
+      provider: 'local_ffmpeg',
+      model: 'image-to-video-fallback',
+      extension: 'mp4'
+    });
+    return {
+      provider: 'local_ffmpeg',
+      providerModel: 'image-to-video-fallback',
+      providerJobId: `local-${id}`,
+      outputUrl: saved.fileUrl,
+      status: 'ready',
+      message: 'Fallback MP4 generated successfully.',
+      fileName: saved.fileName,
+      mimeType: saved.mimeType,
+      size: saved.size,
+      folder: saved.folder,
+      aiPrompt: prompt,
+      publicId: saved.publicId
+    };
+  } finally {
+    await Promise.allSettled([
+      source.cleanup(),
+      fs.unlink(outputPath).catch(() => {})
+    ]);
+  }
 }
 
 function activeProvider(kind) {
@@ -214,6 +302,35 @@ async function saveGeneratedBuffer({ buffer, mimeType = 'image/png', brand, prom
     }
   }
 
+  // MongoDB/GridFS is the durable no-extra-service fallback. It keeps the
+  // generated bytes aligned with the Media record and survives web restarts.
+  // A public HTTPS APP_URL makes the same route directly usable by Instagram.
+  if (String(process.env.GENERATED_MEDIA_STORAGE || 'gridfs').toLowerCase() !== 'local') {
+    try {
+      const stored = await saveBufferToGridFs({
+        buffer,
+        filename,
+        mimeType,
+        metadata: { userId, provider, providerModel: model, brandId: brand?._id ? String(brand._id) : '' }
+      });
+      return {
+        fileName: filename,
+        fileUrl: stored.fileUrl,
+        publicId: stored.publicId,
+        fileType,
+        mimeType,
+        size: stored.size,
+        folder: `gridfs/${stored.bucket}`,
+        aiPrompt: prompt,
+        provider,
+        providerModel: model,
+        metadata: { userId, storage: 'gridfs' }
+      };
+    } catch (error) {
+      console.error(`GridFS generated-media save failed; using local disk fallback: ${error.message}`);
+    }
+  }
+
   await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
   const absolutePath = path.join(GENERATED_UPLOAD_DIR, filename);
   await fs.writeFile(absolutePath, buffer);
@@ -228,7 +345,7 @@ async function saveGeneratedBuffer({ buffer, mimeType = 'image/png', brand, prom
     aiPrompt: prompt,
     provider,
     providerModel: model,
-    metadata: { userId }
+    metadata: { userId, storage: 'local' }
   };
 }
 
@@ -925,8 +1042,24 @@ async function generateVideo({ prompt, brand, sourceMedia, aspectRatio, duration
     if (provider === 'local') {
       return { ok: true, ...(await generateLocalVideo({ brand, sourceMedia, durationSeconds, aspectRatio, prompt })) };
     }
+    if (env.allowLocalVideoFallback && sourceMedia?.fileUrl) {
+      const local = await generateLocalVideo({ prompt, brand, sourceMedia, aspectRatio, durationSeconds, userId });
+      return { ok: true, ...local, warning: `Provider ${provider} is unavailable; a local MP4 fallback was generated.` };
+    }
     return { ok: false, provider, message: `Unsupported or planning-only video provider: ${provider}. Configure AI_VIDEO_PROVIDER=openai or replicate to render MP4 videos.` };
   } catch (error) {
+    if (env.allowLocalVideoFallback && provider !== 'local' && sourceMedia?.fileUrl) {
+      try {
+        const local = await generateLocalVideo({ prompt, brand, sourceMedia, aspectRatio, durationSeconds, userId });
+        return { ok: true, ...local, warning: error.message || `${provider} video generation failed.` };
+      } catch (fallbackError) {
+        return {
+          ok: false,
+          provider,
+          message: `${error.message || 'Video generation failed.'} Fallback renderer also failed: ${fallbackError.message}`
+        };
+      }
+    }
     return { ok: false, provider, message: error.message || 'Video generation failed.' };
   }
 }

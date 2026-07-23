@@ -82,7 +82,7 @@ Pinterest publishing requires a public image URL on the post.
 X_CLIENT_ID=your_x_oauth2_client_id
 X_CLIENT_SECRET=your_x_oauth2_client_secret
 X_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/x/callback
-X_SCOPES=tweet.read tweet.write users.read offline.access
+X_SCOPES=tweet.read tweet.write users.read offline.access media.write
 ```
 
 Optional aliases are also supported:
@@ -91,10 +91,10 @@ Optional aliases are also supported:
 TWITTER_CLIENT_ID=your_x_oauth2_client_id
 TWITTER_CLIENT_SECRET=your_x_oauth2_client_secret
 TWITTER_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/x/callback
-TWITTER_SCOPES=tweet.read tweet.write users.read offline.access
+TWITTER_SCOPES=tweet.read tweet.write users.read offline.access media.write
 ```
 
-This build posts text updates through the X v2 tweet creation endpoint. Media upload for X is not included yet.
+This build publishes text, image, GIF, and video posts. Images use the X v2 media upload endpoint before tweet creation; videos use the INIT/APPEND/FINALIZE chunked upload flow and the resulting media ID is attached to the post.
 
 ### Threads
 
@@ -125,7 +125,7 @@ LINKEDIN_CLIENT_ID=your_linkedin_client_id
 LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
 LINKEDIN_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/linkedin/callback
 LINKEDIN_SCOPES=openid profile email w_member_social
-LINKEDIN_VERSION=202605
+LINKEDIN_VERSION=202607
 ```
 
 ### TikTok
@@ -155,7 +155,7 @@ If YouTube variables are blank, the app falls back to `GOOGLE_CLIENT_ID` and `GO
 FACEBOOK_APP_ID=your_meta_app_id
 FACEBOOK_APP_SECRET=your_meta_app_secret
 FACEBOOK_CALLBACK_URL=https://your-domain.example/dashboard/actions/social/facebook/callback
-FACEBOOK_GRAPH_VERSION=v20.0
+FACEBOOK_GRAPH_VERSION=v25.0
 FACEBOOK_LOGIN_CONFIG_ID=your_business_login_config_id
 FACEBOOK_ALLOW_CLASSIC_OAUTH=false
 FACEBOOK_APP_DOMAINS=your-domain.example
@@ -171,10 +171,14 @@ WHATSAPP_BUSINESS_ACCOUNT_ID=your_whatsapp_business_account_id
 WHATSAPP_DEFAULT_TO=optional_default_recipient_in_international_format
 ```
 
-Instagram, Facebook media posts, Pinterest, and Threads image posts need public HTTPS media URLs. Configure Cloudinary or set `PUBLIC_APP_URL` to a public HTTPS domain.
+Instagram, Pinterest, Threads, Google Business, and other URL-based provider uploads need public HTTPS media URLs. Generated assets are stored in MongoDB GridFS by default and exposed through `/uploads/db/...`; set `PUBLIC_APP_URL` to the public HTTPS application origin so providers can fetch that route. Facebook Pages can upload GridFS/local media bytes directly. Cloudinary is optional.
+
+For a local Meta smoke test, Facebook can publish while the app runs on localhost. Instagram image/carousel publishing cannot fetch `http://localhost:3200/uploads/...`; configure Cloudinary or expose the app through a public HTTPS tunnel. Reconnect Meta once after upgrading: the app now verifies the actual granted permissions and will label old/unverified Instagram connections **Needs reconnect**. The publisher treats each selected platform independently, so an Instagram blocker does not cancel a ready Facebook Page publish.
 
 ```bash
 PUBLIC_APP_URL=https://your-domain.example
+GENERATED_MEDIA_STORAGE=gridfs
+GENERATED_MEDIA_GRIDFS_BUCKET=autobrand_generated_media
 CLOUDINARY_CLOUD_NAME=optional_cloudinary_cloud
 CLOUDINARY_API_KEY=optional_cloudinary_key
 CLOUDINARY_API_SECRET=optional_cloudinary_secret
@@ -217,11 +221,7 @@ Ran:
 node --test test/*.test.js
 ```
 
-Result:
-
-```text
-45 passing, 0 failing
-```
+Refer to `VERIFICATION_REPORT_2026-07-22.md` for the current verification results for this archive.
 
 ## Production notes
 
@@ -230,3 +230,8 @@ Result:
 - Redirect/callback URLs in the provider console must match the `.env` values exactly.
 - OAuth publishing usually requires HTTPS in production.
 - LinkedIn profile publishing is already configured; this build focuses on the remaining page/profile/board/location connectors requested.
+
+
+## Provider token encryption
+
+Set one stable `TOKEN_ENCRYPTION_KEY` before connecting social accounts. Do not regenerate it on each restart. Use `TOKEN_ENCRYPTION_KEY_PREVIOUS` only during key rotation. When logs report that stored credentials cannot be decrypted, restore the old key or reconnect the affected account; retrying the post without doing either will not work.

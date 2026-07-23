@@ -1,6 +1,8 @@
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const crypto = require('crypto');
 const env = require('../config/env');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
+const { publicMediaUrl } = require('./publicMediaUrlService');
 
 class PinterestProviderError extends Error {
   constructor(message, response) {
@@ -84,7 +86,7 @@ async function parsePinterestResponse(response, fallback) {
 }
 
 async function exchangeToken(body) {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
     headers: {
       Authorization: basicAuthHeader(),
@@ -129,7 +131,7 @@ async function accessTokenFor(account) {
 
 async function pinterestJson(pathname, { accessToken, method = 'GET', body } = {}) {
   const url = /^https?:\/\//i.test(pathname) ? pathname : `${API_BASE}${pathname}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -200,7 +202,10 @@ async function exchangeCodeForPinterestBoards({ code, state }) {
 
 function firstImage(post) {
   const media = Array.isArray(post.media) ? post.media : [];
-  return media.find((item) => item.fileType === 'image' && /^https?:\/\//i.test(item.fileUrl || ''));
+  const image = media.find((item) => item.fileType === 'image' && item.fileUrl);
+  if (!image) return null;
+  const url = publicMediaUrl(image.fileUrl);
+  return url ? { ...image, publicFileUrl: url } : null;
 }
 
 async function syncPinterestBoard({ account }) {
@@ -234,7 +239,7 @@ async function publishPinterestPin({ post, account }) {
     title: String(post.title || post.brand?.name || 'AutoBrand post').slice(0, 100),
     description: String(post.caption || post.description || '').slice(0, 500),
     link: post.link || post.brand?.website || undefined,
-    media_source: { source_type: 'image_url', url: image.fileUrl }
+    media_source: { source_type: 'image_url', url: image.publicFileUrl }
   };
   if (!body.link) delete body.link;
 

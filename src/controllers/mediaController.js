@@ -6,6 +6,10 @@ const { createUploadSignature } = require('../services/cloudinaryService');
 const { buildMediaInsights } = require('../services/mediaInsightService');
 const { createBrandedVariant, createCompressedVariant, createResizeVariants } = require('../services/mediaTransformService');
 const { assertCanUseStorage } = require('../services/usageLimitService');
+const { inspectRemoteResource } = require('../services/remoteFetch.service');
+const env = require('../config/env');
+const path = require('path');
+const { deleteGridFsFile, gridFsIdFromUrl } = require('../services/gridFsMediaStorage.service');
 
 function isHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || ''));
@@ -25,7 +29,11 @@ async function index(req, res) {
 
 async function destroy(req, res, next) {
   try {
-    await Media.deleteOne({ _id: req.params.id, uploadedBy: req.user._id });
+    const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id });
+    if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    const gridFsId = gridFsIdFromUrl(media.fileUrl);
+    if (gridFsId) await deleteGridFsFile(gridFsId).catch((error) => console.warn('GridFS media cleanup failed:', error.message));
+    await media.deleteOne();
     return res.redirect('/dashboard/media');
   } catch (error) {
     return next(error);
@@ -49,28 +57,36 @@ async function store(req, res, next) {
     const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
-    if (!req.body.fileUrl) {
-      return res.redirect('/dashboard/media?error=Add%20a%20media%20URL%20to%20save');
+    if (!req.body.fileUrl || !isHttpUrl(req.body.fileUrl)) {
+      return res.redirect('/dashboard/media?error=Add%20a%20valid%20HTTP%20or%20HTTPS%20media%20URL');
+    }
+    if (env.nodeEnv === 'production' && !String(req.body.fileUrl).startsWith('https://')) {
+      return res.redirect('/dashboard/media?error=Production%20media%20URLs%20must%20use%20HTTPS');
     }
 
-    if (!isHttpUrl(req.body.fileUrl)) {
-      return res.redirect('/dashboard/media?error=Media%20URL%20must%20start%20with%20http%3A%2F%2F%20or%20https%3A%2F%2F');
-    }
-
-    const mimeType = req.body.mimeType || 'application/octet-stream';
-    const size = Number(req.body.size || 0);
+    const verified = await inspectRemoteResource(req.body.fileUrl, {
+      allowedMimePrefixes: ['image/', 'video/', 'audio/', 'application/pdf'],
+      maxBytes: env.maxUploadBytes
+    });
+    const mimeType = verified.mimeType;
+    const size = verified.size;
     await assertCanUseStorage(req.user, size);
+
+    const expectedFolder = `autobrand/${req.user._id}/${brand._id}`;
+    const publicId = String(req.body.publicId || '').trim();
+    const isSignedCloudinaryUpload = Boolean(publicId && publicId.startsWith(`${expectedFolder}/`));
+    const safeName = path.basename(String(req.body.fileName || new URL(verified.finalUrl).pathname || 'media')).slice(0, 220);
 
     const media = await Media.create({
       brand: brand._id,
       uploadedBy: req.user._id,
-      fileName: req.body.fileName || req.body.fileUrl,
-      fileUrl: req.body.fileUrl,
-      publicId: req.body.publicId || req.body.fileUrl,
-      fileType: req.body.fileType || mediaKind(mimeType),
+      fileName: safeName || 'media',
+      fileUrl: verified.finalUrl,
+      publicId: isSignedCloudinaryUpload ? publicId : verified.finalUrl,
+      fileType: mediaKind(mimeType),
       mimeType,
       size,
-      folder: req.body.folder || 'external',
+      folder: isSignedCloudinaryUpload ? expectedFolder : 'verified-external',
       tags: String(req.body.tags || '')
         .split(',')
         .map((tag) => tag.trim())

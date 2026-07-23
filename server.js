@@ -1,15 +1,37 @@
 const mongoose = require('mongoose');
 const app = require('./src/app');
 const connectDb = require('./src/config/db');
+const { validateEnvironment } = require('./src/config/validateEnv');
 const env = require('./src/config/env');
 const { startDuePostPublisher, stopDuePostPublisher } = require('./src/services/duePostPublisherService');
+const { startPostGenerationWorker, stopPostGenerationWorker } = require('./src/services/postGeneration.service');
+const { closeQueueResources } = require('./src/config/queue');
+const { markLegacyInstagramAccountsForReconnect } = require('./src/services/metaAccountReadiness.service');
+const { markUndecryptableSocialAccountsForReconnect } = require('./src/services/socialCredentialReadiness.service');
 
 async function startServer() {
+  const validation = validateEnvironment();
+  validation.warnings.forEach((warning) => console.warn(`Configuration warning: ${warning}`));
   await connectDb();
-  if (env.scheduledPublishingEnabled) {
-    startDuePostPublisher();
+  await markLegacyInstagramAccountsForReconnect();
+  await markUndecryptableSocialAccountsForReconnect();
+  if (env.publishingPaused) {
+    console.warn('Publishing is intentionally paused (PAUSE_PUBLISHING=true).');
   } else {
-    console.log('Scheduled post auto-publishing is disabled (ENABLE_SCHEDULED_PUBLISHING=false). Scheduled posts will stay scheduled until this is turned back on or published manually.');
+    startDuePostPublisher();
+    if (env.legacyScheduledPublishingDisabled) {
+      console.warn('ENABLE_SCHEDULED_PUBLISHING=false is deprecated and ignored. Use PAUSE_PUBLISHING=true only for an intentional emergency stop.');
+    }
+  }
+  if (env.runAiGenerationWorkerInWeb) {
+    await startPostGenerationWorker();
+    if (env.legacyAiWorkerDisabledInWeb) {
+      console.warn('RUN_AI_GENERATION_WORKER_IN_WEB=false is deprecated and ignored. Use AI_GENERATION_WORKER_MODE=external only when a dedicated aiworker is running.');
+    }
+  } else if (env.aiGenerationWorkerMode === 'external') {
+    console.log('AI generation is delegated to a dedicated aiworker (AI_GENERATION_WORKER_MODE=external).');
+  } else {
+    console.warn('AI generation is intentionally disabled (AI_GENERATION_WORKER_MODE=off).');
   }
 
   const server = app.listen(env.port, () => {
@@ -19,7 +41,9 @@ async function startServer() {
   async function shutdown(signal) {
     console.log(`${signal} received. Shutting down gracefully.`);
     stopDuePostPublisher();
+    stopPostGenerationWorker();
     server.close(async () => {
+      await closeQueueResources().catch(() => {});
       await mongoose.connection.close().catch(() => {});
       process.exit(0);
     });

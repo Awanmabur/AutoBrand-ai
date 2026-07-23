@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><%= title %> &middot; AutoBrand AI</title>
-  <link rel="stylesheet" href="/css/dashboard-experience.css?v=20260619-calendar-bulk-controls" />
+  <link rel="stylesheet" href="/css/dashboard-experience.css?v=20260723-smart-platform-v6" />
 </head>
 <body>
   <% const options = dashboardData.options || {}; %>
@@ -12,12 +12,14 @@
   <% const visibleDashboardPages = dashboardData.roleAccess && Array.isArray(dashboardData.roleAccess.unlockedPages) ? dashboardData.roleAccess.unlockedPages : []; %>
   <% const canSeePage = (page) => visibleDashboardPages.includes(page); %>
   <% const canSeeDashboardPlans = visibleDashboardPages.includes('plans') || (dashboardData.user && /Admin/i.test(dashboardData.user.role || '')); %>
-  <% const socialAccounts = options.socialAccounts || []; %>
+  <% const socialAccounts = options.publishingAccounts || []; %>
   <% const mediaAssets = options.media || []; %>
   <% const approvalPosts = options.posts || []; %>
   <% const approvalCampaigns = options.campaigns || []; %>
   <% const initialDashboardError = dashboardData.isErrorPage && dashboardData.pages && dashboardData.pages.errors ? dashboardData.pages.errors.error : null; %>
-  <% const platforms = ['facebook', 'instagram', 'google_business', 'linkedin', 'pinterest', 'tiktok', 'youtube', 'x', 'threads']; %>
+  <% const platformOptions = options.composerPlatforms || []; %>
+  <% const platforms = platformOptions.map((platform) => platform.key); %>
+  <% const supportedPlatforms = options.supportedPlatforms || platformOptions; %>
   <% const composerBrands = brands.map((brand) => ({ _id: brand.id, name: brand.name })); %>
   <% const composerSocialAccounts = socialAccounts.map((account) => ({
     _id: account.id,
@@ -230,18 +232,28 @@
       <% } else { %>
         <article class="card real-form-card">
           <div class="card-head"><div><h3>Generate a real post</h3><p>Uses saved Brand Brain fields, connected accounts and media defaults.</p></div><span class="badge">Live post</span></div>
-          <form action="/dashboard/actions/posts" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/posts" method="post" class="real-form-grid smart-destination-form composer-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <input type="hidden" name="creationMode" value="ai">
             <input type="hidden" name="generateImage" value="on">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
-            <label>Channel<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
             <label>Post format<select name="type"><option value="image">Image post</option><option value="carousel">Carousel post</option><option value="video">Video post</option><option value="reel">Reel/Short/TikTok</option><option value="text">Text post</option><option value="link">Link post</option></select></label>
             <label>Media output<select name="mediaPreset"><option value="image-1">1 image</option><option value="carousel-3">3-image carousel</option><option value="video">Video</option><option value="text">Text only</option></select></label>
             <label>Content angle<select name="contentType"><option value="promo">Promo</option><option value="educational">Educational</option><option value="testimonial">Testimonial</option><option value="offer">Offer</option><option value="faq">FAQ</option></select></label>
             <label class="full">Goal<input name="goal" placeholder="Sell a service, announce an offer, collect customer inquiries"></label>
             <label class="full">Offer<input name="offer" placeholder="Use saved offer or override it here"></label>
             <label class="full">Link<input name="link" type="url" placeholder="https://..."></label>
+            <label>Schedule time<input name="scheduledAt" type="datetime-local"></label>
+            <fieldset class="composer-fieldset full"><legend>Publish to platforms</legend><div class="composer-check-grid compact-checkboxes">
+              <% platformOptions.forEach((platform, index) => { %><label class="composer-check-card platform-option" data-platform-option data-brands="<%= platform.brandIds.join(',') %>"><input name="platforms" type="checkbox" value="<%= platform.key %>" <%= index === 0 ? 'checked' : '' %>><span><strong><%= platform.label %></strong><small><%= platform.accountCount %> live destination<%= platform.accountCount === 1 ? '' : 's' %></small></span></label><% }) %>
+              <% if (!platformOptions.length) { %><p class="muted">No live publishing destinations. Connect a social account before publishing or scheduling.</p><% } %>
+            </div></fieldset>
+            <fieldset class="composer-fieldset full"><legend>Exact connected destinations</legend><div class="composer-check-grid channel-spaced-grid">
+              <% socialAccounts.forEach((account) => { %>
+                <label class="composer-check-card target-account-option" data-brand="<%= account.brandId || '' %>" data-platform="<%= account.platform %>"><input name="targetAccounts" type="checkbox" value="<%= account.id %>"><span><strong><%= account.accountName %></strong><small><%= account.platform %> / <%= account.brandName || 'Workspace' %></small></span></label>
+              <% }) %>
+              <% if (!socialAccounts.length) { %><p class="muted">No live connected destinations. Connect the Facebook Page and linked Instagram professional account first.</p><% } %>
+            </div></fieldset>
             <div class="real-form-actions full">
               <button class="btn btn-ghost" name="action" value="save" type="submit">Save draft</button>
               <button class="btn btn-ghost" name="action" value="schedule" type="submit">Schedule</button>
@@ -251,7 +263,7 @@
         </article>
         <article class="card real-form-card">
           <div class="card-head"><div><h3>Generate AI image</h3><p>Create prompt, Brand Brain, product promo, story/reel cover, or carousel images and save them to media.</p></div><span class="badge">Image</span></div>
-          <form action="/dashboard/actions/ai/generate-image" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/ai/generate-image" method="post" class="real-form-grid smart-destination-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Workflow<select name="imageWorkflow">
@@ -262,7 +274,7 @@
               <option value="reel_cover">Reel/TikTok cover</option>
               <option value="carousel_image">Carousel images</option>
             </select></label>
-            <label>Platform<select name="platform"><% platforms.forEach((platform) => { %><option value="<%= platform %>"><%= platform %></option><% }) %></select></label>
+            <label>Platform<select name="platform" data-smart-platform-select><% platformOptions.forEach((platform) => { %><option value="<%= platform.key %>" data-brands="<%= platform.brandIds.join(',') %>"><%= platform.label %></option><% }) %></select></label>
             <label>Provider<select name="imageProvider"><option value="">Plan/default provider</option><option value="openai">OpenAI</option><option value="replicate">Replicate</option><option value="gemini">Gemini</option><option value="local">Local mock fallback</option></select></label>
             <label>Image size<select name="imageSize"><option value="1024x1024">Square feed</option><option value="1024x1536">Vertical story/reel</option><option value="1536x1024">Landscape</option></select></label>
             <label>Image count<input name="imageCount" type="number" min="1" max="5" value="1"></label>
@@ -298,6 +310,7 @@
           generated: null,
           socialAccounts: composerSocialAccounts,
           platforms,
+          platformOptions,
           postTypes: composerPostTypes,
           contentTypes: composerContentTypes,
           contentGoals: composerContentGoals,
@@ -312,7 +325,7 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Create campaign plan</h3><p>Writes a real Campaign document and AI plan.</p></div><a class="btn btn-ghost" href="/dashboard/campaigns">Campaigns</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before planning campaigns.</p><% } else { %>
-          <form action="/dashboard/actions/campaigns" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/campaigns" method="post" class="real-form-grid smart-destination-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Name<input name="name" placeholder="Weekend voucher push" required></label>
@@ -327,7 +340,13 @@
               <option value="brand_growth">Brand growth</option>
             </select></label>
             <label class="full">Goal detail<input name="goal" placeholder="Sell 100 daily vouchers"></label>
-            <label>Platforms<input name="platforms" value="facebook, instagram, linkedin"></label>
+            <fieldset class="composer-fieldset full"><legend>Live campaign platforms</legend><div class="composer-check-grid compact-checkboxes">
+              <% platformOptions.forEach((platform, index) => { %><label class="composer-check-card platform-option" data-platform-option data-brands="<%= platform.brandIds.join(',') %>"><input name="platforms" type="checkbox" value="<%= platform.key %>" <%= index < 2 ? 'checked' : '' %>><span><strong><%= platform.label %></strong><small><%= platform.accountCount %> ready</small></span></label><% }) %>
+              <% if (!platformOptions.length) { %><p class="muted">Connect at least one social destination before creating a campaign.</p><% } %>
+            </div></fieldset>
+            <fieldset class="composer-fieldset full"><legend>Exact campaign destinations</legend><div class="composer-check-grid channel-spaced-grid">
+              <% socialAccounts.forEach((account) => { %><label class="composer-check-card target-account-option" data-brand="<%= account.brandId || '' %>" data-platform="<%= account.platform %>"><input name="targetAccounts" type="checkbox" value="<%= account.id %>"><span><strong><%= account.accountName %></strong><small><%= account.platform %> / <%= account.brandName || 'Workspace' %></small></span></label><% }) %>
+            </div></fieldset>
             <label>Duration days<input name="durationDays" type="number" min="1" max="30" value="7"></label>
             <label>Posting frequency<input name="postingFrequency" placeholder="2 posts per day"></label>
             <label>Start date<input name="startDate" type="date"></label>
@@ -340,7 +359,7 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Growth Studio</h3><p>Generate growth assets and save them as assets, drafts, or campaigns.</p></div><a class="btn btn-ghost" href="/dashboard/campaigns">Growth</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before running growth actions.</p><% } else { %>
-          <form action="/dashboard/actions/growth-studio/run" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/growth-studio/run" method="post" class="real-form-grid smart-destination-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Action<select name="actionType">
@@ -364,7 +383,13 @@
               <option value="drafts">Draft posts</option>
               <option value="campaign">Campaign</option>
             </select></label>
-            <label>Platforms<input name="platforms" value="facebook, instagram, linkedin"></label>
+            <fieldset class="composer-fieldset full"><legend>Live growth platforms</legend><div class="composer-check-grid compact-checkboxes">
+              <% platformOptions.forEach((platform, index) => { %><label class="composer-check-card platform-option" data-platform-option data-brands="<%= platform.brandIds.join(',') %>"><input name="platforms" type="checkbox" value="<%= platform.key %>" <%= index < 2 ? 'checked' : '' %>><span><strong><%= platform.label %></strong><small><%= platform.accountCount %> ready</small></span></label><% }) %>
+              <% if (!platformOptions.length) { %><p class="muted">Connect at least one social destination before creating publishable growth content.</p><% } %>
+            </div></fieldset>
+            <fieldset class="composer-fieldset full"><legend>Exact growth destinations</legend><div class="composer-check-grid channel-spaced-grid">
+              <% socialAccounts.forEach((account) => { %><label class="composer-check-card target-account-option" data-brand="<%= account.brandId || '' %>" data-platform="<%= account.platform %>"><input name="targetAccounts" type="checkbox" value="<%= account.id %>"><span><strong><%= account.accountName %></strong><small><%= account.platform %> / <%= account.brandName || 'Workspace' %></small></span></label><% }) %>
+            </div></fieldset>
             <label class="full">Goal<input name="campaignGoal" placeholder="Grow sales for the weekend offer"></label>
             <label class="full">Style<input name="style" placeholder="direct, warm, premium, playful"></label>
             <label class="full">Source media<select name="sourceMedia">
@@ -378,7 +403,7 @@
     </template>
 
     <template id="dashboard-form-calendar">
-      <%- include('partials/post-schedule-form', { csrfToken, brands, platforms }) %>
+      <%- include('partials/post-schedule-form', { csrfToken, brands, platformOptions, socialAccounts }) %>
     </template>
 
     <template id="dashboard-form-media">
@@ -414,10 +439,10 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Generate video</h3><p>Creates a real AI video job using saved Brand Brain context.</p></div><a class="btn btn-ghost" href="/dashboard/video-system">Video studio</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating videos.</p><% } else { %>
-          <form action="/dashboard/actions/videos/auto-generate" method="post" class="real-form-grid">
+          <form action="/dashboard/actions/videos/auto-generate" method="post" class="real-form-grid smart-destination-form">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
-            <label>Platform<select name="platform"><option>Facebook</option><option>Instagram Reels</option><option>TikTok</option><option>YouTube Shorts</option></select></label>
+            <label>Platform<select name="platform" data-smart-platform-select required><% platformOptions.forEach((platform) => { %><option value="<%= platform.key %>" data-brands="<%= platform.brandIds.join(',') %>"><%= platform.label %></option><% }) %></select></label>
             <label>Provider<select name="provider"><option value="planning">Plan only</option><option value="mock">Mock/demo render</option><option value="openai">OpenAI video</option><option value="replicate">Replicate video</option></select></label>
             <label>Aspect ratio<select name="aspectRatio"><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
             <label>Duration<input name="durationSeconds" type="number" min="6" max="60" value="20"></label>
@@ -471,8 +496,10 @@
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Connected channels</h3><p>Use the real social API connection tools for OAuth and token health.</p></div><a class="btn btn-primary" href="/dashboard/social">Manage channels</a></div>
         <div class="channel-grid">
-          <% ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube'].forEach((platform) => { %>
-            <a class="channel-tile" href="/dashboard/social"><svg class="icon"><use href="#icon-<%= platform %>"></use></svg><span><%= platform %></span></a>
+          <% supportedPlatforms.forEach((platform) => { %>
+            <% const liveCount = socialAccounts.filter((account) => account.platform === platform.key).length; %>
+            <% const iconKey = platform.key === 'x' ? 'x_platform' : platform.key; %>
+            <a class="channel-tile" href="/dashboard/social"><svg class="icon"><use href="#icon-<%= iconKey %>"></use></svg><span><%= platform.label %><small><%= liveCount %> live</small></span></a>
           <% }) %>
         </div>
       </article>
@@ -516,7 +543,7 @@
         <article class="card real-form-card handoff-form-card">
           <div class="card-head"><div><span class="kicker">handoff / auto mode</span><h3>Generate posts automatically</h3><p>Use the restored handoff flow inside the dashboard instead of an old standalone page.</p></div><a class="btn btn-ghost" href="/dashboard/quick-create">One-off post</a></div>
           <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating handoff posts.</p><% } else { %>
-            <form action="/dashboard/actions/posts/handoff" method="post" class="real-form-grid composer-form handoff-dashboard-form">
+            <form action="/dashboard/actions/posts/handoff" method="post" class="real-form-grid smart-destination-form composer-form handoff-dashboard-form">
               <input type="hidden" name="_csrf" value="<%= csrfToken %>">
               <input type="hidden" name="generateImages" value="on">
               <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
@@ -530,7 +557,8 @@
                 <% if (!socialAccounts.length) { %><p class="muted">No connected accounts yet. Connect accounts from Social first.</p><% } %>
               </div></fieldset>
               <fieldset class="composer-fieldset full"><legend>Platforms</legend><div class="composer-check-grid compact-checkboxes">
-                <% platforms.forEach((platform) => { %><label class="composer-check-card"><input name="platforms" type="checkbox" value="<%= platform %>" <%= platform === 'facebook' ? 'checked' : '' %>><span><strong><%= platform.replace(/_/g, ' ') %></strong><small>Use Brand Brain language</small></span></label><% }) %>
+                <% platformOptions.forEach((platform, index) => { %><label class="composer-check-card platform-option" data-platform-option data-brands="<%= platform.brandIds.join(',') %>"><input name="platforms" type="checkbox" value="<%= platform.key %>" <%= index === 0 ? 'checked' : '' %>><span><strong><%= platform.label %></strong><small><%= platform.accountCount %> live destination<%= platform.accountCount === 1 ? '' : 's' %></small></span></label><% }) %>
+                <% if (!platformOptions.length) { %><p class="muted">No live destinations are available for automatic posting.</p><% } %>
               </div></fieldset>
               <details class="composer-fieldset full"><summary>Brand Brain overrides</summary><div class="real-form-grid nested-grid">
                 <label>Posts per day<input type="number" name="postsPerDay" min="1" max="12" value="1"></label>
@@ -700,6 +728,6 @@
     <script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>
   <script src="/js/media-upload.js?v=20260607-media-library"></script>
   <script src="/js/composer-intent.js?v=20260524-smart-output"></script>
-  <script src="/js/dashboard-experience.js?v=20260619-calendar-bulk-controls"></script>
+  <script src="/js/dashboard-experience.js?v=20260723-smart-platform-v6"></script>
 </body>
 </html>

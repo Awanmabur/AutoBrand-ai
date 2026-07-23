@@ -21,7 +21,14 @@ const PERMANENT_ERROR_PATTERNS = [
   /no connected/i,
   /not return an access token/i,
   /not support/i,
-  /expected .* but received/i
+  /expected .* but received/i,
+  /cannot be decrypted/i,
+  /credentials are malformed/i,
+  /unsupported state or unable to authenticate data/i,
+  /unable to authenticate data/i,
+  /bad decrypt/i,
+  /authentication tag/i,
+  /TOKEN_ENCRYPTION_KEY/i
 ];
 
 function policyFor(platform) {
@@ -61,6 +68,8 @@ async function applyRetryPolicy(post, errorOrMessage) {
   if (!retryable || retryCount >= policy.maxRetries) {
     post.status = 'failed';
     post.errorMessage = message;
+    post.publishingStartedAt = undefined;
+    post.publishingAttemptId = '';
     post.platformMetadata.retry.exhaustedAt = !retryable ? undefined : new Date();
     post.platformMetadata.retry.reason = retryable ? 'max_retries_reached' : 'permanent_error';
     await post.save();
@@ -71,10 +80,15 @@ async function applyRetryPolicy(post, errorOrMessage) {
   post.retryCount = retryCount + 1;
   post.status = 'scheduled';
   post.scheduledAt = nextRetryAt;
+  post.scheduleVersion = Number(post.scheduleVersion || 0) + 1;
+  post.publishingStartedAt = undefined;
+  post.publishingAttemptId = '';
   post.errorMessage = message;
   post.platformMetadata.retry.nextRetryAt = nextRetryAt;
   post.platformMetadata.retry.reason = 'temporary_error';
   await post.save();
+  const { dispatchScheduledPost } = require('./postDispatchService');
+  await dispatchScheduledPost(post, { userId: post.createdBy || undefined, notifyOnQueueFailure: false });
   return { scheduled: true, retryable, nextRetryAt, retryCount: post.retryCount };
 }
 

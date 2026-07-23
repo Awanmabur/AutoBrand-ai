@@ -6,6 +6,12 @@ const DEFAULT_CONTENT_MIX = ['promo', 'offer', 'testimonial', 'educational', 'fa
 const DEFAULT_MEDIA_MIX = ['auto', 'image', 'slides', 'video'];
 const DEFAULT_PLATFORMS = ['facebook'];
 
+const TEXT_ONLY_CAPABLE_PLATFORMS = new Set(['facebook', 'google_business', 'linkedin', 'threads', 'x']);
+
+function platformAllowsTextOnly(platform) {
+  return TEXT_ONLY_CAPABLE_PLATFORMS.has(String(platform || '').toLowerCase());
+}
+
 function asArray(value) {
   if (!value) return [];
   return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
@@ -166,7 +172,7 @@ async function generateCampaignBatch(input) {
     return localPost({ brand, platform, index, contentType, mediaFormat });
   });
   const result = await generateJsonText({
-    preferredProvider: 'openai',
+    preferredProvider: input.aiProvider || input.textProvider || undefined,
     prompt: buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, customerGoal: input.customerGoal, strengthTarget }),
     fallback: { campaignTitle: `${brand.name} auto campaign`, strategySummary: 'Local fallback campaign.', posts: fallbackPosts }
   });
@@ -220,7 +226,7 @@ async function createMediaForGeneratedPost({ userId, brand, postPlan, input }) {
 `
         : '';
     const result = await generateImage({
-      preferredProvider: 'openai',
+      preferredProvider: input.imageProvider || undefined,
       brand,
       userId,
       prompt: `${stylePrefix}${prompt}
@@ -342,8 +348,16 @@ async function createScheduledPostsFromBatch({ userId, brand, targetAccounts, in
     } else if (videoResult?.mediaId) {
       mediaIds.unshift(videoResult.mediaId);
     }
-    const missingRequestedMedia = (imageResult.errors.length || videoResult?.warning) && !mediaIds.length && plan.mediaFormat !== 'text';
-    const postStatus = missingRequestedMedia ? 'draft' : input.status || 'scheduled';
+    const missingRequestedMedia = Boolean(
+      (imageResult.errors.length || videoResult?.warning)
+      && !mediaIds.length
+      && plan.mediaFormat !== 'text'
+      && plan.mediaFormat !== 'text_only'
+    );
+    const degradedToText = missingRequestedMedia
+      && platformAllowsTextOnly(plan.platform)
+      && Boolean(String(plan.caption || '').trim());
+    const postStatus = missingRequestedMedia && !degradedToText ? 'draft' : input.status || 'scheduled';
     const type = videoResult?.mediaId
       ? 'video'
       : mediaIds.length > 1 || plan.mediaFormat === 'carousel_slides'
@@ -364,6 +378,7 @@ async function createScheduledPostsFromBatch({ userId, brand, targetAccounts, in
       targetAccounts,
       status: postStatus,
       scheduledAt: postStatus === 'draft' ? undefined : slots[index],
+      scheduleVersion: postStatus === 'scheduled' ? 1 : 0,
       platformMetadata: {
         creationMode: 'openai_auto_campaign',
         provider: batch.provider,
@@ -382,6 +397,7 @@ async function createScheduledPostsFromBatch({ userId, brand, targetAccounts, in
         safetyNotes: plan.safetyNotes,
         imageWarning: imageResult.errors.join(' | '),
         videoWarning: videoResult?.warning || '',
+        publishingFallback: degradedToText ? 'Media generation failed; scheduled as a text-only post.' : '',
         generatedAt: new Date()
       },
       createdBy: userId

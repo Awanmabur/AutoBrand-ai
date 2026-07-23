@@ -97,6 +97,56 @@ test('generateVideo returns a provider error instead of falling back to an image
   }
 });
 
+test('generateVideo creates a playable local MP4 from an image reference', { skip: !sharp ? 'sharp is not available in this local node_modules install' : false }, async () => {
+  const originalCloudinary = {
+    cloudinaryCloudName: env.cloudinaryCloudName,
+    cloudinaryApiKey: env.cloudinaryApiKey,
+    cloudinaryApiSecret: env.cloudinaryApiSecret,
+    allowLocalVideoFallback: env.allowLocalVideoFallback
+  };
+  env.cloudinaryCloudName = '';
+  env.cloudinaryApiKey = '';
+  env.cloudinaryApiSecret = '';
+  env.allowLocalVideoFallback = true;
+  let sourcePath = '';
+  let videoPath = '';
+
+  try {
+    const source = await generateImage({
+      preferredProvider: 'local',
+      brand: { name: 'Video Source Brand', brandColors: ['#123456'] },
+      prompt: 'Create a simple product keyframe',
+      userId: 'user_1',
+      size: '256x256'
+    });
+    sourcePath = path.join(__dirname, '..', 'public', source.fileUrl.replace(/^\/+/, ''));
+
+    const result = await generateVideo({
+      preferredProvider: 'local',
+      brand: { name: 'Video Source Brand' },
+      sourceMedia: { fileUrl: source.fileUrl, fileType: 'image', mimeType: 'image/png' },
+      prompt: 'Create a short product reveal video',
+      userId: 'user_1',
+      aspectRatio: '1:1',
+      durationSeconds: 4
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.provider, 'local_ffmpeg');
+    assert.equal(result.mimeType, 'video/mp4');
+    videoPath = path.join(__dirname, '..', 'public', result.outputUrl.replace(/^\/+/, ''));
+    const video = await fs.readFile(videoPath);
+    assert.equal(video.subarray(4, 8).toString('ascii'), 'ftyp');
+    assert.ok(video.length > 1000);
+  } finally {
+    await Promise.allSettled([
+      sourcePath ? fs.unlink(sourcePath) : Promise.resolve(),
+      videoPath ? fs.unlink(videoPath) : Promise.resolve()
+    ]);
+    Object.assign(env, originalCloudinary);
+  }
+});
+
 test('prepareOpenAIVideoReferenceImage resizes uploaded images to the requested video dimensions', { skip: !sharp ? 'sharp is not available in this local node_modules install' : false }, async () => {
   const input = await sharp({
     create: {

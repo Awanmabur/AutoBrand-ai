@@ -1,3 +1,5 @@
+const { zonedDateForDayOffset } = require('../../utils/timeZone');
+
 const PLATFORM_DEFAULT_SLOTS = {
   facebook: ['18:00', '20:00'],
   instagram: ['12:30', '19:00'],
@@ -32,9 +34,9 @@ function nextLocalIsoDateTime({ date = new Date(), time = '18:00' } = {}) {
   const base = new Date(date);
   if (Number.isNaN(base.getTime())) base.setTime(Date.now());
   const [hour, minute] = String(time || '18:00').split(':').map((part) => Number(part || 0));
-  base.setHours(hour || 0, minute || 0, 0, 0);
-  if (base <= new Date()) base.setDate(base.getDate() + 1);
-  return base.toISOString();
+  let scheduledAt = zonedDateForDayOffset({ date: base, hour, minute });
+  if (scheduledAt <= new Date()) scheduledAt = zonedDateForDayOffset({ date: base, dayOffset: 1, hour, minute });
+  return scheduledAt.toISOString();
 }
 
 function suggestBestTimes({ brand = {}, platform = 'facebook', date = new Date(), limit = 3 } = {}) {
