@@ -1,9 +1,13 @@
+<%
+  const resolvedAppName = typeof appName !== 'undefined' && appName ? appName : 'AutoBrand AI';
+  const resolvedTitle = typeof title !== 'undefined' && title ? title : 'AutoBrand AI';
+%>
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><%= title %> | <%= appName %></title>
+    <title><%= resolvedTitle %> | <%= resolvedAppName %></title>
     <link rel="stylesheet" href="/css/auth-modern.css">
   </head>
   <body>

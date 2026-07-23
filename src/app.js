@@ -96,6 +96,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Baseline view locals must exist before database, authentication, CSRF, and
+// other middleware can fail. Error rendering must never depend on a later
+// middleware having completed.
+app.use((req, res, next) => {
+  res.locals.appName = env.appName || 'AutoBrand AI';
+  res.locals.currentPath = req.path || '/';
+  res.locals.user = null;
+  res.locals.csrfToken = '';
+  next();
+});
+
 function health(req, res) {
   res.set('Cache-Control', 'no-store');
   res.json({ ok: true, app: env.appName, timestamp: new Date().toISOString(), requestId: req.id });
@@ -143,9 +154,9 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-  res.locals.appName = env.appName;
-  res.locals.currentPath = req.path;
-  res.locals.user = req.user;
+  res.locals.appName = env.appName || res.locals.appName || 'AutoBrand AI';
+  res.locals.currentPath = req.path || res.locals.currentPath || '/';
+  res.locals.user = req.user || null;
   res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
   next();
 });

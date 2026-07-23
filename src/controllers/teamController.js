@@ -5,7 +5,7 @@ const AuditLog = require('../models/AuditLog');
 const { assertCanInviteTeam } = require('../services/usageLimitService');
 const { normalizeTeamPermissions, normalizeTeamRole, permissionsForTeamRole } = require('../services/team/teamAccess.service');
 const { normalizeEmail, validateEmail } = require('../services/account/account.service');
-const { sendTeamInviteEmail } = require('../services/emailService');
+const { isEmailConfigured, sendTeamInviteEmail } = require('../services/emailService');
 const env = require('../config/env');
 
 function hashToken(token) {
@@ -34,6 +34,11 @@ async function index(req, res) {
 
 async function invite(req, res, next) {
   try {
+    if (!isEmailConfigured()) {
+      const error = new Error('Team invitation email is unavailable. Configure SMTP before inviting team members.');
+      error.status = 503;
+      throw error;
+    }
     const brand = req.brandAccess;
     await assertCanInviteTeam(req.user);
     const email = validateEmail(req.body.email);

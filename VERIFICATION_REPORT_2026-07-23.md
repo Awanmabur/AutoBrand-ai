@@ -1,25 +1,22 @@
-# AutoBrand Verification Report
+# Verification Report — AutoBrand AI v9
 
-Date: 2026-07-23  
-Build: Resilient Runtime v7
+Date: 2026-07-23
 
-## Passed gates
+## Passed
 
-- JavaScript syntax: 229 files passed.
-- Static security inspection: 228 files passed.
-- Focused connectivity and durability suite: 11 tests passed, 0 failed.
-- Optional Redis remains disabled when only a stale localhost host is present: passed.
-- Redis URL automatic enablement: passed.
-- MongoDB DNS/network error classification: passed.
-- Worker exponential backoff and recovery reset: passed.
-- Database sweep performs no post mutation while MongoDB is unavailable: passed.
-- Intentional Redis disable uses MongoDB fallback without warning-notification spam: passed.
-- Health/readiness and fast 503 middleware ordering: passed.
+- `npm run lint`: 229 JavaScript files passed syntax validation.
+- `npm run security:static`: 228 JavaScript files passed static security inspection.
+- `node --test test/emailDeliveryRuntime.test.js`: 5/5 passed.
+- Production optional-email validation simulation: passed without SMTP.
+- Production required-email validation simulation: correctly rejected missing SMTP.
+- Partial SMTP in optional mode: warning only, startup validation passed.
+- Dashboard EJS balance assertion: passed in the full test run.
 
-## Full test discovery
+## Full suite
 
-The full repository run discovered 171 tests. 164 passed. Seven test files could not load because this verification environment did not contain installed dependencies such as Mongoose and JSON Web Token. No executable assertion failed.
+- Tests discovered: 185
+- Passed: 178
+- Assertion failures: 0 among executable suites
+- Load failures: 7
 
-## Packaging controls
-
-The delivery excludes `.env`, `.autobrand-token-key`, provider tokens, `node_modules`, generated media, caches, logs and temporary test files.
+The seven load failures were caused by missing installed dependencies (`mongoose` and `jsonwebtoken`) in the packaging environment. They were module-load errors, not failed application assertions.

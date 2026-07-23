@@ -27,7 +27,7 @@ const { getPublicPricingCards } = require('../services/pricing.service');
 const { attachSelectedPlanAfterSignup, resolveSignupPlan } = require('../services/signupPlan.service');
 const { validatePassword } = require('../services/account/account.service');
 const env = require('../config/env');
-const { sendPasswordResetEmail, sendVerificationEmail } = require('../services/emailService');
+const { isEmailConfigured, sendPasswordResetEmail, sendVerificationEmail } = require('../services/emailService');
 
 const DUMMY_PASSWORD_HASH = '$2a$12$rQ0wqYXgCB6aQqGg32rQtehO11sO2qfVfHKv0YkTyMl6o9gQJsK5K';
 
@@ -123,19 +123,24 @@ async function register(req, res, next) {
     }
 
     const isFreeOrTrial = selectedPlan.billingInterval === 'trial' || Number(selectedPlan.price || 0) <= 0;
+    const verificationRequired = Boolean(env.emailVerificationRequired);
     const user = new User({
       name,
       email: normalizeEmail(email),
       status: 'active',
-      isVerified: false,
+      isVerified: !verificationRequired,
       plan: isFreeOrTrial ? selectedPlan.slug : 'free-trial',
       selectedPlanSlug: selectedPlan.slug
     });
 
     await user.setPassword(password);
-    const verificationToken = createEmailVerificationToken(user);
+    const verificationToken = verificationRequired ? createEmailVerificationToken(user) : '';
     await user.save();
-    await sendVerificationEmail({ user, token: verificationToken });
+    if (verificationRequired) {
+      await sendVerificationEmail({ user, token: verificationToken }).catch((emailError) => {
+        console.error('[email] registration verification delivery failed', { userId: String(user._id), message: emailError.message });
+      });
+    }
 
     const planAction = await attachSelectedPlanAfterSignup(user, selectedPlan.slug);
     user.lastLoginAt = new Date();
@@ -391,6 +396,15 @@ function showForgot(req, res) {
 
 async function forgot(req, res, next) {
   try {
+    if (!isEmailConfigured()) {
+      return res.status(503).render('auth/check-email', {
+        title: 'Password reset unavailable',
+        layout: 'layouts/auth',
+        message: 'Password reset email is temporarily unavailable. Contact the platform administrator for account recovery.',
+        actionUrl: '/auth/login'
+      });
+    }
+
     const email = normalizeEmail(req.body.email);
     const user = await User.findOne({ email });
     let developmentActionUrl = '/auth/login';
@@ -513,6 +527,30 @@ async function resendVerification(req, res, next) {
     if (!req.user) return res.redirect('/auth/login');
     const user = await User.findById(req.user._id);
     if (!user) return res.redirect('/auth/login');
+
+    if (!env.emailVerificationRequired) {
+      if (!user.pendingEmail && !user.isVerified) {
+        user.isVerified = true;
+        user.emailVerificationTokenHash = undefined;
+        user.emailVerificationExpiresAt = undefined;
+        await user.save();
+      }
+      return res.render('auth/check-email', {
+        title: 'Email verification not required',
+        layout: 'layouts/auth',
+        message: 'Email verification is disabled for this deployment. Your account can continue without a verification email.',
+        actionUrl: '/dashboard'
+      });
+    }
+
+    if (!isEmailConfigured()) {
+      return res.status(503).render('auth/check-email', {
+        title: 'Verification unavailable',
+        layout: 'layouts/auth',
+        message: 'Verification email delivery is temporarily unavailable. Try again after email delivery is configured.',
+        actionUrl: '/dashboard/settings'
+      });
+    }
 
     if (user.isVerified && !user.pendingEmail) {
       return res.render('auth/check-email', {

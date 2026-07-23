@@ -1,11 +1,11 @@
 {
   "name": "autobrand-ai-social-saas",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "private": true,
   "description": "AI social media management SaaS platform",
   "main": "server.js",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "nodemon server.js",

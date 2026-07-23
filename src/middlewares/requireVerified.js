@@ -1,8 +1,9 @@
 const AppError = require('../utils/AppError');
+const env = require('../config/env');
 
 function requireVerified(req, res, next) {
   if (!req.user) return res.redirect('/auth/login');
-  if (req.user.isVerified) return next();
+  if (!env.emailVerificationRequired || req.user.isVerified) return next();
 
   if (req.accepts(['html', 'json']) === 'json' || req.path.startsWith('/api/')) {
     return next(new AppError('Verify your email before using this feature.', 403));

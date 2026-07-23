@@ -26,12 +26,15 @@ JWT_REFRESH_EXPIRES_IN=30d
 PAUSE_PUBLISHING=false
 AI_GENERATION_WORKER_MODE=web
 
-SMTP_HOST=...
+EMAIL_DELIVERY_MODE=optional
+EMAIL_VERIFICATION_REQUIRED=false
+SMTP_HOST=
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=...
-SMTP_PASS=...
-EMAIL_FROM=AutoBrand AI <no-reply@your-domain.example>
+SMTP_USER=
+SMTP_PASS=
+EMAIL_FROM=
+ALLOW_DEVELOPMENT_EMAIL_LINKS=false
 ```
 
 Generate each secret separately:
@@ -41,6 +44,31 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 `APP_URL` and `PUBLIC_APP_URL` must be the same public HTTPS origin unless a separate public media origin is intentionally used. Provider callbacks and provider-fetched media cannot use localhost.
+
+
+## Email delivery modes
+
+Email delivery is optional by default so a missing SMTP provider does not stop the platform.
+
+- `EMAIL_DELIVERY_MODE=optional`: start without SMTP. New accounts do not require email verification. Password reset, email change, verification resend, and team invite email delivery remain unavailable until SMTP is configured.
+- `EMAIL_DELIVERY_MODE=required`: fail startup unless `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM` are all set. Use this when email verification is mandatory.
+- `EMAIL_DELIVERY_MODE=disabled`: never send email, even if SMTP variables are present.
+
+For a fully configured production deployment:
+
+```env
+EMAIL_DELIVERY_MODE=required
+EMAIL_VERIFICATION_REQUIRED=true
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-user
+SMTP_PASS=your-password
+EMAIL_FROM=AutoBrand AI <no-reply@your-domain.example>
+ALLOW_DEVELOPMENT_EMAIL_LINKS=false
+```
+
+Do not enable `EMAIL_VERIFICATION_REQUIRED=true` without working SMTP.
 
 ## 2. Publishing and scheduling runtime
 
@@ -287,3 +315,30 @@ MONGO_IP_FAMILY=
 ```
 
 For Windows `ENOTFOUND` failures, run `ipconfig /flushdns`, then `npm run diagnose:connectivity`. If needed, switch the computer DNS resolver, disable a VPN/proxy temporarily, copy a fresh Atlas Drivers URI, and confirm Atlas Network Access.
+
+## 12. Render deployment and login security
+
+For Render, use these service commands:
+
+```text
+Build command: npm ci
+Start command: npm start
+Health check path: /health
+```
+
+The project pins Node.js to `24.x`. Avoid an open-ended engine such as `>=20`, because the host may select a newly released major version before the application and native dependencies have been validated against it.
+
+Set the public origin exactly:
+
+```env
+NODE_ENV=production
+APP_URL=https://autobrand-ai.onrender.com
+PUBLIC_APP_URL=https://autobrand-ai.onrender.com
+TRUST_PROXY_HOPS=1
+```
+
+`COOKIE_SECRET` and `CSRF_SECRET` must each be stable, distinct values of at least 32 random characters. Do not regenerate either secret on every deploy. Changing `CSRF_SECRET` invalidates existing form tokens; changing authentication secrets invalidates existing sessions.
+
+The production CSRF cookie is named `__Host-autobrand-csrf`. The application removes the legacy `csrfToken` cookie and can recover a same-origin form submission when a browser omits the cookie or retains a stale duplicate. Cross-site submissions and unsigned tokens are still rejected.
+
+After deploying a build that changes cookie/security behavior, perform one hard refresh. Users affected by an older deployment can clear site data for `autobrand-ai.onrender.com` or open a private window once.

@@ -3,7 +3,7 @@ const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const env = require('../config/env');
-const { sendVerificationEmail } = require('../services/emailService');
+const { isEmailConfigured, sendVerificationEmail } = require('../services/emailService');
 const { facebookConnectionChecklist } = require('../services/facebookService');
 const { checkProviders } = require('../services/providerHealthService');
 const { revokeAllSessions, issueAuthTokens, setAuthCookies } = require('../services/authService');
@@ -59,6 +59,22 @@ async function verifyCurrentPasswordIfNeeded(user, password) {
 }
 
 async function renderVerificationPrepared(res, user, token) {
+  if (!env.emailVerificationRequired) {
+    return res.render('auth/check-email', {
+      title: 'Email verification not required',
+      layout: 'layouts/auth',
+      message: 'Email verification is disabled for this deployment.',
+      actionUrl: '/dashboard/settings'
+    });
+  }
+  if (!isEmailConfigured()) {
+    return res.status(503).render('auth/check-email', {
+      title: 'Verification unavailable',
+      layout: 'layouts/auth',
+      message: 'Verification email delivery is temporarily unavailable. Configure SMTP before requesting an email change or verification link.',
+      actionUrl: '/dashboard/settings'
+    });
+  }
   const targetEmail = user.pendingEmail || user.email;
   const delivery = await sendVerificationEmail({ user, token });
   return res.render('auth/check-email', {
@@ -139,6 +155,9 @@ async function password(req, res, next) {
 
 async function email(req, res, next) {
   try {
+    if (!env.emailVerificationRequired || !isEmailConfigured()) {
+      return redirectError(res, 'Email changes require configured verification email delivery.');
+    }
     const user = await loadAccountUser(req);
     await verifyCurrentPasswordIfNeeded(user, req.body.password);
 
@@ -162,6 +181,16 @@ async function email(req, res, next) {
 async function resendVerification(req, res, next) {
   try {
     const user = await loadAccountUser(req);
+    if (!env.emailVerificationRequired) {
+      if (!user.pendingEmail && !user.isVerified) {
+        user.isVerified = true;
+        user.emailVerificationTokenHash = undefined;
+        user.emailVerificationExpiresAt = undefined;
+        await user.save();
+      }
+      return redirectNotice(res, 'Email verification is disabled for this deployment.');
+    }
+    if (!isEmailConfigured()) return redirectError(res, 'Verification email delivery is unavailable. Configure SMTP first.');
     if (user.isVerified && !user.pendingEmail) {
       return redirectNotice(res, 'Your account email is already verified.');
     }

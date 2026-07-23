@@ -4,7 +4,17 @@ const env = require('../config/env');
 let transporter;
 
 function isEmailConfigured() {
-  return Boolean(env.smtpHost && env.smtpPort && env.smtpUser && env.smtpPass && env.emailFrom);
+  return Boolean(env.emailDeliveryEnabled && env.smtpHost && env.smtpPort && env.smtpUser && env.smtpPass && env.emailFrom);
+}
+
+function emailDeliveryStatus() {
+  if (env.emailDeliveryMode === 'disabled') {
+    return { enabled: false, configured: env.smtpConfigured, mode: 'disabled', reason: 'disabled' };
+  }
+  if (!env.smtpConfigured) {
+    return { enabled: false, configured: false, mode: env.emailDeliveryMode, reason: 'not_configured' };
+  }
+  return { enabled: true, configured: true, mode: env.emailDeliveryMode, reason: '' };
 }
 
 function getTransporter() {
@@ -40,8 +50,8 @@ function safeName(name = 'there') {
 async function sendEmail({ to, subject, text, html }) {
   const client = getTransporter();
   if (!client) {
-    if (env.nodeEnv === 'production') throw new Error('Email delivery is not configured.');
-    return { delivered: false, development: true };
+    const status = emailDeliveryStatus();
+    return { delivered: false, unavailable: true, reason: status.reason || 'not_configured', mode: status.mode };
   }
 
   const info = await client.sendMail({
@@ -89,6 +99,7 @@ async function sendTeamInviteEmail({ member, brandName, inviterName, token }) {
 
 module.exports = {
   absoluteUrl,
+  emailDeliveryStatus,
   isEmailConfigured,
   sendEmail,
   sendPasswordResetEmail,

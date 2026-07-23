@@ -644,7 +644,7 @@
 
     <template id="dashboard-form-settings">
       <article class="card real-form-card">
-        <div class="card-head"><div><h3>Account profile</h3><p>Keep your owner profile current for team, approval and billing workflows.</p></div><span class="badge"><%= dashboardData.user.isVerified ? 'Verified' : 'Needs verification' %></span></div>
+        <div class="card-head"><div><h3>Account profile</h3><p>Keep your owner profile current for team, approval and billing workflows.</p></div><span class="badge"><%= !dashboardData.user.emailVerificationRequired ? 'Verification disabled' : (dashboardData.user.isVerified ? 'Verified' : 'Needs verification') %></span></div>
         <form action="/dashboard/actions/settings/profile" method="post" class="real-form-grid">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <label>Name<input name="name" value="<%= dashboardData.user.name || '' %>" required></label>
@@ -655,19 +655,25 @@
 
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Email and verification</h3><p>Primary email controls login, account notices and plan receipts.</p></div><span class="badge"><%= dashboardData.user.pendingEmail ? 'Pending change' : dashboardData.user.email %></span></div>
-        <% if (!dashboardData.user.isVerified || dashboardData.user.pendingEmail) { %>
+        <% if (!dashboardData.user.emailVerificationRequired) { %>
+          <div class="data-row"><div><strong>Email verification disabled</strong><span>This deployment is running without verification email delivery. Login continues to use your current email.</span></div><span class="badge">Optional email</span></div>
+        <% } else if (!dashboardData.user.isVerified || dashboardData.user.pendingEmail) { %>
           <form action="/dashboard/actions/settings/resend-verification" method="post" class="real-form-grid">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="data-row full"><div><strong><%= dashboardData.user.pendingEmail ? 'Pending email' : 'Current email' %></strong><span><%= dashboardData.user.pendingEmail || dashboardData.user.email %></span></div><span class="badge">Verify</span></div>
-            <button class="btn btn-ghost full" type="submit">Resend verification link</button>
+            <button class="btn btn-ghost full" type="submit" <%= dashboardData.user.emailDeliveryEnabled ? '' : 'disabled' %>>Resend verification link</button>
           </form>
         <% } %>
-        <form action="/dashboard/actions/settings/email" method="post" class="real-form-grid">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <label class="full">New email<input name="email" type="email" value="<%= dashboardData.user.pendingEmail || '' %>" placeholder="<%= dashboardData.user.email %>" required></label>
-          <label class="full">Current password<input name="password" type="password" autocomplete="current-password" placeholder="Required for password accounts"></label>
-          <button class="btn btn-primary full" type="submit">Request email change</button>
-        </form>
+        <% if (dashboardData.user.emailVerificationRequired && dashboardData.user.emailDeliveryEnabled) { %>
+          <form action="/dashboard/actions/settings/email" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label class="full">New email<input name="email" type="email" value="<%= dashboardData.user.pendingEmail || '' %>" placeholder="<%= dashboardData.user.email %>" required></label>
+            <label class="full">Current password<input name="password" type="password" autocomplete="current-password" placeholder="Required for password accounts"></label>
+            <button class="btn btn-primary full" type="submit">Request email change</button>
+          </form>
+        <% } else { %>
+          <div class="data-row"><div><strong>Email changes unavailable</strong><span>Configure SMTP and enable email verification before changing the login email.</span></div><span class="badge">Protected</span></div>
+        <% } %>
       </article>
 
       <article class="card real-form-card">

@@ -6,7 +6,7 @@ This build keeps the existing architecture and adds the production-readiness lay
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 24 LTS (the project pins `24.x` for deterministic hosting builds)
 - MongoDB
 - Optional Redis for future BullMQ workers and cache-backed jobs
 - Optional Cloudinary account for uploads
@@ -15,7 +15,7 @@ This build keeps the existing architecture and adds the production-readiness lay
 ## Setup
 
 ```bash
-npm install
+npm ci
 cp .env.example .env
 ```
 
@@ -352,3 +352,20 @@ npm run diagnose:connectivity
 ```
 
 If MongoDB disconnects, AI generation and scheduled publishing pause with exponential backoff and resume automatically after reconnection. `/health` remains available, `/readyz` reports database readiness, and normal pages return a fast 503 rather than hanging through repeated server-selection timeouts.
+
+## Email delivery without SMTP
+
+The application can run safely before an email provider is connected:
+
+```env
+EMAIL_DELIVERY_MODE=optional
+EMAIL_VERIFICATION_REQUIRED=false
+SMTP_HOST=
+SMTP_USER=
+SMTP_PASS=
+EMAIL_FROM=
+ALLOW_DEVELOPMENT_EMAIL_LINKS=false
+```
+
+In this mode, signup and normal platform use remain available. Password reset emails, verification emails, login-email changes, and team invitation emails show a controlled unavailable message rather than crashing the server. To require email verification, configure complete SMTP credentials and switch to `EMAIL_DELIVERY_MODE=required` with `EMAIL_VERIFICATION_REQUIRED=true`.
+

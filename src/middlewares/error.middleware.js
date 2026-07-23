@@ -234,6 +234,9 @@ function renderError(error, req, res) {
   return res.status(safeStatus).render('dashboard/pages/error', {
     ...model,
     layout,
+    appName: res.locals.appName || 'AutoBrand AI',
+    currentPath: res.locals.currentPath || req.path || '/',
+    user: req.user || res.locals.user || null,
     csrfToken: safeCsrfToken(req, res),
     statusCode: safeStatus,
     title: model.errorTitle || `Error ${safeStatus}`
@@ -243,7 +246,18 @@ function renderError(error, req, res) {
 function errorMiddleware(error, req, res, next) {
   if (res.headersSent) return next(error);
   const status = statusFromError(error);
-  if (status >= 500) console.error(error);
+  if (error?.code === 'EBADCSRFTOKEN') {
+    console.warn('[security] CSRF request rejected', {
+      requestId: req.id,
+      method: req.method,
+      path: req.originalUrl || req.path,
+      reason: error.csrfReason || 'unknown',
+      origin: req.get('origin') || '',
+      refererOrigin: (() => { try { return new URL(req.get('referer') || '').origin; } catch (_error) { return ''; } })()
+    });
+  } else if (status >= 500) {
+    console.error(error);
+  }
   return renderError(error, req, res);
 }
 

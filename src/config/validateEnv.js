@@ -42,6 +42,7 @@ function validateEnvironment({ production = env.nodeEnv === 'production' } = {})
 
   if (!['development', 'test', 'production'].includes(env.nodeEnv)) errors.push('NODE_ENV must be development, test, or production.');
   if (!['web', 'external', 'off'].includes(env.aiGenerationWorkerMode)) errors.push('AI_GENERATION_WORKER_MODE must be web, external, or off.');
+  if (!['required', 'optional', 'disabled'].includes(env.emailDeliveryMode)) errors.push('EMAIL_DELIVERY_MODE must be required, optional, or disabled.');
   if (!Number.isInteger(env.port) || env.port < 1 || env.port > 65535) errors.push('PORT must be between 1 and 65535.');
   if (!env.mongoUri) errors.push('MONGO_URI is required.');
   if (env.jwtRefreshMaxAgeMs <= env.jwtAccessMaxAgeMs) errors.push('JWT_REFRESH_EXPIRES_IN must be longer than JWT_ACCESS_EXPIRES_IN.');
@@ -68,8 +69,23 @@ function validateEnvironment({ production = env.nodeEnv === 'production' } = {})
     if (env.allowLocalVideoFallback && !(env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret)) {
       errors.push('Local video fallback in production requires complete Cloudinary configuration so generated files persist.');
     }
-    if (!(env.smtpHost && env.smtpUser && env.smtpPass && env.emailFrom)) {
-      errors.push('SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM are required in production for verification and password reset delivery.');
+    const smtpValues = [env.smtpHost, env.smtpUser, env.smtpPass, env.emailFrom].filter(Boolean);
+    if (smtpValues.length > 0 && smtpValues.length < 4) {
+      const message = 'SMTP configuration is incomplete; set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM together.';
+      if (env.emailDeliveryMode === 'required') errors.push(message);
+      else warnings.push(`${message} Email delivery will remain disabled.`);
+    }
+    if (env.emailDeliveryMode === 'required' && !env.smtpConfigured) {
+      errors.push('EMAIL_DELIVERY_MODE=required needs SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM.');
+    }
+    if (env.emailVerificationRequired && !env.emailDeliveryEnabled) {
+      errors.push('EMAIL_VERIFICATION_REQUIRED=true needs enabled and complete SMTP delivery.');
+    }
+    if (env.emailDeliveryMode === 'optional' && !env.smtpConfigured) {
+      warnings.push('Email delivery is not configured. The app will start, new accounts will not require email verification, and password reset/team invite email delivery will be unavailable.');
+    }
+    if (env.emailDeliveryMode === 'disabled' && env.smtpConfigured) {
+      warnings.push('SMTP credentials are configured but EMAIL_DELIVERY_MODE=disabled, so no email will be sent.');
     }
     if (env.allowDevelopmentEmailLinks) errors.push('ALLOW_DEVELOPMENT_EMAIL_LINKS must be false in production.');
     if (!env.redisConfigured) warnings.push('Redis is disabled. The MongoDB publishing fallback will be used; configure REDIS_URL for multi-instance queue acceleration.');

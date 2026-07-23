@@ -58,3 +58,11 @@ The web service owns AI generation and durable publishing by default. Separate R
 - Workers wake immediately after Mongoose reconnects.
 - Database-dependent HTTP traffic fails fast with a clear 503 page during outages.
 - Added `npm run diagnose:connectivity` for MongoDB SRV, DNS, TCP, and Redis TCP diagnosis.
+
+## v9 — Optional email runtime
+
+- Added `EMAIL_DELIVERY_MODE=required|optional|disabled`.
+- Added `EMAIL_VERIFICATION_REQUIRED`.
+- Missing SMTP no longer prevents production startup in optional mode.
+- Registration, verification gating, password reset, email change, resend verification, and team invitations now degrade safely when email delivery is unavailable.
+- Updated production validation, dashboard status, `.env.example`, deployment documentation, tests, and static security expectations.

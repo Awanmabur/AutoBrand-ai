@@ -62,10 +62,11 @@ requireText('src/app.js', [
 requireText('src/config/validateEnv.js', [
   'APP_URL must be a valid HTTPS URL in production.',
   'Security secrets must be distinct',
-  'SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM are required'
+  'EMAIL_DELIVERY_MODE=required needs SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM.'
 ]);
 requireText('src/services/tokenService.js', ["algorithms: ['HS256']", "type: 'access'", "type: 'refresh'", 'issuer: env.jwtIssuer', 'audience: env.jwtAudience']);
 requireText('src/services/authService.js', ['reuse_detected', 'session_limit', 'rotateRefreshToken']);
+requireText('src/middlewares/requireVerified.js', ['!env.emailVerificationRequired || req.user.isVerified']);
 requireText('src/services/remoteFetch.service.js', ['resolvePublicAddresses', 'Private network URLs are not allowed.', 'MAX_REDIRECTS']);
 requireText('src/controllers/webhookController.js', ['timingSafeEqual', 'MAX_CLOCK_SKEW_MS', 'eventId']);
 requireText('src/models/WebhookEvent.js', ["{ provider: 1, eventId: 1 }, { unique: true }"]);

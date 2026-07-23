@@ -74,6 +74,15 @@ function resolveTokenEncryptionSecret() {
 
 const tokenEncryptionSecret = resolveTokenEncryptionSecret();
 
+const smtpHost = cleanEnv(process.env.SMTP_HOST);
+const smtpUser = cleanEnv(process.env.SMTP_USER);
+const smtpPass = cleanEnv(process.env.SMTP_PASS);
+const emailFrom = cleanEnv(process.env.EMAIL_FROM);
+const smtpConfigured = Boolean(smtpHost && smtpUser && smtpPass && emailFrom);
+const emailDeliveryMode = (cleanEnv(process.env.EMAIL_DELIVERY_MODE) || 'optional').toLowerCase();
+const emailDeliveryEnabled = emailDeliveryMode !== 'disabled' && smtpConfigured;
+const emailVerificationRequired = boolEnv(process.env.EMAIL_VERIFICATION_REQUIRED, emailDeliveryEnabled);
+
 const env = {
   appName: process.env.APP_NAME || 'AutoBrand AI',
   appUrl: defaultAppUrl,
@@ -239,12 +248,16 @@ const env = {
   sessionMaxActive: Math.max(1, Math.min(50, Number(process.env.SESSION_MAX_ACTIVE || 10))),
   loginMaxFailures: Math.max(3, Math.min(20, Number(process.env.LOGIN_MAX_FAILURES || 5))),
   loginLockMinutes: Math.max(1, Math.min(1440, Number(process.env.LOGIN_LOCK_MINUTES || 15))),
-  smtpHost: cleanEnv(process.env.SMTP_HOST),
+  smtpHost,
   smtpPort: Number(process.env.SMTP_PORT || 587),
   smtpSecure: boolEnv(process.env.SMTP_SECURE, false),
-  smtpUser: cleanEnv(process.env.SMTP_USER),
-  smtpPass: cleanEnv(process.env.SMTP_PASS),
-  emailFrom: cleanEnv(process.env.EMAIL_FROM),
+  smtpUser,
+  smtpPass,
+  emailFrom,
+  smtpConfigured,
+  emailDeliveryMode,
+  emailDeliveryEnabled,
+  emailVerificationRequired,
   allowDevelopmentEmailLinks: boolEnv(process.env.ALLOW_DEVELOPMENT_EMAIL_LINKS, nodeEnv !== 'production'),
   remoteFetchTimeoutMs: Math.max(1000, Math.min(120000, Number(process.env.REMOTE_FETCH_TIMEOUT_MS || 20000))),
   remoteFetchMaxBytes: Math.max(1024 * 1024, Math.min(500 * 1024 * 1024, Number(process.env.REMOTE_FETCH_MAX_BYTES || 100 * 1024 * 1024))),

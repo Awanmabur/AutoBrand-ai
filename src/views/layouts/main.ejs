@@ -1,13 +1,18 @@
+<%
+  const resolvedAppName = typeof appName !== 'undefined' && appName ? appName : 'AutoBrand AI';
+  const resolvedTitle = typeof title !== 'undefined' && title ? `${title} | ${resolvedAppName}` : resolvedAppName;
+  const resolvedUser = typeof user !== 'undefined' ? user : null;
+%>
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><%= typeof title !== 'undefined' && title ? `${title} | ${appName}` : appName %></title>
+    <title><%= resolvedTitle %></title>
     <link rel="stylesheet" href="/css/main.css">
   </head>
   <body>
-    <%- include('../partials/public-nav') %>
+    <%- include('../partials/public-nav', { appName: resolvedAppName, user: resolvedUser }) %>
     <main>
       <%- body %>
     </main>

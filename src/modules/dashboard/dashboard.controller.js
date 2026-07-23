@@ -31,6 +31,7 @@ const { capabilityList, evaluateSocialAccountHealth } = require('../../services/
 const { PLATFORM_CATALOG, buildComposerDestinationCatalog, isRealSocialAccount } = require('../../services/social/socialDestination.service');
 const { buildAnalyticsDashboard } = require('../../services/analytics/analyticsDashboard.service');
 const { defaultMessage, defaultTitle } = require('../../utils/errorResponse');
+const env = require('../../config/env');
 
 const DASHBOARD_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TIME_ZONE || process.env.TZ || 'Africa/Kampala';
 
@@ -1985,6 +1986,8 @@ function buildDashboardData({
       pendingEmail: user.pendingEmail || '',
       avatar: user.avatar || '',
       isVerified: Boolean(user.isVerified),
+      emailVerificationRequired: Boolean(env.emailVerificationRequired),
+      emailDeliveryEnabled: Boolean(env.emailDeliveryEnabled),
       status: user.status || 'active',
       accountDeletionStatus: user.accountDeletionStatus || 'none',
       accountDeletionRequestedAt: user.accountDeletionRequestedAt || '',
