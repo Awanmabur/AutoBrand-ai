@@ -24,7 +24,7 @@ test('manual post with complete caption and existing image skips AI generation',
 
 test('video generation keeps an image reference and only queues the missing MP4', () => {
   const plan = buildPostGenerationPlan(
-    { type: 'video', mediaFormat: 'short_video', creationMode: 'manual', caption: 'Video caption' },
+    { type: 'video', mediaFormat: 'short_video', creationMode: 'ai', caption: 'Video caption' },
     [media('reference-image', 'image')],
     {}
   );
@@ -49,7 +49,7 @@ test('existing video avoids duplicate rendering', () => {
 
 test('carousel generation fills only missing slides', () => {
   const plan = buildPostGenerationPlan(
-    { type: 'carousel', creationMode: 'ai', imageCount: 4, caption: '' },
+    { type: 'carousel', creationMode: 'ai', imageCount: 4, generateImage: 'on', caption: '' },
     [media('slide-1', 'image')],
     {}
   );

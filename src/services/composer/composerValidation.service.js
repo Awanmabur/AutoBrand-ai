@@ -14,7 +14,7 @@ function extractHashtags(caption = '', hashtags = []) {
 
 function ruleMediaType(contentType) {
   const type = String(contentType || 'text').toLowerCase();
-  if (type === 'link' || type === 'whatsapp_message') return 'text';
+  if (type === 'link') return 'text';
   if (type === 'short' || type === 'short_video') return 'reel';
   return type;
 }

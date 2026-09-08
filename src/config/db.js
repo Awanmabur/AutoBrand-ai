@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const env = require('./env');
+const { ensureDatabaseIndexes } = require('./ensureIndexes');
 
 let lastMongoErrorLogAt = 0;
 let lastMongoErrorMessage = '';
@@ -13,14 +14,14 @@ function logMongoError(error) {
   console.error('[mongodb] connection unavailable', { message });
 }
 
-async function connectDb() {
+async function connectDb({ ensureIndexes = true } = {}) {
   mongoose.set('strictQuery', true);
   mongoose.set('sanitizeFilter', false);
   mongoose.set('runValidators', true);
 
   const ipFamily = Number(process.env.MONGO_IP_FAMILY || 0);
   const options = {
-    autoIndex: env.nodeEnv !== 'production',
+    autoIndex: false,
     serverSelectionTimeoutMS: Math.max(3000, Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 15000)),
     connectTimeoutMS: Math.max(3000, Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 15000)),
     socketTimeoutMS: Math.max(10000, Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 45000)),
@@ -44,6 +45,10 @@ async function connectDb() {
 
   await mongoose.connect(env.mongoUri, options);
   console.log('[mongodb] connected.');
+  if (ensureIndexes) {
+    const indexedModels = await ensureDatabaseIndexes();
+    console.log(`[mongodb] verified indexes for ${indexedModels.length} models.`);
+  }
   return mongoose.connection;
 }
 

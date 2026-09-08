@@ -1,16 +1,17 @@
 const LIMIT_FIELDS = [
-  ['maxBrands', 'Max brands'],
-  ['maxSocialAccounts', 'Max social accounts'],
-  ['maxTeamMembers', 'Max team members'],
-  ['maxScheduledPosts', 'Max scheduled posts'],
-  ['maxAutoPosts', 'Max auto posts'],
-  ['maxHandoffPosts', 'Max handoff posts'],
-  ['maxAiTextGenerations', 'Max AI text generations'],
-  ['maxAiImageGenerations', 'Max AI image generations'],
-  ['maxAiVideoGenerations', 'Max AI video generations'],
-  ['maxAvatarVideos', 'Max avatar videos'],
-  ['maxStorageMb', 'Max storage MB'],
-  ['maxClientApprovalLinks', 'Max client approval links']
+  ['maxBrands', 'Active brands capacity'],
+  ['maxSocialAccounts', 'Connected social accounts capacity'],
+  ['maxTeamMembers', 'Team members capacity'],
+  ['maxScheduledPosts', 'Scheduled posts / billing period'],
+  ['maxManualPosts', 'Manual/imported posts / billing period'],
+  ['maxAutoPosts', 'Auto posts / billing period'],
+  ['maxHandoffPosts', 'Handoff posts / billing period'],
+  ['maxAiTextGenerations', 'AI text generations / billing period'],
+  ['maxAiImageGenerations', 'AI images / billing period'],
+  ['maxAiVideoGenerations', 'AI videos / billing period'],
+  ['maxAvatarVideos', 'Avatar videos / billing period'],
+  ['maxStorageMb', 'Media storage capacity (MB)'],
+  ['maxClientApprovalLinks', 'Client approval links / billing period']
 ].map(([name, label]) => ({ name, label, type: 'number', help: 'Use -1 for unlimited.' }));
 
 const LEVEL_FIELDS = [
@@ -20,6 +21,8 @@ const LEVEL_FIELDS = [
 ];
 
 const FEATURE_FLAGS = [
+  ['manualPublisherAccess', 'Manual Publisher'],
+  ['bulkImportAccess', 'Bulk manual CSV import'],
   ['calendarAccess', 'Calendar'],
   ['campaignAccess', 'Campaigns'],
   ['growthStudioAccess', 'Growth Studio'],
@@ -41,7 +44,7 @@ const FEATURE_FLAGS = [
   ['agencyWorkspaceAccess', 'Agency workspace']
 ].map(([name, label]) => ({ name, label }));
 
-const AI_PROVIDER_OPTIONS = ['local', 'openai', 'gemini', 'deepseek', 'groq', 'anthropic', 'mistral', 'replicate', 'stability', 'fal'];
+const AI_PROVIDER_OPTIONS = ['openai', 'gemini', 'deepseek', 'groq', 'anthropic', 'mistral', 'replicate', 'stability', 'fal'];
 const BILLING_INTERVALS = ['trial', 'month', 'year', 'one_time'];
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'UGX', 'KES', 'NGN', 'ZAR', 'GHS'];
 
@@ -112,24 +115,54 @@ function buildFeatures(body) {
   return features;
 }
 
+
+function planValidationError(message) {
+  const error = new Error(message);
+  error.status = 422;
+  error.safeMessage = message;
+  return error;
+}
+
+function normalizeAiProvider(value, { allowWildcard = false } = {}) {
+  const provider = String(value || '').trim().toLowerCase();
+  if (!provider) return '';
+  if (allowWildcard && provider === '*') return provider;
+  if (!AI_PROVIDER_OPTIONS.includes(provider)) throw planValidationError(`Unsupported AI provider: ${provider}.`);
+  return provider;
+}
+
 function buildAiConfig(body) {
   const input = pickSection(body, 'aiConfig');
-  return {
-    allowedProviders: toArray(input.allowedProviders).map((item) => String(item).trim()).filter(Boolean),
+  const allowedProviders = [...new Set(toArray(input.allowedProviders).map((item) => normalizeAiProvider(item, { allowWildcard: true })).filter(Boolean))];
+  const config = {
+    allowedProviders,
     allowedModels: parseLines(input.allowedModels),
-    defaultTextProvider: String(input.defaultTextProvider || 'local').trim(),
-    defaultTextModel: String(input.defaultTextModel || 'local-fast').trim(),
-    defaultImageProvider: String(input.defaultImageProvider || '').trim(),
+    defaultTextProvider: normalizeAiProvider(input.defaultTextProvider),
+    defaultTextModel: String(input.defaultTextModel || '').trim(),
+    defaultImageProvider: normalizeAiProvider(input.defaultImageProvider),
     defaultImageModel: String(input.defaultImageModel || '').trim(),
-    defaultVideoProvider: String(input.defaultVideoProvider || '').trim(),
+    defaultVideoProvider: normalizeAiProvider(input.defaultVideoProvider),
     defaultVideoModel: String(input.defaultVideoModel || '').trim(),
-    fallbackProvider: String(input.fallbackProvider || 'local').trim(),
-    fallbackModel: String(input.fallbackModel || 'local-fallback').trim(),
+    fallbackProvider: normalizeAiProvider(input.fallbackProvider),
+    fallbackModel: String(input.fallbackModel || '').trim(),
     allowUserProviderSelection: parseBoolean(input.allowUserProviderSelection),
     monthlyTokenLimit: parseNumber(input.monthlyTokenLimit, 0),
     monthlyImageLimit: parseNumber(input.monthlyImageLimit, 0),
     monthlyVideoLimit: parseNumber(input.monthlyVideoLimit, 0)
   };
+  const providerAllowed = (provider) => !provider || allowedProviders.includes('*') || allowedProviders.includes(provider);
+  for (const [field, provider] of [
+    ['default text', config.defaultTextProvider],
+    ['default image', config.defaultImageProvider],
+    ['default video', config.defaultVideoProvider],
+    ['fallback', config.fallbackProvider]
+  ]) {
+    if (!providerAllowed(provider)) throw planValidationError(`The ${field} AI provider must also appear in allowed providers.`);
+  }
+  if (!allowedProviders.length && [config.defaultTextProvider, config.defaultImageProvider, config.defaultVideoProvider, config.fallbackProvider].some(Boolean)) {
+    throw planValidationError('Plans with no allowed AI providers cannot define default or fallback AI providers.');
+  }
+  return config;
 }
 
 function buildMetadata(body) {
@@ -161,6 +194,7 @@ function buildPlanPayload(body = {}) {
     isPopular: parseBoolean(body.isPopular),
     sortOrder: parseNumber(body.sortOrder, 100),
     queuePriority: parseNumber(body.queuePriority, 5),
+    includedCredits: parseNumber(body.includedCredits, 0),
     taxBehavior: String(body.taxBehavior || '').trim(),
     paymentProviderPlanId: String(body.paymentProviderPlanId || '').trim(),
     featureList: parseLines(body.featureList),

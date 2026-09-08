@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 
 const avatarProfileSchema = new mongoose.Schema(
   {
+    // Business/workspace owner. This is deliberately distinct from the employee who created the profile.
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand', required: true },
     name: { type: String, required: true, trim: true },
     sourceMedia: { type: mongoose.Schema.Types.ObjectId, ref: 'Media' },

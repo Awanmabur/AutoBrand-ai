@@ -11,6 +11,31 @@ const METRIC_KEYS = [
   'followersGained'
 ];
 
+const ENGAGEMENT_KEYS = ['likes', 'comments', 'shares', 'saves', 'clicks'];
+const BASE_KEYS = ['impressions', 'reach', 'views'];
+
+function normalizedAvailableMetrics(record = {}) {
+  if (Array.isArray(record.availableMetrics) && record.availableMetrics.length) {
+    return [...new Set(record.availableMetrics
+      .map((key) => String(key || '').trim())
+      .filter((key) => METRIC_KEYS.includes(key) || key === 'engagementRate'))];
+  }
+  // Legacy analytics rows predate provider capability tracking. Every new provider
+  // synchronization writes the exact supported set, so only legacy rows use this fallback.
+  return [...METRIC_KEYS, 'engagementRate'];
+}
+
+function metricIsAvailable(record = {}, key) {
+  const available = Array.isArray(record.availableMetrics) && record.availableMetrics.length
+    ? record.availableMetrics
+    : normalizedAvailableMetrics(record);
+  return available.includes(key);
+}
+
+function displayMetric(record = {}, key) {
+  return metricIsAvailable(record, key) ? String(number(record[key])) : 'Unavailable';
+}
+
 function number(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -18,12 +43,6 @@ function number(value) {
 
 function recordId(record) {
   return record?._id?.toString?.() || record?.id?.toString?.() || '';
-}
-
-function stableNumber(seed = '', min = 0, max = 100) {
-  const source = String(seed || 'analytics');
-  const hash = source.split('').reduce((total, char, index) => total + char.charCodeAt(0) * (index + 17), 0);
-  return min + (hash % Math.max(1, max - min + 1));
 }
 
 function deriveEngagementRate(metrics = {}) {
@@ -50,46 +69,6 @@ function metricDateFor(record = {}) {
   return record.metricDate || record.lastSyncedAt || record.publishedAt || record.scheduledAt || record.createdAt || new Date();
 }
 
-function mockMetricsForPost(post = {}, index = 0) {
-  const id = recordId(post) || `${post.platform || 'post'}-${index}`;
-  const type = String(post.type || '').toLowerCase();
-  const platform = post.platform || 'facebook';
-  const isVideo = ['video', 'reel', 'avatar_video'].includes(type) || ['tiktok', 'youtube'].includes(platform);
-  const base = stableNumber(`${id}-${platform}`, 420, 5400);
-  const impressions = base;
-  const reach = Math.round(base * (0.58 + stableNumber(id, 0, 20) / 100));
-  const views = isVideo ? Math.round(base * 0.82) : Math.round(base * 0.38);
-  const likes = Math.round(base / stableNumber(`${id}-likes`, 28, 58));
-  const comments = Math.round(likes / stableNumber(`${id}-comments`, 5, 12));
-  const shares = Math.round(likes / stableNumber(`${id}-shares`, 4, 10));
-  const saves = Math.round(likes / stableNumber(`${id}-saves`, 3, 9));
-  const clicks = Math.round(base / stableNumber(`${id}-clicks`, 34, 95));
-  const watchTimeSeconds = isVideo ? Math.round(views * stableNumber(`${id}-watch`, 6, 18)) : 0;
-  const followersGained = Math.round((likes + shares + saves) / stableNumber(`${id}-followers`, 18, 42));
-  const metrics = {
-    brand: post.brand,
-    campaign: post.campaign,
-    post,
-    platform,
-    impressions,
-    reach,
-    views,
-    watchTimeSeconds,
-    likes,
-    comments,
-    shares,
-    saves,
-    clicks,
-    followersGained,
-    metricDate: metricDateFor(post),
-    lastSyncedAt: metricDateFor(post),
-    source: 'mock',
-    summary: 'Development analytics generated from post metadata.'
-  };
-  metrics.engagementRate = deriveEngagementRate(metrics);
-  return metrics;
-}
-
 function normalizeAnalyticsRecord(record = {}) {
   const normalized = {
     id: recordId(record),
@@ -101,40 +80,56 @@ function normalizeAnalyticsRecord(record = {}) {
     metricDate: metricDateFor(record),
     lastSyncedAt: record.lastSyncedAt || record.updatedAt || record.metricDate || new Date(),
     source: record.source || 'provider',
-    summary: record.summary || ''
+    summary: record.summary || '',
+    availableMetrics: normalizedAvailableMetrics(record)
   };
 
   METRIC_KEYS.forEach((key) => {
     normalized[key] = number(record[key]);
   });
-  normalized.engagementRate = record.engagementRate ? number(record.engagementRate) : deriveEngagementRate(normalized);
+  const canDeriveEngagement = BASE_KEYS.some((key) => metricIsAvailable(normalized, key))
+    && ENGAGEMENT_KEYS.some((key) => metricIsAvailable(normalized, key));
+  normalized.engagementRate = metricIsAvailable(normalized, 'engagementRate')
+    ? number(record.engagementRate)
+    : (canDeriveEngagement ? deriveEngagementRate(normalized) : 0);
+  if (canDeriveEngagement && !metricIsAvailable(normalized, 'engagementRate')) normalized.availableMetrics.push('engagementRate');
   normalized.score = analyticsScore(normalized);
   return normalized;
 }
 
-function analyticsRecordsWithFallback({ analyticsRecords = [], posts = [] } = {}) {
-  const normalized = analyticsRecords.map(normalizeAnalyticsRecord);
-  const analyticsPostIds = new Set(normalized.map((record) => recordId(record.post)).filter(Boolean));
-  const seenPostIds = new Set();
-  const fallbackPosts = posts
-    .filter((post) => {
-      if (!post) return false;
-      const id = recordId(post);
-      if (id && (analyticsPostIds.has(id) || seenPostIds.has(id))) return false;
-      if (id) seenPostIds.add(id);
-      return true;
-    })
-    .slice(0, 60)
-    .map((post, index) => normalizeAnalyticsRecord(mockMetricsForPost(post, index)));
-  return [...normalized, ...fallbackPosts];
+function analyticsRecordsWithFallback({ analyticsRecords = [] } = {}) {
+  // Never fabricate performance data. Missing provider analytics stay missing so
+  // dashboards can distinguish "not synced yet" from real zero performance.
+  return analyticsRecords.map(normalizeAnalyticsRecord);
+}
+
+function awaitingAnalyticsPosts({ analyticsRecords = [], posts = [], analyticsSyncJobs = [] } = {}) {
+  const trackedIds = new Set(analyticsRecords.map((record) => recordId(record.post)).filter(Boolean));
+  const unsupportedIds = new Set(analyticsSyncJobs.filter((job) => job?.status === 'unsupported').map((job) => recordId(job.post)).filter(Boolean));
+  const seen = new Set();
+  return posts.filter((post) => {
+    if (!post) return false;
+    const id = recordId(post);
+    if (id && (trackedIds.has(id) || unsupportedIds.has(id) || seen.has(id))) return false;
+    if (id) seen.add(id);
+    return ['published', 'partially_published'].includes(String(post.status || '').toLowerCase());
+  });
 }
 
 function sumMetrics(records = []) {
+  const availableCounts = {};
   const totals = METRIC_KEYS.reduce((map, key) => {
-    map[key] = records.reduce((total, record) => total + number(record[key]), 0);
+    const available = records.filter((record) => metricIsAvailable(record, key));
+    availableCounts[key] = available.length;
+    map[key] = available.reduce((total, record) => total + number(record[key]), 0);
     return map;
   }, {});
-  totals.engagementRate = deriveEngagementRate(totals);
+  const baseAvailable = BASE_KEYS.some((key) => availableCounts[key] > 0);
+  const engagementAvailable = ENGAGEMENT_KEYS.some((key) => availableCounts[key] > 0);
+  totals.engagementRate = baseAvailable && engagementAvailable ? deriveEngagementRate(totals) : 0;
+  availableCounts.engagementRate = records.filter((record) => metricIsAvailable(record, 'engagementRate')).length || (baseAvailable && engagementAvailable ? records.length : 0);
+  totals.availableCounts = availableCounts;
+  totals.availableMetrics = [...METRIC_KEYS.filter((key) => availableCounts[key] > 0), ...(availableCounts.engagementRate > 0 ? ['engagementRate'] : [])];
   totals.recordCount = records.length;
   return totals;
 }
@@ -179,20 +174,21 @@ function chartRowsFromGroups(groups, labelKey = 'label') {
 }
 
 function detailMetrics(record = {}) {
-  return {
-    Impressions: record.impressions,
-    Reach: record.reach,
-    Views: record.views,
-    'Watch time': record.watchTimeSeconds ? `${Math.round(record.watchTimeSeconds / 60)} min` : '',
-    Likes: record.likes,
-    Comments: record.comments,
-    Shares: record.shares,
-    Saves: record.saves,
-    Clicks: record.clicks,
-    'Followers gained': record.followersGained,
-    'Engagement rate': `${record.engagementRate.toFixed(2)}%`,
+  const result = {
+    Impressions: displayMetric(record, 'impressions'),
+    Reach: displayMetric(record, 'reach'),
+    Views: displayMetric(record, 'views'),
+    'Watch time': metricIsAvailable(record, 'watchTimeSeconds') ? `${Math.round(number(record.watchTimeSeconds) / 60)} min` : 'Unavailable',
+    Likes: displayMetric(record, 'likes'),
+    Comments: displayMetric(record, 'comments'),
+    Shares: displayMetric(record, 'shares'),
+    Saves: displayMetric(record, 'saves'),
+    Clicks: displayMetric(record, 'clicks'),
+    'Followers gained': displayMetric(record, 'followersGained'),
+    'Engagement rate': metricIsAvailable(record, 'engagementRate') ? `${number(record.engagementRate).toFixed(2)}%` : 'Unavailable',
     Source: record.source
   };
+  return result;
 }
 
 function recommendationCards(records = [], bestPlatform = '') {
@@ -204,13 +200,13 @@ function recommendationCards(records = [], bestPlatform = '') {
   if (bestPlatform) {
     recommendations.push(`Prioritize ${bestPlatform} when planning the next campaign; it has the strongest recent engagement score.`);
   }
-  if (totals.clicks < Math.max(5, totals.impressions / 120)) {
+  if (totals.availableCounts.clicks > 0 && totals.availableCounts.impressions > 0 && totals.clicks < Math.max(5, totals.impressions / 120)) {
     recommendations.push('Add a clearer CTA and link destination to posts where traffic is the goal.');
   }
-  if (totals.saves < totals.likes / 5) {
+  if (totals.availableCounts.saves > 0 && totals.availableCounts.likes > 0 && totals.saves < totals.likes / 5) {
     recommendations.push('Test save-friendly carousel tips, checklists, and product guides.');
   }
-  if (totals.watchTimeSeconds > 0) {
+  if (totals.availableCounts.watchTimeSeconds > 0 && totals.watchTimeSeconds > 0) {
     recommendations.push('Reuse the strongest video hooks in reels, shorts, and TikTok scripts.');
   }
   return [...new Set(recommendations)].slice(0, 5);
@@ -233,8 +229,11 @@ function metricCard(title, description, tag, details = {}) {
   };
 }
 
-function buildAnalyticsDashboard({ analyticsRecords = [], posts = [], campaigns = [], socialAccounts = [] } = {}) {
-  const records = analyticsRecordsWithFallback({ analyticsRecords, posts });
+function buildAnalyticsDashboard({ analyticsRecords = [], posts = [], campaigns = [], socialAccounts = [], analyticsSyncJobs = [] } = {}) {
+  const records = analyticsRecordsWithFallback({ analyticsRecords });
+  const awaitingPosts = awaitingAnalyticsPosts({ analyticsRecords, posts, analyticsSyncJobs });
+  const unsupportedJobs = analyticsSyncJobs.filter((job) => job?.status === 'unsupported');
+  const retryJobs = analyticsSyncJobs.filter((job) => ['retry', 'running', 'queued'].includes(String(job?.status || '')));
   const totals = sumMetrics(records);
   const ranked = [...records].sort((a, b) => b.score - a.score);
   const platformGroups = groupBy(records, (record) => record.platform);
@@ -247,8 +246,8 @@ function buildAnalyticsDashboard({ analyticsRecords = [], posts = [], campaigns 
 
   const postCards = ranked.slice(0, 8).map((record) => metricCard(
     record.post?.title || record.post?.caption || `${record.platform} post`,
-    `${record.platform} - ${record.impressions} impressions - ${record.engagementRate.toFixed(2)}% engagement.`,
-    record.source === 'mock' ? 'Mock analytics' : 'Post analytics',
+    `${record.platform} - ${displayMetric(record, 'impressions')} impressions - ${metricIsAvailable(record, 'engagementRate') ? `${record.engagementRate.toFixed(2)}% engagement` : 'engagement unavailable'}.`,
+    'Post analytics',
     {
       Brand: nameFromRecord(record.brand, 'Brand'),
       Campaign: nameFromRecord(record.campaign, ''),
@@ -289,16 +288,16 @@ function buildAnalyticsDashboard({ analyticsRecords = [], posts = [], campaigns 
     bestPlatform,
     bestTime,
     stats: [
-      [totals.impressions, 'Impressions', 'Tracked or mocked'],
-      [totals.reach, 'Reach', 'Audience'],
-      [`${totals.engagementRate.toFixed(2)}%`, 'Engagement', 'Average'],
-      [totals.followersGained, 'Followers gained', 'Growth']
+      [totals.availableCounts.impressions ? totals.impressions : 'Unavailable', 'Impressions', records.length ? 'Provider synced' : 'Awaiting sync'],
+      [totals.availableCounts.reach ? totals.reach : 'Unavailable', 'Reach', 'Audience'],
+      [totals.availableCounts.engagementRate ? `${totals.engagementRate.toFixed(2)}%` : 'Unavailable', 'Engagement', 'Measured/derived'],
+      [totals.availableCounts.followersGained ? totals.followersGained : 'Unavailable', 'Followers gained', 'Growth']
     ],
     cards: [...postCards, ...campaignCards, ...accountCards, ...recommendationCardList],
     rows: ranked.slice(0, 12).map((record) => [
       record.post?.title || record.post?.caption || `${record.platform} post`,
-      `${record.platform} - ${record.impressions} impressions - ${record.likes} likes - ${record.clicks} clicks`,
-      `${record.engagementRate.toFixed(2)}%`
+      `${record.platform} - ${displayMetric(record, 'impressions')} impressions - ${displayMetric(record, 'likes')} likes - ${displayMetric(record, 'clicks')} clicks`,
+      metricIsAvailable(record, 'engagementRate') ? `${record.engagementRate.toFixed(2)}%` : 'Unavailable'
     ]),
     charts: {
       platforms: platformChart,
@@ -308,7 +307,10 @@ function buildAnalyticsDashboard({ analyticsRecords = [], posts = [], campaigns 
     recommendations: recommendationItems,
     exportUrl: '/dashboard/analytics/export.csv',
     empty: !records.length,
-    hasMockData: records.some((record) => record.source === 'mock'),
+    awaitingSyncCount: awaitingPosts.length,
+    unavailableSyncCount: unsupportedJobs.length,
+    retrySyncCount: retryJobs.length,
+    awaitingPosts: awaitingPosts.slice(0, 12).map((post) => ({ id: recordId(post), title: post.title || post.caption || 'Published post', platform: post.platform || 'unknown' })),
     campaignCount: campaigns.length,
     accountCount: socialAccounts.length
   };
@@ -335,17 +337,17 @@ function csvForAnalyticsRecords(records = []) {
       nameFromRecord(normalized.campaign, ''),
       nameFromRecord(normalized.post, ''),
       normalized.platform,
-      normalized.impressions,
-      normalized.reach,
-      normalized.views,
-      normalized.watchTimeSeconds,
-      normalized.likes,
-      normalized.comments,
-      normalized.shares,
-      normalized.saves,
-      normalized.clicks,
-      normalized.followersGained,
-      normalized.engagementRate
+      metricIsAvailable(normalized, 'impressions') ? normalized.impressions : '',
+      metricIsAvailable(normalized, 'reach') ? normalized.reach : '',
+      metricIsAvailable(normalized, 'views') ? normalized.views : '',
+      metricIsAvailable(normalized, 'watchTimeSeconds') ? normalized.watchTimeSeconds : '',
+      metricIsAvailable(normalized, 'likes') ? normalized.likes : '',
+      metricIsAvailable(normalized, 'comments') ? normalized.comments : '',
+      metricIsAvailable(normalized, 'shares') ? normalized.shares : '',
+      metricIsAvailable(normalized, 'saves') ? normalized.saves : '',
+      metricIsAvailable(normalized, 'clicks') ? normalized.clicks : '',
+      metricIsAvailable(normalized, 'followersGained') ? normalized.followersGained : '',
+      metricIsAvailable(normalized, 'engagementRate') ? normalized.engagementRate : ''
     ].map(csvEscape).join(',');
   });
   return [headers.join(','), ...rows].join('\n');
@@ -353,11 +355,12 @@ function csvForAnalyticsRecords(records = []) {
 
 module.exports = {
   analyticsRecordsWithFallback,
+  awaitingAnalyticsPosts,
   analyticsScore,
   buildAnalyticsDashboard,
   csvForAnalyticsRecords,
   deriveEngagementRate,
-  mockMetricsForPost,
+  metricIsAvailable,
   normalizeAnalyticsRecord,
   sumMetrics
 };

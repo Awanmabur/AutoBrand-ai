@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 
 const growthAssetSchema = new mongoose.Schema(
   {
+    // Business/workspace owner. Actor attribution is stored independently in createdBy.
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand', required: true, index: true },
     type: {
       type: String,

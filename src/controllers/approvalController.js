@@ -6,6 +6,7 @@ const Notification = require('../models/Notification');
 const { requestApproval: requestApprovalService, requestCampaignApproval, resolveApprovalToken, submitDecision } = require('../services/approvals/approval.service');
 const { assertCanCreateApprovalLink } = require('../services/usageLimitService');
 const { dispatchScheduledPost } = require('../services/postDispatchService');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
 
 
 async function notifySafely(payload) {
@@ -20,6 +21,25 @@ async function notifySafely(payload) {
   }
 }
 
+
+async function assertApprovalAccess(req, approval, permission = 'approvals.manage') {
+  if (!approval) return null;
+  const brandId = approval.brand || approval.post?.brand || approval.campaign?.brand;
+  if (!brandId) {
+    const error = new Error('Approval is missing workspace ownership. Run the approval backfill migration.');
+    error.status = 409;
+    throw error;
+  }
+  await assertBrandAccess(req.user, brandId?._id || brandId, permission, { status: 'active' });
+  return approval;
+}
+
+async function loadApprovalForWorkspace(req, id, permission = 'approvals.manage') {
+  const approval = await Approval.findById(id).populate('post campaign');
+  if (!approval) return null;
+  await assertApprovalAccess(req, approval, permission);
+  return approval;
+}
 async function index(req, res) {
   return res.redirect(303, '/dashboard/approvals');
 }
@@ -27,9 +47,10 @@ async function index(req, res) {
 async function requestApproval(req, res, next) {
   try {
     if (req.body.campaign) {
-      const campaign = await Campaign.findOne({ _id: req.body.campaign, createdBy: req.user._id });
+      const campaign = await Campaign.findById(req.body.campaign);
+      if (campaign) await assertBrandAccess(req.user, campaign.brand, 'approvals.manage', { status: 'active' });
       if (!campaign) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-      await assertCanCreateApprovalLink(req.user);
+      await assertCanCreateApprovalLink(req.user, 1, campaign.brand);
 
       await requestCampaignApproval({
         campaign,
@@ -51,9 +72,10 @@ async function requestApproval(req, res, next) {
       return res.redirect('/dashboard/approvals');
     }
 
-    const post = await Post.findOne({ _id: req.body.post, createdBy: req.user._id });
+    const post = await Post.findById(req.body.post);
+    if (post) await assertBrandAccess(req.user, post.brand, 'approvals.manage', { status: 'active' });
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertCanCreateApprovalLink(req.user);
+    await assertCanCreateApprovalLink(req.user, 1, post.brand);
 
     await requestApprovalService({
       post,
@@ -81,7 +103,7 @@ async function requestApproval(req, res, next) {
 
 async function resolve(req, res, next) {
   try {
-    const approval = await Approval.findOne({ _id: req.params.id, requestedBy: req.user._id }).populate('post campaign');
+    const approval = await loadApprovalForWorkspace(req, req.params.id, 'approvals.manage');
     if (!approval) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     approval.status = req.body.status;
@@ -142,7 +164,7 @@ async function resolve(req, res, next) {
 
 async function comment(req, res, next) {
   try {
-    const approval = await Approval.findOne({ _id: req.params.id, requestedBy: req.user._id });
+    const approval = await loadApprovalForWorkspace(req, req.params.id, 'approvals.manage');
     if (!approval) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     await ApprovalComment.create({

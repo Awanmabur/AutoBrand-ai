@@ -32,8 +32,8 @@ async function cleanupDisconnectedDestination(account) {
       _id: { $ne: accountId },
       status: 'connected'
     }).select('_id platform accountName accountId accessTokenEncrypted tokenExpiresAt status permissions providerMeta').lean(),
-    Post.find({ createdBy: ownerId, brand: brandId, targetAccounts: accountId }),
-    Campaign.find({ createdBy: ownerId, brand: brandId, targetAccounts: accountId })
+    Post.find({ brand: brandId, targetAccounts: accountId }),
+    Campaign.find({ brand: brandId, targetAccounts: accountId })
   ]);
 
   const readyRemaining = remainingAccounts.filter((candidate) => destinationReadiness(candidate).ready);

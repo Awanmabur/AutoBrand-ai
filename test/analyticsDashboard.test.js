@@ -5,7 +5,7 @@ const {
   buildAnalyticsDashboard,
   csvForAnalyticsRecords,
   deriveEngagementRate,
-  mockMetricsForPost,
+  awaitingAnalyticsPosts,
   sumMetrics
 } = require('../src/services/analytics/analyticsDashboard.service');
 
@@ -21,22 +21,24 @@ test('analytics dashboard derives engagement and full metric totals', () => {
   assert.equal(deriveEngagementRate(totals), totals.engagementRate);
 });
 
-test('analytics fallback creates deterministic mock metrics for posts without provider analytics', () => {
+test('analytics never fabricates metrics and reports published posts awaiting provider sync', () => {
   const post = {
     _id: 'post-1',
     title: 'Launch reel',
     platform: 'tiktok',
     type: 'reel',
+    status: 'published',
     publishedAt: new Date('2030-01-01T10:00:00Z')
   };
 
-  const first = mockMetricsForPost(post);
-  const second = mockMetricsForPost(post);
-  const records = analyticsRecordsWithFallback({ analyticsRecords: [], posts: [post, post] });
+  const records = analyticsRecordsWithFallback({ analyticsRecords: [], posts: [post] });
+  const awaiting = awaitingAnalyticsPosts({ analyticsRecords: [], posts: [post, post] });
+  const dashboard = buildAnalyticsDashboard({ analyticsRecords: [], posts: [post], campaigns: [], socialAccounts: [] });
 
-  assert.equal(first.impressions, second.impressions);
-  assert.equal(first.source, 'mock');
-  assert.equal(records.length, 1);
+  assert.equal(records.length, 0);
+  assert.equal(awaiting.length, 1);
+  assert.equal(dashboard.awaitingSyncCount, 1);
+  assert.equal(dashboard.totals.impressions, 0);
 });
 
 test('analytics dashboard builds cards, charts and CSV export rows', () => {

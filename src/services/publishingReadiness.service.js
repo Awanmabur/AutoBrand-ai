@@ -15,7 +15,6 @@ const BLOCKING_WARNING_PATTERNS = [
   /need at least two image assets/i,
   /need a video asset/i,
   /may not support .* posts/i,
-  /whatsapp message drafts should include/i
 ];
 
 function blockingPublishingWarnings(warnings = []) {

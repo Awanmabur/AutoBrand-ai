@@ -151,7 +151,7 @@ test('plan display decorates default database plan matrix objects', () => {
   assert.equal(starter.price, 10);
   assert.equal(growth.isPopular, true);
   assert.equal(superadmin.limits.maxBrands, -1);
-  assert.equal(decorated.priceLabel, '$10');
+  assert.equal(decorated.priceLabel, 'US$10');
   assert.equal(decorated.signupUrl, '/start/starter');
   assert.equal(limitText(-1), 'Unlimited');
 });

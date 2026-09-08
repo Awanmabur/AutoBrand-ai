@@ -4,8 +4,7 @@ const {
   buildSubtitles,
   buildThumbnailPrompt,
   buildVideoScript,
-  enrichVideoJob,
-  mockVideoResult
+  enrichVideoJob
 } = require('../src/services/videoWorkflow.service');
 
 const scenePlan = [
@@ -23,13 +22,12 @@ test('video workflow creates script, subtitles and thumbnail prompts from scenes
   assert.match(thumbnail, /Kampala Coffee/);
 });
 
-test('video workflow enriches jobs and creates mock render results', () => {
+test('video workflow enriches jobs without manufacturing provider output', () => {
   const job = { _id: 'job-1', mode: 'brand_to_video', prompt: 'Promo', scenePlan, metadata: {} };
   enrichVideoJob(job, { brand: { name: 'Kampala Coffee' } });
-  const result = mockVideoResult({ job, brand: { name: 'Kampala Coffee' } });
 
   assert.ok(job.script);
   assert.equal(job.subtitles.length, 2);
-  assert.equal(result.provider, 'mock_video_provider');
-  assert.match(result.outputUrl, /mock\.autobrand\.local/);
+  assert.equal(job.metadata.workflow.provider, undefined);
+  assert.equal('mock' in job.metadata.workflow, false);
 });

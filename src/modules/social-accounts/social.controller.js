@@ -1,4 +1,5 @@
 const Brand = require('../../models/Brand');
+const env = require('../../config/env');
 const SocialAccount = require('../../models/SocialAccount');
 const {
   buildFacebookAuthUrl,
@@ -55,6 +56,7 @@ const {
 const { applySocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
 const { notifyAccountDisconnected } = require('../../services/notification.service');
 const { cleanupDisconnectedDestination } = require('../../services/social/socialDestinationCleanup.service');
+const { accessibleBrandIds, assertBrandAccess } = require('../../services/authorization/brandAccess.service');
 
 const socialPlatforms = [
   { key: 'facebook', name: 'Facebook Pages', shortName: 'Facebook', icon: 'f', description: 'Connect Pages through Facebook OAuth and publish directly.', active: true, kind: 'oauth', primaryAction: 'Connect Pages', hint: 'Opens Facebook, choose Pages, then returns here ready to publish.' },
@@ -97,7 +99,7 @@ function defaultPermissionsForPlatform(platform) {
 
 async function filterAccountsByAvailableSlots(req, accounts) {
   const allowed = [];
-  let slots = await availableSocialSlots(req.user);
+  let slots = await availableSocialSlots(req.user, accounts[0]?.brandId || accounts[0]?.brand);
 
   for (const account of accounts) {
     const existing = await findExistingSocialAccount(req.user, {
@@ -143,10 +145,20 @@ async function upsertConnectedAccount(account, brand) {
   );
 }
 
+async function findSocialAccountWithAccess(req, accountId, permission = 'social.manage', { populateBrand = false } = {}) {
+  let query = SocialAccount.findById(accountId);
+  if (populateBrand) query = query.populate('brand');
+  const account = await query;
+  if (!account) return null;
+  await assertBrandAccess(req.user, account.brand?._id || account.brand, permission, { status: 'active' });
+  return account;
+}
+
 async function socialViewData(req, { error = null } = {}) {
+  const brandIds = await accessibleBrandIds(req.user, 'social.manage');
   const [brands, accounts] = await Promise.all([
-    Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-    SocialAccount.find({ owner: req.user._id }).populate('brand').sort({ createdAt: -1 })
+    Brand.find({ _id: { $in: brandIds }, status: 'active' }).sort({ name: 1 }),
+    SocialAccount.find({ brand: { $in: brandIds } }).populate('brand').sort({ createdAt: -1 })
   ]);
 
   return {
@@ -200,39 +212,9 @@ async function index(req, res, next) {
   }
 }
 
-async function storeMock(req, res, next) {
-  try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
-    if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    const platform = String(req.body.platform || '').trim();
-    const accountId = normalizeAccountId(req.body.accountId);
-    await assertCanConnectSocial(req.user, { brand: brand._id, platform, accountId });
-
-    await SocialAccount.findOneAndUpdate(
-      { brand: brand._id, owner: req.user._id, platform, accountId },
-      {
-        brand: brand._id,
-        owner: req.user._id,
-        platform,
-        accountName: String(req.body.accountName || '').trim(),
-        accountId,
-        accessTokenEncrypted: req.body.accessToken ? encryptToken(req.body.accessToken) : undefined,
-        permissions: ['draft_publish', 'analytics_read'],
-        status: 'mock',
-        lastSyncAt: new Date()
-      },
-      { upsert: true, new: true }
-    );
-
-    return res.redirect('/dashboard/social');
-  } catch (error) {
-    return next(error);
-  }
-}
-
 async function manualApiConnect(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'social.manage', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const platform = String(req.body.platform || '').trim();
@@ -251,10 +233,10 @@ async function manualApiConnect(req, res, next) {
     await assertCanConnectSocial(req.user, { brand: brand._id, platform, accountId });
 
     await SocialAccount.findOneAndUpdate(
-      { brand: brand._id, owner: req.user._id, platform, accountId },
+      { brand: brand._id, owner: brand.owner, platform, accountId },
       {
         brand: brand._id,
-        owner: req.user._id,
+        owner: brand.owner,
         platform,
         accountName,
         accountId,
@@ -273,7 +255,7 @@ async function manualApiConnect(req, res, next) {
 }
 
 async function brandForConnect(req, res) {
-  const brand = await Brand.findOne({ _id: req.query.brand, owner: req.user._id });
+  const brand = await assertBrandAccess(req.user, req.query.brand, 'social.manage', { status: 'active' });
   if (!brand) {
     res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     return null;
@@ -318,7 +300,7 @@ async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn
       throw error;
     }
 
-    const brand = await Brand.findOne({ _id: firstAccount.brandId, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, firstAccount.brandId, 'social.manage', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const normalized = accounts.map((account) => ({ ...account, platform: platform || account.platform }));
@@ -348,7 +330,7 @@ async function oauthCallback(req, res, next, { serviceName, platform, exchangeFn
 
 async function syncAccount(req, res, next, { platform, syncFn, providerErrorName, syncedNotice, wrongNotice }) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (account.platform !== platform) return res.redirect(`/dashboard/social?notice=${wrongNotice}&account=${account._id}`);
 
@@ -360,7 +342,7 @@ async function syncAccount(req, res, next, { platform, syncFn, providerErrorName
       status: 'connected'
     };
     if (info.providerMeta) update.providerMeta = info.providerMeta;
-    await SocialAccount.findOneAndUpdate({ _id: account._id, owner: req.user._id }, update);
+    await SocialAccount.findByIdAndUpdate(account._id, update);
     return res.redirect(`/dashboard/social?notice=${syncedNotice}&account=${account._id}`);
   } catch (error) {
     if (error.name === providerErrorName) {
@@ -372,7 +354,7 @@ async function syncAccount(req, res, next, { platform, syncFn, providerErrorName
 
 async function facebookConnect(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.query.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.query.brand, 'social.manage', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const authUrl = buildFacebookAuthUrl({ brandId: brand._id.toString(), userId: req.user._id.toString() });
     const setup = facebookConnectionChecklist();
@@ -385,23 +367,7 @@ async function facebookConnect(req, res, next) {
     }
 
     if (!authUrl) {
-      const devAccountId = `dev_${brand._id}`;
-      await assertCanConnectSocial(req.user, { brand: brand._id, platform: 'facebook', accountId: devAccountId });
-      await SocialAccount.findOneAndUpdate(
-        { brand: brand._id, owner: req.user._id, platform: 'facebook', accountId: devAccountId },
-        {
-          brand: brand._id,
-          owner: req.user._id,
-          platform: 'facebook',
-          accountName: `${brand.name} Facebook Page (development)`,
-          accountId: devAccountId,
-          permissions: ['pages_manage_posts', 'pages_read_engagement'],
-          status: 'mock',
-          lastSyncAt: new Date()
-        },
-        { upsert: true, new: true }
-      );
-      return res.redirect('/dashboard/social');
+      return res.redirect('/dashboard/social?facebook_setup=required');
     }
 
     return res.redirect(authUrl);
@@ -422,7 +388,7 @@ async function facebookCallback(req, res, next) {
 
 async function facebookPageToken(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'social.manage', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const pageId = String(req.body.accountId || '').trim();
     await assertCanConnectSocial(req.user, { brand: brand._id, platform: 'facebook', accountId: pageId });
@@ -521,13 +487,13 @@ async function tiktokCallback(req, res, next) {
 
 async function tiktokSync(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (account.platform !== 'tiktok') return res.redirect(`/dashboard/social?notice=not_tiktok&account=${account._id}`);
     const info = await queryCreatorInfo({ account });
     const update = { lastSyncAt: new Date(), status: 'connected' };
     if (info.creator_nickname || info.creator_username) update.accountName = info.creator_nickname || info.creator_username;
-    await SocialAccount.findOneAndUpdate({ _id: account._id, owner: req.user._id }, update);
+    await SocialAccount.findByIdAndUpdate(account._id, update);
     return res.redirect(`/dashboard/social?notice=tiktok_synced&account=${account._id}`);
   } catch (error) {
     if (error.name === 'TikTokProviderError') {
@@ -651,7 +617,7 @@ async function linkedinSync(req, res, next) {
 
 async function showAccount(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     return res.redirect(303, `/dashboard/social?account=${encodeURIComponent(String(account._id))}`);
   } catch (error) {
@@ -661,7 +627,7 @@ async function showAccount(req, res, next) {
 
 async function updateAccount(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const accountName = String(req.body.accountName || '').trim();
@@ -691,7 +657,7 @@ async function updateAccount(req, res, next) {
     if (refreshToken) update.refreshTokenEncrypted = encryptToken(refreshToken);
 
     const updatedAccount = await SocialAccount.findOneAndUpdate(
-      { _id: req.params.id, owner: req.user._id },
+      { _id: req.params.id },
       update,
       { new: true, runValidators: true }
     );
@@ -704,8 +670,10 @@ async function updateAccount(req, res, next) {
 
 async function disconnect(req, res, next) {
   try {
-    const account = await SocialAccount.findOneAndUpdate(
-      { _id: req.params.id, owner: req.user._id },
+    const existing = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
+    if (!existing) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    const account = await SocialAccount.findByIdAndUpdate(
+      existing._id,
       {
         $set: { status: 'disconnected', lastSyncAt: new Date() },
         $unset: { accessTokenEncrypted: '', refreshTokenEncrypted: '', tokenExpiresAt: '' }
@@ -727,7 +695,7 @@ async function disconnect(req, res, next) {
 
 async function remove(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     await cleanupDisconnectedDestination(account);
     await account.deleteOne();
@@ -739,7 +707,7 @@ async function remove(req, res, next) {
 
 async function reconnect(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id }).populate('brand');
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage', { populateBrand: true });
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (account.platform === 'facebook' && isFacebookConfigured()) {
       const setup = facebookConnectionChecklist();
@@ -794,7 +762,7 @@ async function reconnect(req, res, next) {
 
 async function healthCheck(req, res, next) {
   try {
-    const account = await SocialAccount.findOne({ _id: req.params.id, owner: req.user._id });
+    const account = await findSocialAccountWithAccess(req, req.params.id, 'social.manage');
     if (!account) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const health = await applySocialAccountHealth(account);
     if (health.status !== 'connected') {
@@ -827,7 +795,6 @@ module.exports = {
   reconnect,
   remove,
   showAccount,
-  storeMock,
   threadsCallback,
   threadsConnect,
   threadsSync,

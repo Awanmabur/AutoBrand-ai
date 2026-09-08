@@ -1,4 +1,3 @@
-const Brand = require('../models/Brand');
 const Campaign = require('../models/Campaign');
 const Media = require('../models/Media');
 const Post = require('../models/Post');
@@ -23,6 +22,7 @@ const {
 const { applyMediaToScenes, mediaContext } = require('../services/mediaInsightService');
 const { assertCanCreateVideo, assertPlanPageAccess } = require('../services/usageLimitService');
 const { resolvePublishingTargets } = require('../services/social/socialDestination.service');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
 
 function targetIdsForPlatform(targets, platform) {
   return (targets?.byPlatform?.[platform] || []).map((account) => account._id);
@@ -85,12 +85,12 @@ async function saveGrowthAsset({ req, brand, commonAsset, type, payload, campaig
 
 async function run(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertPlanPageAccess(req.user, 'campaigns', 'Growth Studio workflows');
+    await assertPlanPageAccess(req.user, 'campaigns', 'Growth Studio workflows', brand._id);
 
     const targets = await resolvePublishingTargets({
-      ownerId: req.user._id,
+      ownerId: brand.owner,
       brandId: brand._id,
       requestedPlatforms: req.body.platforms,
       requestedAccountIds: req.body.targetAccounts || [],
@@ -100,8 +100,8 @@ async function run(req, res, next) {
 
     const campaignGoal = req.body.campaignGoal;
     const action = req.body.actionType;
-    const commonAsset = { owner: req.user._id, brand: brand._id };
-    const sourceMedia = req.body.sourceMedia ? await Media.findOne({ _id: req.body.sourceMedia, uploadedBy: req.user._id, brand: brand._id }) : null;
+    const commonAsset = { owner: brand.owner, createdBy: req.user._id, brand: brand._id };
+    const sourceMedia = req.body.sourceMedia ? await Media.findOne({ _id: req.body.sourceMedia, brand: brand._id, status: { $ne: 'archived' } }) : null;
     const mediaNote = sourceMedia ? `\n\nUse uploaded media: ${mediaContext(sourceMedia)}` : '';
 
     if (action === 'campaign_brief') {
@@ -127,7 +127,7 @@ async function run(req, res, next) {
     }
 
     if (action === 'video_storyboard') {
-      await assertCanCreateVideo(req.user);
+      await assertCanCreateVideo(req.user, brand._id);
       const storyboard = videoStoryboard({ brand, campaignGoal, platform: targets.platforms[0], style: req.body.style });
       await AiVideoJob.create({
         ...storyboard,

@@ -53,7 +53,6 @@ const pageAliases = {
   x: 'social',
   twitter: 'social',
   threads: 'social',
-  whatsapp: 'social',
   security: 'settings',
   'admin-plans': 'plans',
   'admin/plans': 'plans'
@@ -443,8 +442,8 @@ const pageMeta = {
     description: 'Real notifications for publishing, approvals and account issues.'
   },
   billing: {
-    title: 'Billing & Credits', kicker: 'Admin', heading: 'Billing, credits and plan usage.',
-    description: 'Review real subscription, payment and usage records.'
+    title: 'Billing & Plan', kicker: 'Subscription', heading: 'Your plan, price, payment and usage in one place.',
+    description: 'Understand what you pay, what resets, what AI is included, and when Pesapal activates a paid subscription.'
   },
   security: {
     title: 'Security', kicker: 'Security', heading: 'Secure platform foundation.',
@@ -1141,9 +1140,24 @@ function renderBillingDashboard(page = {}) {
   const activeSubscription = subscriptions[0] || {};
   const planLabel = currentPlan.name || detailsValue(activeSubscription, ['Plan']) || activeSubscription.title || 'Current plan';
   const statusLabel = detailsValue(activeSubscription, ['Status']) || activeSubscription.status || 'Active';
-  const providerLabel = detailsValue(activeSubscription, ['Provider']) || 'Pesapal';
-  const renewLabel = detailsValue(activeSubscription, ['Current period end']) || 'Billing period not set';
-  const usageRows = usage.length ? usage.slice(0, 10).map((card) => {
+  const providerLabel = detailsValue(activeSubscription, ['Provider']) || (currentPlan.isTrial ? 'Free trial' : 'Pesapal');
+  const accessEndLabel = detailsValue(activeSubscription, ['Access through', 'Current period end']) || (currentPlan.isTrial ? 'Trial end date not set' : 'Access period end not set');
+  const currentPrice = currentPlan.recurringPriceLabel || currentPlan.priceLabel || 'Plan price unavailable';
+  const currentWorkflow = currentPlan.workflowLabel || currentPlan.familyLabel || 'Workspace plan';
+  const currentAi = currentPlan.aiModeLabel || '';
+  const currentCredits = currentPlan.aiCreditsLabel || '';
+  const currentBilling = currentPlan.billingSummary || '';
+  const currentPaymentPolicy = currentPlan.paymentSummary || '';
+  const usagePeriod = page.period || {};
+  const displayPeriodDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+  const usagePeriodStart = displayPeriodDate(usagePeriod.start);
+  const usagePeriodEnd = displayPeriodDate(usagePeriod.end);
+  const usagePeriodText = usagePeriodStart && usagePeriodEnd ? `${usagePeriodStart} → ${usagePeriodEnd}` : (currentPlan.usageResetLabel || 'Current access period');
+  const usageRows = usage.length ? usage.slice(0, 12).map((card) => {
     const percent = usagePercentFromCard(card);
     const used = detailsValue(card, ['Used']) || '';
     const limit = detailsValue(card, ['Limit']) || '';
@@ -1151,7 +1165,7 @@ function renderBillingDashboard(page = {}) {
       <div><strong>${escapeHtml(card.title)}</strong><span>${escapeHtml(card.description || `${used} / ${limit}`)}</span></div>
       <div class="billing-progress-wrap">${percent === null ? '<span class="badge">Unlimited</span>' : `<progress max="100" value="${percent}"></progress><small>${percent}%</small>`}</div>
     </article>`;
-  }).join('') : '<article class="empty-state"><h2>No usage records yet</h2><p>Usage will appear after you create posts, generate AI assets, connect accounts, or invite team members.</p></article>';
+  }).join('') : '<article class="empty-state"><h2>No usage records yet</h2><p>Usage appears after you create posts, generate AI assets, connect accounts, invite team members or store media.</p></article>';
   const paymentRows = payments.length ? payments.slice(0, 8).map((card) => `<article class="billing-timeline-row">
       <div><strong>${escapeHtml(card.title)}</strong><span>${escapeHtml(card.description)}</span></div>
       <span class="plan-status-chip">${escapeHtml(card.status || card.tag || 'payment')}</span>
@@ -1159,52 +1173,69 @@ function renderBillingDashboard(page = {}) {
   const subscriptionRows = subscriptions.length ? subscriptions.map((card) => `<article class="billing-timeline-row">
       <div><strong>${escapeHtml(card.title)}</strong><span>${escapeHtml(card.description)}</span></div>
       <span class="plan-status-chip">${escapeHtml(card.status || card.tag || 'subscription')}</span>
-    </article>`).join('') : '<p class="muted">No subscription record found. Choose a plan and complete Pesapal checkout.</p>';
+    </article>`).join('') : '<p class="muted">No active subscription record. Choose a plan below; paid plans require verified Pesapal payment.</p>';
   const canManagePlans = isAllowedPage('plans');
   const planCards = dashboardPublicPlans.length ? dashboardPublicPlans.map((plan) => {
     const isCurrent = currentPlan.slug === plan.slug;
-    const priceLine = plan.isTrial ? escapeHtml(plan.priceLabel || 'Free') : `${escapeHtml(plan.priceLabel || '')}<span>/${escapeHtml(plan.intervalLabel || 'mo')}</span>`;
     const featureList = Array.isArray(plan.featureList) && plan.featureList.length
-      ? plan.featureList.slice(0, 5).map((feature) => `<li>${icon('check')}${escapeHtml(feature)}</li>`).join('')
+      ? plan.featureList.slice(0, 4).map((feature) => `<li>${icon('check')}${escapeHtml(feature)}</li>`).join('')
       : '<li>No public feature checklist yet.</li>';
     const action = isCurrent
       ? '<button class="btn btn-ghost" type="button" disabled>Current plan</button>'
       : plan.isTrial
-        ? `<form action="/dashboard/billing/plan" method="post">${csrfInput()}<input type="hidden" name="plan" value="${escapeHtml(plan.slug)}"><button class="btn btn-primary" type="submit">Activate trial</button></form>`
-        : `<form action="${escapeHtml(plan.checkoutUrl || `/dashboard/billing/checkout/${encodeURIComponent(plan.slug)}`)}" method="post">${csrfInput()}<button class="btn btn-primary" type="submit">Choose and pay</button></form>`;
-    return `<article class="billing-plan-card ${plan.isPopular ? 'is-popular' : ''}">
-      <div class="plan-card-topline"><span class="plan-status-chip">${plan.isPopular ? 'Popular' : 'Plan'}</span></div>
+        ? `<form action="/dashboard/billing/plan" method="post">${csrfInput()}<input type="hidden" name="plan" value="${escapeHtml(plan.slug)}"><button class="btn btn-primary" type="submit">Activate free trial</button></form>`
+        : `<a class="btn btn-primary" href="${escapeHtml(`${plan.checkoutUrl || `/dashboard/billing/checkout/${encodeURIComponent(plan.slug)}`}?upgrade=1`)}">Review & switch</a>`;
+    return `<article class="billing-plan-card ${plan.isPopular ? 'is-popular' : ''} ${isCurrent ? 'is-current' : ''}">
+      <div class="plan-card-topline"><span class="plan-status-chip">${escapeHtml(plan.isPopular ? 'Most popular' : plan.familyLabel || 'Plan')}</span>${isCurrent ? '<span class="plan-status-chip">Current</span>' : ''}</div>
       <h3>${escapeHtml(plan.name || 'Plan')}</h3>
-      <p>${escapeHtml(plan.description || '')}</p>
-      <div class="billing-plan-price"><strong>${priceLine}</strong></div>
+      <div class="billing-plan-tags"><span>${escapeHtml(plan.workflowLabel || '')}</span><span>${escapeHtml(plan.aiModeLabel || '')}</span></div>
+      <p><strong>Best for:</strong> ${escapeHtml(plan.bestFor || plan.description || '')}</p>
+      <div class="billing-plan-price"><strong>${escapeHtml(plan.recurringPriceLabel || plan.priceLabel || '')}</strong></div>
+      <small class="billing-plan-summary">${escapeHtml(plan.billingSummary || '')}</small>
+      <small class="billing-plan-summary">${escapeHtml(plan.paymentSummary || '')}</small>
+      <div class="billing-plan-credit">${escapeHtml(plan.aiCreditsLabel || '')}</div>
+      <small class="billing-plan-summary">${escapeHtml(plan.usageResetLabel || '')}</small>
       <ul class="plan-feature-list compact-plan-feature-list">${featureList}</ul>
       ${action}
     </article>`;
   }).join('') : '<article class="empty-state"><h2>No plans available</h2><p>Ask an admin to publish active plans.</p></article>';
   return `${templateHtml('billing')}
     <section class="billing-clean-shell">
-      <article class="billing-current-card">
+      <article class="billing-current-card billing-current-card-clear">
         <div>
           <span class="kicker">current subscription</span>
           <h3>${escapeHtml(planLabel)}</h3>
-          <p>${escapeHtml(statusLabel)} · ${escapeHtml(providerLabel)} · ${escapeHtml(renewLabel)}</p>
+          <div class="billing-plan-tags"><span>${escapeHtml(currentWorkflow)}</span>${currentAi ? `<span>${escapeHtml(currentAi)}</span>` : ''}</div>
+          <p><strong>${escapeHtml(currentPrice)}</strong>${currentBilling ? ` · ${escapeHtml(currentBilling)}` : ''}</p>
+          <p>${escapeHtml(statusLabel)} · ${escapeHtml(providerLabel)} · ${currentPlan.isTrial ? 'Trial through' : 'Access through'} ${escapeHtml(accessEndLabel)}</p>
+          ${currentPaymentPolicy ? `<p>${escapeHtml(currentPaymentPolicy)}</p>` : ''}
+          ${currentCredits ? `<p class="billing-current-credit">${escapeHtml(currentCredits)}</p>` : ''}
         </div>
         <div class="billing-action-stack">
           <a class="btn btn-primary" href="/pricing">Compare plans</a>
           ${canManagePlans ? '<a class="btn btn-ghost" href="/dashboard/plans">Plan management</a>' : ''}
         </div>
       </article>
+      <article class="card billing-plan-explainer">
+        <div class="card-head"><div><span class="kicker">how plans work</span><h3>Choose the workflow first, then the capacity.</h3><p>Free Trial is US$0 for 7 days. Manual Publisher is US$10 for 1 month of no-AI publishing. AI Starter is also US$10 for 1 month, but includes generative AI and different limits. Growth and higher AI plans add automation, video and larger team capacity.</p></div></div>
+        <div class="billing-explainer-grid">
+          <div><strong>Capacity</strong><span>Brands, connected accounts, team members and storage describe how much can exist at once.</span></div>
+          <div><strong>Usage</strong><span>Posts, AI generations, approvals and similar allowances reset on the plan period shown.</span></div>
+          <div><strong>AI credits</strong><span>Credits are the AI spending budget. Generation counts are separate safety ceilings; both may apply.</span></div>
+          <div><strong>Payment</strong><span>Paid plans activate only after AutoBrand verifies Pesapal. One payment buys one access period; AutoBrand does not automatically charge the next period.</span></div>
+        </div>
+      </article>
       <article class="card billing-usage-card">
-        <div class="card-head"><div><span class="kicker">usage</span><h3>Plan usage</h3><p>Watch the limits that affect upgrades, hard blocks and automation access.</p></div><span class="badge">${escapeHtml(usage.length)} tracked</span></div>
+        <div class="card-head"><div><span class="kicker">usage this access period</span><h3>Your plan usage</h3><p>${escapeHtml(usagePeriodText)}. Usage limits follow this access period, not the calendar month.</p></div><span class="badge">${escapeHtml(usage.length)} tracked</span></div>
         <div class="billing-usage-list">${usageRows}</div>
       </article>
       <article class="card billing-plan-picker">
-        <div class="card-head"><div><span class="kicker">choose plan</span><h3>Upgrade or switch subscription</h3><p>Selecting a paid plan creates a payment and redirects you to the payment activation page.</p></div><a class="btn btn-ghost" href="/pricing">Compare public pricing</a></div>
+        <div class="card-head"><div><span class="kicker">choose plan</span><h3>Upgrade or switch with a clear review step</h3><p>Review the plan price and limits first. A paid switch then continues to Pesapal; no paid entitlement changes until payment is verified.</p></div><a class="btn btn-ghost" href="/pricing">Full comparison</a></div>
         <div class="billing-plan-grid">${planCards}</div>
       </article>
       <div class="billing-two-column">
-        <article class="card"><div class="card-head"><div><span class="kicker">subscription</span><h3>Subscription status</h3></div></div><div class="billing-timeline">${subscriptionRows}</div></article>
-        <article class="card"><div class="card-head"><div><span class="kicker">payments</span><h3>Payments and invoices</h3></div><a class="btn btn-ghost" href="/pricing">Upgrade</a></div><div class="billing-timeline">${paymentRows}</div></article>
+        <article class="card"><div class="card-head"><div><span class="kicker">subscription</span><h3>Subscription history</h3></div></div><div class="billing-timeline">${subscriptionRows}</div></article>
+        <article class="card"><div class="card-head"><div><span class="kicker">payments</span><h3>Pesapal payment history</h3></div><a class="btn btn-ghost" href="/pricing">Compare plans</a></div><div class="billing-timeline">${paymentRows}</div></article>
       </div>
     </section>`;
 }
@@ -1583,7 +1614,7 @@ function socialAccountRecord(account = {}) {
     editFields: [
       { name: 'accountName', label: 'Account name', type: 'text', value: account.accountName || '', required: true },
       { name: 'accountId', label: 'Account ID', type: 'text', value: account.accountId || '' },
-      { name: 'status', label: 'Status', type: 'select', value: account.status || 'connected', options: ['connected', 'mock', 'needs_reconnect', 'expired', 'failed', 'disconnected'] },
+      { name: 'status', label: 'Status', type: 'select', value: account.status || 'connected', options: ['connected', 'needs_reconnect', 'expired', 'failed', 'disconnected'] },
       { name: 'permissions', label: 'Permissions', type: 'text', value: (account.permissions || []).join(', ') },
       { name: 'accessToken', label: 'New access token', type: 'password', value: '', placeholder: 'Leave blank to keep current token' },
       { name: 'refreshToken', label: 'New refresh token', type: 'password', value: '', placeholder: 'Optional' }
@@ -2325,8 +2356,8 @@ function renderTable(page) {
 
 
 const planLimitFields = [
-  ['maxBrands', 'Brands'], ['maxSocialAccounts', 'Social accounts'], ['maxTeamMembers', 'Team members'],
-  ['maxScheduledPosts', 'Scheduled posts'], ['maxAutoPosts', 'Auto posts'], ['maxHandoffPosts', 'Handoff posts'],
+  ['maxBrands', 'Active brands'], ['maxSocialAccounts', 'Connected social accounts'], ['maxTeamMembers', 'Team members'],
+  ['maxScheduledPosts', 'Scheduled posts / period'], ['maxManualPosts', 'Manual/imported posts / period'], ['maxAutoPosts', 'Auto posts'], ['maxHandoffPosts', 'Handoff posts'],
   ['maxAiTextGenerations', 'AI text generations'], ['maxAiImageGenerations', 'AI images'], ['maxAiVideoGenerations', 'AI videos'],
   ['maxAvatarVideos', 'Avatar videos'], ['maxStorageMb', 'Storage MB'], ['maxClientApprovalLinks', 'Client approval links']
 ];
@@ -2334,6 +2365,7 @@ const planLevelFields = [
   ['brandBrainLevel', 'Brand Brain level'], ['smartComposerLevel', 'Smart Composer level'], ['analyticsLevel', 'Analytics level']
 ];
 const planFeatureFields = [
+  ['manualPublisherAccess', 'Manual Publisher / no-AI workflow'], ['bulkImportAccess', 'Bulk manual CSV import'],
   ['calendarAccess', 'Calendar'], ['campaignAccess', 'Campaigns'], ['growthStudioAccess', 'Growth Studio'],
   ['autoModeAccess', 'Auto Mode'], ['handoffModeAccess', 'Handoff Mode'], ['approvalWorkflowAccess', 'Approval workflows'],
   ['clientApprovalPortalAccess', 'Client approval portal'], ['contentRepurposingAccess', 'Content repurposing'], ['bulkCreateAccess', 'Bulk create'],
@@ -2342,7 +2374,7 @@ const planFeatureFields = [
   ['prioritySupportAccess', 'Priority support'], ['templateAccess', 'Templates'], ['failedPostRecoveryAccess', 'Failed post recovery'],
   ['agencyWorkspaceAccess', 'Agency workspace']
 ];
-const aiProviderChoices = ['openai', 'gemini', 'deepseek', 'groq', 'anthropic', 'mistral', 'replicate', 'stability', 'fal', 'local'];
+const aiProviderChoices = ['openai', 'gemini', 'deepseek', 'groq', 'anthropic', 'mistral', 'replicate', 'stability', 'fal'];
 const planLevelChoices = ['none', 'basic', 'standard', 'advanced', 'premium', 'unlimited'];
 
 function selectedAttr(value, current) {
@@ -2385,35 +2417,36 @@ function planEditorHtml(plan = {}, mode = 'create') {
     <form action="${escapeHtml(planFormAction(plan, mode))}" method="post" class="real-form-grid plan-form-grid">
       <input type="hidden" name="_csrf" value="${escapeHtml(dashboardCsrfToken)}">
       ${isEdit ? '<input type="hidden" name="_method" value="PUT">' : ''}
-      <section class="form-section full"><h4>Basic plan and pricing</h4><p>Controls public pricing cards and billing handoff.</p></section>
+      <section class="form-section full"><h4>1. Plan identity and money</h4><p>Use one clear price, currency and access interval. Public pricing, onboarding, checkout and Billing all read this same record. Month/year intervals define access length; AutoBrand's current Pesapal flow does not auto-charge the next period.</p></section>
       <label><span>Name</span><input name="name" value="${escapeHtml(plan.name || '')}" required></label>
       <label><span>Slug</span><input name="slug" value="${escapeHtml(plan.slug || '')}" required></label>
       <label class="full"><span>Description</span><textarea name="description" rows="3">${escapeHtml(plan.description || '')}</textarea></label>
-      <label><span>Price</span><input name="price" type="number" min="0" step="0.01" value="${escapeHtml(plan.price ?? 0)}"></label>
-      <label><span>Currency</span><select name="currency">${['USD','EUR','GBP','NGN','KES','UGX'].map((currency) => `<option value="${currency}" ${selectedAttr(currency, plan.currency || 'USD')}>${currency}</option>`).join('')}</select></label>
-      <label><span>Billing interval</span><select name="billingInterval">${['month','year','one_time'].map((interval) => `<option value="${interval}" ${selectedAttr(interval, plan.billingInterval || 'month')}>${escapeHtml(interval.replace('_', ' '))}</option>`).join('')}</select></label>
-      <label><span>Trial days</span><input name="trialDays" type="number" min="0" value="${escapeHtml(plan.trialDays ?? 0)}"></label>
+      <label><span>Plan price</span><input name="price" type="number" min="0" step="0.01" value="${escapeHtml(plan.price ?? 0)}"><small>Numeric amount in the selected billing currency.</small></label>
+      <label><span>Billing currency</span><select name="currency">${['USD','EUR','GBP','NGN','KES','UGX'].map((currency) => `<option value="${currency}" ${selectedAttr(currency, plan.currency || 'USD')}>${currency}</option>`).join('')}</select></label>
+      <label><span>Access / billing interval</span><select name="billingInterval">${['trial','month','year','one_time'].map((interval) => `<option value="${interval}" ${selectedAttr(interval, plan.billingInterval || 'month')}>${escapeHtml(interval.replace('_', ' '))}</option>`).join('')}</select></label>
+      <label><span>Trial days</span><input name="trialDays" type="number" min="0" value="${escapeHtml(plan.trialDays ?? 0)}"><small>Used only when billing interval is trial.</small></label>
       <label><span>Sort order</span><input name="sortOrder" type="number" value="${escapeHtml(plan.sortOrder ?? 100)}"></label>
       <label><span>Queue priority</span><input name="queuePriority" type="number" min="0" max="100" value="${escapeHtml(plan.queuePriority ?? 5)}"></label>
+      <label><span>AI credit budget / access period</span><input name="includedCredits" type="number" min="-1" value="${escapeHtml(plan.includedCredits ?? 0)}"><small>Credits are the AI spending budget. Use 0 for no-AI plans and -1 only for internal unlimited plans.</small></label>
       <label class="checkbox-line"><input name="isActive" type="checkbox" value="on" ${checkedAttr(plan.isActive !== false)}><span>Active</span></label>
       <label class="checkbox-line"><input name="isPublic" type="checkbox" value="on" ${checkedAttr(plan.isPublic !== false)}><span>Show publicly</span></label>
       <label class="checkbox-line"><input name="isPopular" type="checkbox" value="on" ${checkedAttr(plan.isPopular)}><span>Popular badge</span></label>
-      <section class="form-section full"><h4>Usage limits</h4><p>Use -1 for unlimited. These limits are enforced by subscription middleware and usage services.</p></section>
+      <section class="form-section full"><h4>2. Capacity and usage limits</h4><p>Brands/accounts/team/storage are capacity. Posts, approvals and AI generations are period usage ceilings. Use -1 only when the plan is intentionally unlimited.</p></section>
       ${planLimitFields.map(([name, label]) => `<label><span>${escapeHtml(label)}</span><input name="limits[${escapeHtml(name)}]" type="number" value="${escapeHtml(limits[name] ?? 0)}"></label>`).join('')}
-      <section class="form-section full"><h4>Feature access</h4><p>These toggles control dashboard feature visibility and locked upgrade states.</p></section>
+      <section class="form-section full"><h4>3. Feature access</h4><p>Enable the actual product workflow. Manual Publisher should explicitly enable manualPublisherAccess and keep AI limits/credits at zero.</p></section>
       ${planLevelFields.map(([name, label]) => `<label><span>${escapeHtml(label)}</span><select name="features[${escapeHtml(name)}]">${planLevelChoices.map((choice) => `<option value="${choice}" ${selectedAttr(choice, features[name] || 'basic')}>${escapeHtml(choice)}</option>`).join('')}</select></label>`).join('')}
       <div class="check-grid full">${planFeatureFields.map(([name, label]) => `<label class="checkbox-line"><input name="features[${escapeHtml(name)}]" type="checkbox" value="on" ${checkedAttr(features[name])}><span>${escapeHtml(label)}</span></label>`).join('')}</div>
       <label class="full"><span>Pricing card feature checklist</span><textarea name="featureList" rows="5" placeholder="One feature per line">${escapeHtml(planFeatureList(plan))}</textarea></label>
-      <section class="form-section full"><h4>Plan-level AI provider controls</h4><p>Controls allowed providers, defaults, fallback routing, monthly AI limits and whether users can choose a provider.</p></section>
+      <section class="form-section full"><h4>4. Generative-AI controls</h4><p>No-AI plans must have no allowed AI providers/models and zero AI limits. AI plans use these settings plus the AI credit budget above.</p></section>
       <label class="full"><span>Allowed providers</span><select name="aiConfig[allowedProviders]" multiple size="6">${aiProviderChoices.map((provider) => `<option value="${provider}" ${(aiConfig.allowedProviders || []).includes(provider) ? 'selected' : ''}>${escapeHtml(provider)}</option>`).join('')}</select></label>
       <label class="full"><span>Allowed models</span><textarea name="aiConfig[allowedModels]" rows="3" placeholder="One model per line">${escapeHtml(Array.isArray(aiConfig.allowedModels) ? aiConfig.allowedModels.join('\n') : aiConfig.allowedModels || '')}</textarea></label>
       ${['defaultTextProvider','defaultImageProvider','defaultVideoProvider','fallbackProvider'].map((name) => `<label><span>${escapeHtml(name.replace(/([A-Z])/g, ' $1'))}</span><select name="aiConfig[${name}]"><option value="">Use platform default</option>${aiProviderChoices.map((provider) => `<option value="${provider}" ${selectedAttr(provider, aiConfig[name])}>${escapeHtml(provider)}</option>`).join('')}</select></label>`).join('')}
       ${['defaultTextModel','defaultImageModel','defaultVideoModel','fallbackModel'].map((name) => `<label><span>${escapeHtml(name.replace(/([A-Z])/g, ' $1'))}</span><input name="aiConfig[${name}]" value="${escapeHtml(aiConfig[name] || '')}"></label>`).join('')}
-      <label><span>Monthly token limit</span><input name="aiConfig[monthlyTokenLimit]" type="number" value="${escapeHtml(aiConfig.monthlyTokenLimit ?? '')}"></label>
-      <label><span>Monthly image limit</span><input name="aiConfig[monthlyImageLimit]" type="number" value="${escapeHtml(aiConfig.monthlyImageLimit ?? '')}"></label>
-      <label><span>Monthly video limit</span><input name="aiConfig[monthlyVideoLimit]" type="number" value="${escapeHtml(aiConfig.monthlyVideoLimit ?? '')}"></label>
+      <label><span>Token limit / access period</span><input name="aiConfig[monthlyTokenLimit]" type="number" value="${escapeHtml(aiConfig.monthlyTokenLimit ?? '')}"></label>
+      <label><span>Image limit / access period</span><input name="aiConfig[monthlyImageLimit]" type="number" value="${escapeHtml(aiConfig.monthlyImageLimit ?? '')}"></label>
+      <label><span>Video limit / access period</span><input name="aiConfig[monthlyVideoLimit]" type="number" value="${escapeHtml(aiConfig.monthlyVideoLimit ?? '')}"></label>
       <label class="checkbox-line full"><input name="aiConfig[allowUserProviderSelection]" type="checkbox" value="on" ${checkedAttr(aiConfig.allowUserProviderSelection)}><span>Allow user provider/model selection when plan allows</span></label>
-      <section class="form-section full"><h4>Billing and admin metadata</h4><p>Keep provider IDs here while frontend cards continue to use the SubscriptionPlan source.</p></section>
+      <section class="form-section full"><h4>5. Billing and admin metadata</h4><p>Optional provider/tax/admin metadata. Customer-facing money comes from the plan price, currency and access interval above. Do not describe month/year plans as automatic renewals unless an automatic recurring-payment implementation is added and verified.</p></section>
       <label><span>Payment provider plan ID</span><input name="paymentProviderPlanId" value="${escapeHtml(plan.paymentProviderPlanId || '')}"></label>
       <label><span>Tax behavior</span><input name="taxBehavior" value="${escapeHtml(plan.taxBehavior || '')}" placeholder="inclusive or exclusive"></label>
       <label><span>Display badge</span><input name="metadata[displayBadge]" value="${escapeHtml(metadata.displayBadge || '')}"></label>
@@ -2430,9 +2463,23 @@ function formatPlanLimit(value) {
   return String(value);
 }
 
-function planCardHtml(plan = {}) {
+function adminPlanDisplayName(plan = {}) {
+  if (plan.slug === 'starter') return 'AI Starter';
+  return plan.name || plan.slug || 'Plan';
+}
+
+function adminPlanMoneyLabel(plan = {}) {
   const price = Number(plan.price || 0);
-  const priceLabel = price ? `${escapeHtml(plan.currency || 'USD')} ${escapeHtml(price.toFixed(price % 1 ? 2 : 0))}` : (plan.trialDays ? 'Free trial' : 'Free');
+  if (plan.billingInterval === 'trial') return `US$0 · ${Number(plan.trialDays || 7)}-day trial`;
+  const amount = plan.currency === 'USD' || !plan.currency
+    ? `US$${price.toLocaleString('en-US', { minimumFractionDigits: price % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
+    : `${plan.currency} ${price.toLocaleString('en-US', { minimumFractionDigits: price % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+  if (plan.billingInterval === 'one_time') return `${amount} · one-time payment`;
+  return `${amount} · ${plan.billingInterval === 'year' ? '1-year access' : '1-month access'}`;
+}
+
+function planCardHtml(plan = {}) {
+  const priceLabel = adminPlanMoneyLabel(plan);
   const status = plan.deletedAt ? 'Deleted' : plan.isActive ? 'Active' : 'Inactive';
   const publicLabel = plan.isPublic ? 'Public' : 'Hidden';
   const topFeatures = Array.isArray(plan.featureList) && plan.featureList.length
@@ -2446,10 +2493,10 @@ function planCardHtml(plan = {}) {
     </div>
     <div class="plan-card-main">
       <div>
-        <h3>${escapeHtml(plan.name || plan.slug || 'Plan')}</h3>
+        <h3>${escapeHtml(adminPlanDisplayName(plan))}</h3>
         <p>${escapeHtml(plan.description || 'Dynamic subscription plan')}</p>
       </div>
-      <div class="plan-price-row"><strong>${priceLabel}</strong><span>/${escapeHtml(plan.billingInterval || 'month')}</span></div>
+      <div class="plan-price-row"><strong>${escapeHtml(priceLabel)}</strong><span>${plan.billingInterval === 'trial' ? 'No payment' : 'Manual payment per access period'}</span></div>
     </div>
     <div class="plan-metric-strip plan-metric-strip-compact">
       <span><strong>${escapeHtml(formatPlanLimit(plan.limits?.maxBrands))}</strong> brands</span>
@@ -2468,16 +2515,17 @@ function planViewHtml(plan = {}) {
   const features = Object.entries(plan.features || {}).filter(([, value]) => value === true || value === 'advanced' || value === 'premium' || value === 'unlimited').slice(0, 12);
   return `<article class="card plan-detail-card">
     <div class="card-head">
-      <div><span class="kicker">Subscription plan</span><h3>${escapeHtml(plan.name)}</h3><p>${escapeHtml(plan.description || 'Dynamic plan')}</p></div>
+      <div><span class="kicker">Subscription plan</span><h3>${escapeHtml(adminPlanDisplayName(plan))}</h3><p>${escapeHtml(plan.description || 'Dynamic plan')}</p></div>
       <div class="row-actions"><a class="btn btn-ghost" href="/dashboard/plans">All plans</a><a class="btn btn-primary" href="/dashboard/plans?mode=edit&id=${encodeURIComponent(plan.id)}">Edit</a></div>
     </div>
     <div class="record-detail-grid">
       <div class="record-detail-field"><strong>Slug</strong><span>${escapeHtml(plan.slug)}</span></div>
-      <div class="record-detail-field"><strong>Price</strong><span>${escapeHtml(plan.currency || 'USD')} ${escapeHtml(plan.price || 0)} / ${escapeHtml(plan.billingInterval || 'month')}</span></div>
+      <div class="record-detail-field"><strong>Customer price</strong><span>${escapeHtml(adminPlanMoneyLabel(plan))}</span></div>
       <div class="record-detail-field"><strong>Status</strong><span>${escapeHtml(plan.deletedAt ? 'Deleted' : plan.isActive ? 'Active' : 'Inactive')}</span></div>
       <div class="record-detail-field"><strong>Public</strong><span>${plan.isPublic ? 'Yes' : 'No'}</span></div>
       <div class="record-detail-field"><strong>Subscriptions</strong><span>${escapeHtml(plan.subscriptionCount || 0)}</span></div>
       <div class="record-detail-field"><strong>Queue priority</strong><span>${escapeHtml(plan.queuePriority ?? 5)}</span></div>
+      <div class="record-detail-field"><strong>AI credit budget / period</strong><span>${escapeHtml(plan.includedCredits ?? 0)}</span></div>
     </div>
     <div class="dashboard-plan-columns">
       <div><h4>Usage limits</h4><ul>${planLimitFields.map(([name, label]) => `<li><strong>${escapeHtml(label)}</strong><span>${escapeHtml(plan.limits?.[name] ?? 0)}</span></li>`).join('')}</ul></div>
@@ -2573,6 +2621,29 @@ function renderDashboardError(page = {}) {
 }
 
 
+
+function onboardingWelcomeMarkup(searchParams) {
+  if (!searchParams || searchParams.get('welcome') !== '1') return '';
+  const planName = currentPlan.name || 'Current plan';
+  const money = currentPlan.recurringPriceLabel || currentPlan.priceLabel || '';
+  const manualOnly = currentPlan.family === 'manual';
+  const creationStep = manualOnly
+    ? 'Open Manual Publisher, write your exact copy, choose your uploaded media and validate the post.'
+    : 'Open the Composer. You can publish manually, and use generative AI only where your plan includes it.';
+  return `<article class="card onboarding-welcome-card">
+    <div class="card-head"><div><span class="kicker">welcome to AutoBrand</span><h3>Your ${escapeHtml(planName)} is ready.</h3><p>Start with the workspace setup below. Plan, money, usage and payment information remains available under Plan & Billing.</p></div><a class="btn btn-ghost" href="/dashboard/billing">Plan & Billing</a></div>
+    <div class="billing-explainer-grid">
+      <div><strong>1. Your plan</strong><span>${escapeHtml(money)}${currentPlan.billingSummary ? ` · ${escapeHtml(currentPlan.billingSummary)}` : ''}</span></div>
+      <div><strong>2. Build Brand Brain</strong><span>Add your brand identity, products, tone, offers and rules so every workflow has the correct business context.</span></div>
+      <div><strong>3. Connect destinations</strong><span>Connect the real social accounts you want AutoBrand to publish to. Permissions are checked per workspace.</span></div>
+      <div><strong>4. Create content</strong><span>${escapeHtml(creationStep)}</span></div>
+      <div><strong>5. Review and publish</strong><span>Use approvals when needed, schedule or publish, then let AutoBrand retry and track provider results.</span></div>
+      <div><strong>6. Watch usage and access</strong><span>${escapeHtml(currentPlan.usageResetLabel || 'Usage follows your access period.')} ${escapeHtml(currentPlan.autoRenewalLabel || '')}</span></div>
+    </div>
+    <div class="row-actions"><a class="btn btn-primary" href="/dashboard/brand-brain">Create your first brand</a><a class="btn btn-ghost" href="/dashboard/social">Connect social accounts</a></div>
+  </article>`;
+}
+
 function renderPage(pageId, options = {}) {
   closeModal();
   const resolved = getPage(pageId);
@@ -2613,12 +2684,14 @@ function renderPage(pageId, options = {}) {
     ${renderTable(page)}`;
   const searchParams = new URLSearchParams(location.search);
   const queryNotice = dashboardNoticeMarkup(dashboardNoticeFromQuery(searchParams));
+  const onboardingWelcome = onboardingWelcomeMarkup(searchParams);
   pageRoot.innerHTML = `
     <div class="page-head">
       <div><span class="kicker">${escapeHtml(page.kicker)}</span><h2>${escapeHtml(page.heading)}</h2><p>${escapeHtml(page.description)}</p></div>
       ${actionButtons(page.title)}
     </div>
     ${queryNotice}
+    ${onboardingWelcome}
     ${renderStats(page.stats)}
     ${pageContent}
   `;

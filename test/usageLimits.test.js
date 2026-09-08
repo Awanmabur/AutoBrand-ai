@@ -40,3 +40,18 @@ test('usage limit service exposes product-specific quota guards', () => {
     assert.equal(typeof usageLimits[helper], 'function', `${helper} should be exported`);
   }
 });
+
+
+test('legacy mock social accounts never consume paid destination quota', () => {
+  assert.deepEqual(usageLimits.ACTIVE_SOCIAL_STATUSES, ['connected', 'needs_reconnect', 'expired']);
+  assert.equal(usageLimits.ACTIVE_SOCIAL_STATUSES.includes('mock'), false);
+});
+
+test('social destinations have a database uniqueness boundary per brand, platform and provider account', () => {
+  const SocialAccount = require('../src/models/SocialAccount');
+  const indexes = SocialAccount.schema.indexes();
+  const unique = indexes.find(([keys, options]) => keys.brand === 1 && keys.platform === 1 && keys.accountId === 1 && options.unique === true);
+  assert.ok(unique, 'brand + platform + accountId must be uniquely indexed');
+  assert.equal(unique[1].name, 'uniq_brand_platform_account');
+  assert.deepEqual(unique[1].partialFilterExpression, { accountId: { $type: 'string', $gt: '' } });
+});

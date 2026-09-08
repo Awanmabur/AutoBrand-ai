@@ -28,7 +28,7 @@ async function main() {
         imageModel: models.image?.[0] || '',
         videoModel: models.video?.[0] || '',
         isActive: true,
-        isFallback: slug === 'local',
+        isFallback: false,
         priority: priority++,
         metadata: { models }
       },

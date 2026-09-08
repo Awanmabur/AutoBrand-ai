@@ -1,4 +1,3 @@
-const Brand = require('../models/Brand');
 const Media = require('../models/Media');
 const Post = require('../models/Post');
 const Campaign = require('../models/Campaign');
@@ -9,6 +8,7 @@ const { spendCredits } = require('../services/creditService');
 const { generateImageAsset } = require('../services/aiContentService');
 const { assertCanGenerateImage, assertCanGenerateText } = require('../services/usageLimitService');
 const { resolvePublishingTargets } = require('../services/social/socialDestination.service');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
 const {
   creditsForGeneration,
   generateContentBundle,
@@ -214,17 +214,17 @@ async function createGeneratedDraft({ req, brand, sourceMedia, bundle }) {
 
 async function generateImage(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) {
       return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     }
 
     const workflow = normalizeImageWorkflow(req.body.imageWorkflow || req.body.workflow || req.body.imageType);
     const count = imageCountForWorkflow(req.body);
-    await assertCanGenerateImage(req.user, count);
+    await assertCanGenerateImage(req.user, count, brand._id);
 
     const sourceMedia = req.body.sourceMedia
-      ? await Media.findOne({ _id: req.body.sourceMedia, uploadedBy: req.user._id, brand: brand._id })
+      ? await Media.findOne({ _id: req.body.sourceMedia, brand: brand._id, status: { $ne: 'archived' } })
       : null;
     const provider = providerFromBody(req.body);
     const mediaIds = [];
@@ -307,6 +307,7 @@ async function generateImage(req, res, next) {
 
     await spendCredits({
       user: req.user,
+      brandId: brand._id,
       amount: credits,
       reason: `${workflowLabel(workflow)} generation`,
       referenceType,
@@ -330,7 +331,7 @@ async function generateImage(req, res, next) {
     });
     await ApiLog.create({
       user: req.user._id,
-      provider: generatedResults[0]?.provider || provider || 'local',
+      provider: generatedResults[0]?.provider || provider || 'unconfigured',
       action: 'generate_image',
       status: 'success',
       message: `${workflowLabel(workflow)} generated ${mediaIds.length} image(s).`,
@@ -349,15 +350,15 @@ async function generateImage(req, res, next) {
 
 async function generatePost(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
 
     if (!brand) {
       return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     }
 
-    await assertCanGenerateText(req.user);
+    await assertCanGenerateText(req.user, brand._id);
     const sourceMedia = req.body.sourceMedia
-      ? await Media.findOne({ _id: req.body.sourceMedia, uploadedBy: req.user._id, brand: brand._id })
+      ? await Media.findOne({ _id: req.body.sourceMedia, brand: brand._id, status: { $ne: 'archived' } })
       : null;
 
     const controls = normalizeGenerationControls(req.body);
@@ -370,9 +371,9 @@ async function generatePost(req, res, next) {
 
     await ApiLog.create({
       user: req.user._id,
-      provider: result.provider?.startsWith('openai') ? 'openai' : 'local',
+      provider: result.provider || 'unconfigured',
       action: 'generate_content',
-      status: result.provider === 'openai' ? 'success' : 'skipped',
+      status: 'success',
       message: `Generated ${result.outputType || controls.outputType} using ${result.provider}.`,
       metadata: { controls: result.controls || controls, outputType: result.outputType }
     });
@@ -381,6 +382,7 @@ async function generatePost(req, res, next) {
 
     await spendCredits({
       user: req.user,
+      brandId: brand._id,
       amount: credits,
       reason: `AI ${result.outputType || controls.outputType} generation`,
       referenceType: 'Post',
@@ -408,14 +410,14 @@ async function generatePost(req, res, next) {
 
 async function generateHashtags(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
-    await assertCanGenerateText(req.user);
+    await assertCanGenerateText(req.user, brand._id);
     const result = await generateContentBundle({ ...req.body, brand, outputType: 'hashtags' });
     const draft = await createGeneratedDraft({ req, brand, sourceMedia: null, bundle: result });
     const credits = creditsForGeneration(result.controls || { outputType: 'hashtags' });
-    await spendCredits({ user: req.user, amount: credits, reason: 'AI hashtag generation', referenceType: 'Post', referenceId: draft._id });
+    await spendCredits({ user: req.user, brandId: brand._id, amount: credits, reason: 'AI hashtag generation', referenceType: 'Post', referenceId: draft._id });
     await UsageLog.create({
       user: req.user._id,
       brand: brand._id,
@@ -436,13 +438,13 @@ async function generateHashtags(req, res, next) {
 
 async function generateVideoScript(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const sourceMedia = req.body.sourceMedia
-      ? await Media.findOne({ _id: req.body.sourceMedia, uploadedBy: req.user._id, brand: brand._id })
+      ? await Media.findOne({ _id: req.body.sourceMedia, brand: brand._id, status: { $ne: 'archived' } })
       : null;
 
-    await assertCanGenerateText(req.user);
+    await assertCanGenerateText(req.user, brand._id);
     const result = await generateContentBundle({
       ...req.body,
       brand,
@@ -458,7 +460,7 @@ async function generateVideoScript(req, res, next) {
     }
     const draft = await createGeneratedDraft({ req, brand, sourceMedia, bundle: result });
     const credits = creditsForGeneration(result.controls || { outputType: 'reel_script' });
-    await spendCredits({ user: req.user, amount: credits, reason: 'AI video script generation', referenceType: 'Post', referenceId: draft._id });
+    await spendCredits({ user: req.user, brandId: brand._id, amount: credits, reason: 'AI video script generation', referenceType: 'Post', referenceId: draft._id });
     await UsageLog.create({
       user: req.user._id,
       brand: brand._id,
@@ -479,12 +481,12 @@ async function generateVideoScript(req, res, next) {
 
 async function generateCampaign(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
-    await assertCanGenerateText(req.user);
+    await assertCanGenerateText(req.user, brand._id);
     const targets = await resolvePublishingTargets({
-      ownerId: req.user._id,
+      ownerId: brand.owner,
       brandId: brand._id,
       requestedPlatforms: splitList(req.body.platforms),
       requestedAccountIds: req.body.targetAccounts || [],
@@ -516,7 +518,7 @@ async function generateCampaign(req, res, next) {
       aiPlan
     });
 
-    await spendCredits({ user: req.user, amount: credits, reason: `AI ${controls.outputType} campaign generation`, referenceType: 'Campaign', referenceId: campaign._id });
+    await spendCredits({ user: req.user, brandId: brand._id, amount: credits, reason: `AI ${controls.outputType} campaign generation`, referenceType: 'Campaign', referenceId: campaign._id });
     await UsageLog.create({
       user: req.user._id,
       brand: brand._id,

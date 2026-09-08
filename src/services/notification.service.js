@@ -37,16 +37,22 @@ async function notifyLowCredits({ user, balance, threshold = LOW_CREDIT_THRESHOL
 
 async function notifyPayment({ user, payment, status, planName = '' } = {}) {
   const paid = status === 'paid';
-  const failed = ['failed', 'refunded'].includes(status);
+  const reversed = status === 'reversed';
+  const refunded = status === 'refunded';
+  const failed = ['failed', 'refunded', 'reversed'].includes(status);
   return notifyUser({
     user: user || payment?.user,
     type: paid ? 'payment_success' : failed ? 'payment_failed' : 'payment_pending',
-    title: paid ? 'Payment confirmed' : failed ? 'Payment failed' : 'Payment pending',
+    title: paid ? 'Payment confirmed' : reversed ? 'Payment reversed' : refunded ? 'Payment refunded' : failed ? 'Payment failed' : 'Payment pending',
     message: paid
       ? `${planName || payment?.metadata?.plan || 'Plan'} is active.`
-      : failed
-        ? `Payment ${payment?.reference || ''} could not be confirmed.`
-        : `Payment ${payment?.reference || ''} is still pending.`,
+      : reversed
+        ? `Pesapal reversed payment ${payment?.reference || ''}; the linked paid entitlement has been revoked.`
+        : refunded
+          ? `Payment ${payment?.reference || ''} was refunded; the linked paid entitlement has been revoked.`
+          : failed
+            ? `Payment ${payment?.reference || ''} could not be confirmed.`
+            : `Payment ${payment?.reference || ''} is still pending.`,
     severity: paid ? 'success' : failed ? 'error' : 'warning',
     entityType: 'Payment',
     entityId: payment?._id,

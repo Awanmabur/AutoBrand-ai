@@ -402,19 +402,48 @@ function buildGenerationPrompt(brand = {}, controls = {}, fallback = {}) {
   ].join('\n');
 }
 
+function aiGenerationError(result, fallbackMessage = 'AI content generation failed.') {
+  const message = result?.message || fallbackMessage;
+  const error = new Error(message);
+  error.status = 502;
+  error.safeMessage = message;
+  return error;
+}
+
+function assertGeneratedBundleShape(data, controls) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw aiGenerationError(null, 'AI provider returned an invalid content payload.');
+  }
+  const campaignLike = ['7_day_campaign', '30_day_content_calendar', 'product_launch', 'event_promotion', 'offer_sale'].includes(controls.outputType);
+  if (campaignLike && !Array.isArray(data.campaignPlan)) {
+    throw aiGenerationError(null, 'AI provider did not return the requested campaign plan.');
+  }
+  if (controls.outputType === 'carousel_copy' && !Array.isArray(data.carouselSlides)) {
+    throw aiGenerationError(null, 'AI provider did not return the requested carousel copy.');
+  }
+  if (controls.outputType === 'reel_script' && !Array.isArray(data.videoScenes)) {
+    throw aiGenerationError(null, 'AI provider did not return the requested video scene plan.');
+  }
+  if (!campaignLike && controls.outputType !== 'carousel_copy' && controls.outputType !== 'reel_script') {
+    const hasCopy = Boolean(String(data.caption || data.description || data.title || '').trim());
+    if (!hasCopy) throw aiGenerationError(null, 'AI provider returned no usable generated copy.');
+  }
+}
+
 async function generateContentBundle(input = {}) {
   const controls = normalizeGenerationControls(input);
-  const fallback = buildFallbackBundle(input.brand || {}, { ...input, ...controls });
+  const shapeExample = buildFallbackBundle(input.brand || {}, { ...input, ...controls });
   const result = await generateJsonText({
-    prompt: buildGenerationPrompt(input.brand || {}, controls, fallback),
-    fallback,
+    prompt: buildGenerationPrompt(input.brand || {}, controls, shapeExample),
     preferredProvider: input.provider || input.aiProvider || input.preferredProvider
   });
+  if (!result.ok) throw aiGenerationError(result);
+  assertGeneratedBundleShape(result.data, controls);
   return {
-    ...normalizeBundle(result.data, fallback, input.brand || {}),
-    provider: result.provider || 'local',
-    ok: result.ok,
-    message: result.message || ''
+    ...normalizeBundle(result.data, shapeExample, input.brand || {}),
+    provider: result.provider,
+    ok: true,
+    message: ''
   };
 }
 

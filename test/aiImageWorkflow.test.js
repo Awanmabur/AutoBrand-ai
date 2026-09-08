@@ -62,6 +62,6 @@ test('story and reel covers use vertical draft and provider settings', () => {
   assert.equal(postTypeForImageWorkflow('reel_cover'), 'reel');
 });
 
-test('image credits charge local fallback lower than hosted results', () => {
-  assert.equal(imageCreditsForResults([{ provider: 'local_fallback' }, { provider: 'openai' }]), 4);
+test('image credits are charged consistently for hosted generated images', () => {
+  assert.equal(imageCreditsForResults([{ provider: 'openai' }, { provider: 'replicate' }]), 6);
 });

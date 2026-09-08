@@ -28,19 +28,6 @@ function buildThumbnailPrompt({ brand = {}, job = {}, scenePlan = [] } = {}) {
   ].filter(Boolean).join(' ');
 }
 
-function mockVideoResult({ job = {}, brand = {} } = {}) {
-  const id = job._id?.toString?.() || Date.now();
-  const fileName = `${String(brand.name || 'autobrand').toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'brand'}-mock-video-${id}.mp4`;
-  return {
-    ok: true,
-    provider: 'mock_video_provider',
-    providerJobId: `mock_video_${id}`,
-    outputUrl: `https://mock.autobrand.local/videos/${fileName}`,
-    fileName,
-    size: 0,
-    message: 'Mock video render created because no real video provider returned an MP4.'
-  };
-}
 
 function enrichVideoJob(job, { brand = {}, providerResult = null } = {}) {
   const scenePlan = job.scenePlan || [];
@@ -54,7 +41,6 @@ function enrichVideoJob(job, { brand = {}, providerResult = null } = {}) {
       subtitlesGenerated: Boolean(job.subtitles?.length),
       thumbnailPromptGenerated: Boolean(job.thumbnailPrompt),
       provider: providerResult?.provider || job.provider,
-      mock: providerResult?.provider === 'mock_video_provider',
       updatedAt: new Date()
     }
   };
@@ -65,6 +51,5 @@ module.exports = {
   buildSubtitles,
   buildThumbnailPrompt,
   buildVideoScript,
-  enrichVideoJob,
-  mockVideoResult
+  enrichVideoJob
 };

@@ -5,6 +5,7 @@ const approvalSchema = new mongoose.Schema(
     targetType: { type: String, enum: ['post', 'campaign'], default: 'post', index: true },
     post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', index: true },
     campaign: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', index: true },
+    brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand', index: true },
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     reviewerEmail: { type: String, trim: true, lowercase: true },
     reviewer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -30,5 +31,6 @@ const approvalSchema = new mongoose.Schema(
 );
 
 approvalSchema.index({ reviewerEmail: 1, status: 1 });
+approvalSchema.index({ brand: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Approval', approvalSchema);

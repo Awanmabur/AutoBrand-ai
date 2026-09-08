@@ -13,7 +13,6 @@ const DASHBOARD_ROUTE_ALIASES = {
   roles: 'team',
   users: 'team',
   integrations: 'social',
-  whatsapp: 'social',
   security: 'settings',
   plans: 'admin/plans'
 };

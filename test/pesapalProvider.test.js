@@ -101,3 +101,10 @@ test('Pesapal verification checks GetTransactionStatus and maps COMPLETED to pai
     global.fetch = oldFetch;
   }
 });
+
+
+test('Pesapal billing callbacks always use APP_URL even when PUBLIC_APP_URL is a separate media origin', () => {
+  const provider = freshProvider({ PUBLIC_APP_URL: 'https://media.example-cdn.com' });
+  assert.equal(provider.callbackUrl(), 'https://app.example.com/dashboard/billing/pesapal/callback');
+  assert.equal(provider.ipnUrl(), 'https://app.example.com/dashboard/billing/pesapal/ipn');
+});

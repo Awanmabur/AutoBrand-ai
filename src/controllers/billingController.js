@@ -1,8 +1,8 @@
-const CreditLedger = require('../models/CreditLedger');
 const Payment = require('../models/Payment');
 const Subscription = require('../models/Subscription');
 const env = require('../config/env');
 const { getPublicPricingCards } = require('../services/pricing.service');
+const { formatMoney } = require('../services/planDisplay.service');
 const { activatePlanForUser, getCurrentPlan, getPlanBySlug } = require('../services/subscription.service');
 const { buildUsageDashboard } = require('../services/usage.service');
 const { notifyPayment, notifyUser } = require('../services/notification.service');
@@ -18,11 +18,13 @@ function checkoutProviderFromRequest(req) {
 }
 
 function paymentStatusMessage(query = {}) {
-  if (query.activated) return 'Payment confirmed. Your subscription is active.';
+  if (query.activated) return 'Payment confirmed. Your paid access period is active.';
   if (query.cancelled) return 'Checkout was cancelled. Your current plan is unchanged.';
+  if (query.reversed) return 'Pesapal reversed this payment. The linked paid entitlement has been revoked; contact support with the payment reference if this is unexpected.';
+  if (query.refunded) return 'This payment was refunded. The linked paid entitlement is no longer active.';
   if (query.failed) return 'Payment could not be confirmed. Try again or contact support with your reference.';
-  if (query.pending) return 'Checkout is pending. Complete the payment step to activate your subscription.';
-  if (query.onboarding) return 'Choose a plan and complete secure payment to finish onboarding.';
+  if (query.pending) return 'Checkout is pending. Complete the Pesapal payment step to activate the selected access period.';
+  if (query.onboarding) return 'Review the selected plan, then complete secure Pesapal payment to activate the paid access period.';
   return '';
 }
 
@@ -42,25 +44,11 @@ async function changePlan(req, res, next) {
 
     const isFreeOrTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) <= 0;
     if (isFreeOrTrial) {
-      const alreadyOnPlan = req.user.plan === plan.slug;
-      const trialAlreadyUsed = plan.billingInterval === 'trial' && req.user.trialUsed;
-
       await activatePlanForUser(req.user, plan.slug, {
         paymentProvider: 'free',
         metadata: { changedFromDashboard: true, activatedWithoutPayment: true }
       });
 
-      if (!alreadyOnPlan && !trialAlreadyUsed) {
-        const latest = await CreditLedger.findOne({ user: req.user._id }).sort({ createdAt: -1 });
-        const balanceBefore = latest ? latest.balanceAfter : 0;
-        await CreditLedger.create({
-          user: req.user._id,
-          type: 'grant',
-          amount: 10,
-          balanceAfter: balanceBefore + 10,
-          reason: `${plan.slug} plan activation credit grant`
-        });
-      }
       await notifyUser({
         user: req.user,
         type: 'payment_success',
@@ -94,6 +82,7 @@ async function checkoutPage(req, res, next) {
       layout: 'layouts/dashboard',
       plan,
       payment: null,
+      paymentAmountLabel: '',
       selectedProvider: checkoutProviderFromRequest(req),
       pesapalConfigured: isPaymentProviderConfigured('pesapal'),
       onboarding: Boolean(req.query.onboarding),
@@ -108,17 +97,19 @@ async function checkout(req, res, next) {
   try {
     const planSlug = req.params.planSlug || req.body.plan;
     const providerName = checkoutProviderFromRequest(req);
-    const { session, payment } = await createCheckoutSession({ user: req.user, planSlug, providerName });
+    const onboarding = req.body.onboarding === '1' || req.query.onboarding === '1';
+    const { session, payment } = await createCheckoutSession({ user: req.user, planSlug, providerName, onboarding });
     if (payment?.status === 'paid') {
       await notifyPayment({ user: req.user, payment, status: 'paid', planName: payment.metadata?.plan || planSlug });
-      return res.redirect('/dashboard/billing?activated=1');
+      return res.redirect(payment?.metadata?.onboarding ? '/dashboard?welcome=1' : '/dashboard/billing?activated=1');
     }
     if (session.checkoutUrl) return res.redirect(session.checkoutUrl);
     if (payment?._id) return res.redirect(`/dashboard/billing/payments/${payment._id}`);
     return res.redirect('/dashboard/billing?pending=1');
   } catch (error) {
     if (error.status && error.status < 500) {
-      return res.redirect(`/dashboard/billing/checkout/${encodeURIComponent(req.params.planSlug || req.body.plan || '')}?error=${encodeURIComponent(error.message)}`);
+      const onboardingSuffix = req.body.onboarding === '1' || req.query.onboarding === '1' ? '&onboarding=1' : '';
+      return res.redirect(`/dashboard/billing/checkout/${encodeURIComponent(req.params.planSlug || req.body.plan || '')}?error=${encodeURIComponent(error.message)}${onboardingSuffix}`);
     }
     next(error);
   }
@@ -139,9 +130,10 @@ async function paymentPage(req, res, next) {
       layout: 'layouts/dashboard',
       plan,
       payment,
+      paymentAmountLabel: formatMoney(payment.amount, payment.currency || 'USD', { decimals: true }),
       selectedProvider: payment.provider || liveCheckoutProviderName(),
       pesapalConfigured: isPaymentProviderConfigured('pesapal'),
-      onboarding: Boolean(req.query.onboarding),
+      onboarding: Boolean(req.query.onboarding || payment.metadata?.onboarding),
       error: ''
     });
   } catch (error) {
@@ -161,11 +153,13 @@ async function pesapalCallback(req, res, next) {
       user: req.user,
       source: 'callback'
     });
-    if (['paid', 'failed', 'refunded'].includes(result.status)) {
+    if (['paid', 'failed', 'refunded', 'reversed'].includes(result.status)) {
       await notifyPayment({ user: req.user, payment: result.payment, status: result.status });
     }
-    if (result.status === 'paid') return res.redirect('/dashboard/billing?activated=1');
-    if (result.status === 'failed' || result.status === 'refunded') return res.redirect('/dashboard/billing?failed=1');
+    if (result.status === 'paid') return res.redirect(result.payment?.metadata?.onboarding ? '/dashboard?welcome=1' : '/dashboard/billing?activated=1');
+    if (result.status === 'reversed') return res.redirect('/dashboard/billing?reversed=1');
+    if (result.status === 'refunded') return res.redirect('/dashboard/billing?refunded=1');
+    if (result.status === 'failed') return res.redirect('/dashboard/billing?failed=1');
     return res.redirect('/dashboard/billing?pending=1');
   } catch (error) {
     if (req.user) return next(error);
@@ -185,7 +179,7 @@ async function pesapalIpn(req, res) {
 
   try {
     const result = await reconcilePaymentFromProvider({ providerName: 'pesapal', payload, source: 'ipn' });
-    if (['paid', 'failed', 'refunded'].includes(result.status)) {
+    if (['paid', 'failed', 'refunded', 'reversed'].includes(result.status)) {
       await notifyPayment({ payment: result.payment, status: result.status });
     }
     response.status = 200;

@@ -41,8 +41,10 @@ test('removed or disconnected destinations are reconciled across posts and campa
   const socialController = read('src/modules/social-accounts/social.controller.js');
   const socialRoutes = read('src/routes/social.js');
 
-  assert.match(cleanup, /Post\.find\(\{ createdBy: ownerId, brand: brandId, targetAccounts: accountId \}\)/);
-  assert.match(cleanup, /Campaign\.find\(\{ createdBy: ownerId, brand: brandId, targetAccounts: accountId \}\)/);
+  assert.match(cleanup, /Post\.find\(\{ brand: brandId, targetAccounts: accountId \}\)/);
+  assert.doesNotMatch(cleanup, /Post\.find\(\{ createdBy: ownerId/);
+  assert.match(cleanup, /Campaign\.find\(\{ brand: brandId, targetAccounts: accountId \}\)/);
+  assert.doesNotMatch(cleanup, /Campaign\.find\(\{ createdBy: ownerId/);
   assert.match(cleanup, /post\.status = 'failed'/);
   assert.match(cleanup, /campaign\.status = 'paused'/);
   assert.match(socialController, /cleanupDisconnectedDestination/);

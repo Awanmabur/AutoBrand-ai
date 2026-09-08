@@ -29,6 +29,7 @@ const REMOVED_ROOT_ROUTES = {
 
 function statusFromError(error) {
   if (error?.code === 'EBADCSRFTOKEN') return 419;
+  if (error?.code === 'ERATELIMITSTORE' || error?.code === 'EDATABASEINDEXES') return 503;
   if (error?.statusCode) return Number(error.statusCode);
   if (error?.status) return Number(error.status);
   return 500;

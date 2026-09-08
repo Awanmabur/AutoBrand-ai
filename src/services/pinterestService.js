@@ -208,6 +208,52 @@ function firstImage(post) {
   return url ? { ...image, publicFileUrl: url } : null;
 }
 
+
+function isoDate(value) {
+  const date = new Date(value || Date.now());
+  return date.toISOString().slice(0, 10);
+}
+
+async function fetchPinterestPostMetrics({ account, platformPostId, publishedAt }) {
+  const accessToken = await accessTokenFor(account);
+  const pinId = String(platformPostId || '').trim();
+  if (!pinId) throw new PinterestProviderError('Pinterest Pin ID is missing for analytics sync.');
+  // Pinterest supports lifetime organic Pin analytics for most modern Pins. A
+  // bounded start date also works for older records and stays inside the
+  // provider's organic-reporting contract.
+  const start = new Date(publishedAt || Date.now());
+  start.setUTCDate(start.getUTCDate() - 1);
+  const end = new Date();
+  const query = new URLSearchParams({
+    start_date: isoDate(start),
+    end_date: isoDate(end),
+    metric_types: 'IMPRESSION,SAVE,PIN_CLICK,OUTBOUND_CLICK,VIDEO_MRC_VIEW',
+    app_types: 'ALL',
+    split_field: 'NO_SPLIT'
+  });
+  const data = await pinterestJson(`/pins/${encodeURIComponent(pinId)}/analytics?${query.toString()}`, { accessToken });
+  const summary = data.all?.summary_metrics || data.summary_metrics || data.all || {};
+  const availableMetrics = [];
+  const result = { providerPostId: pinId, availableMetrics };
+  const set = (target, keys) => {
+    const found = keys.find((key) => summary[key] !== undefined);
+    if (!found) return;
+    result[target] = Number(summary[found] || 0);
+    availableMetrics.push(target);
+  };
+  set('impressions', ['IMPRESSION', 'impression']);
+  set('saves', ['SAVE', 'save']);
+  set('clicks', ['OUTBOUND_CLICK', 'PIN_CLICK', 'outbound_click', 'pin_click']);
+  set('views', ['VIDEO_MRC_VIEW', 'video_mrc_view']);
+  if (!availableMetrics.length) {
+    const error = new PinterestProviderError('Pinterest returned no analytics values for this Pin yet.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  return result;
+}
+
 async function syncPinterestBoard({ account }) {
   const accessToken = await accessTokenFor(account);
   const boardId = account.providerMeta?.boardId || account.accountId;
@@ -253,6 +299,7 @@ module.exports = {
   getPinterestSetupIssue,
   isPinterestConfigured,
   publishPinterestPin,
+  fetchPinterestPostMetrics,
   syncPinterestBoard,
   PinterestProviderError,
   __private: { signState, verifyState }

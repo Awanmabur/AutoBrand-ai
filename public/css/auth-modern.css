@@ -422,3 +422,75 @@ input {
     max-width: 100%;
   }
 }
+
+.auth-plan-card-clear {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 18px;
+  align-items: center;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-soft);
+}
+
+.auth-plan-card-clear > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.auth-plan-card-clear small,
+.auth-plan-card-clear span,
+.auth-plan-card-clear p,
+.auth-plan-footnote {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-plan-card-clear > div:first-child small {
+  color: var(--primary);
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .72rem;
+}
+
+.auth-plan-price {
+  text-align: right;
+  display: grid;
+  gap: 3px;
+}
+
+.auth-plan-price strong {
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.auth-plan-card-clear p,
+.auth-plan-card-clear > a {
+  grid-column: 1 / -1;
+}
+
+.auth-plan-card-clear > a {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.auth-plan-footnote {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-soft);
+  border-radius: 12px;
+  font-size: .88rem;
+}
+
+@media (max-width: 560px) {
+  .auth-plan-card-clear {
+    grid-template-columns: 1fr;
+  }
+  .auth-plan-price {
+    text-align: left;
+  }
+}

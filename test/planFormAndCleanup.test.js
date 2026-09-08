@@ -30,8 +30,8 @@ test('admin plan form builds structured plan payload without raw JSON textareas'
       defaultTextModel: 'gpt-4.1-mini',
       defaultImageProvider: 'openai',
       defaultImageModel: 'gpt-image-1',
-      fallbackProvider: 'local',
-      fallbackModel: 'local-fallback',
+      fallbackProvider: 'openai',
+      fallbackModel: 'gpt-4.1-mini',
       allowUserProviderSelection: 'on',
       monthlyTokenLimit: '5000',
       monthlyImageLimit: '500',
@@ -58,7 +58,7 @@ test('plan management is dashboard-native, structured, and no old overlay EJS re
   assert.match(js, /function planEditorHtml/);
   assert.match(js, /Usage limits/);
   assert.match(js, /Feature access/);
-  assert.match(js, /Plan-level AI provider controls/);
+  assert.match(js, /Generative-AI controls/);
   assert.match(js, /name=\"limits\[/);
   assert.match(js, /name=\"features\[/);
   assert.match(js, /name=\"aiConfig\[/);
@@ -289,7 +289,7 @@ test('composer media picker shows reusable videos when video format is selected'
   assert.equal(fs.existsSync(path.join(root, 'src/views/posts/new.ejs')), false);
   assert.match(partial, /inferredMediaType/);
   assert.match(partial, /data-media-type="<%= inferredMediaType %>"/);
-  assert.match(controller, /Media\.find\(\{ uploadedBy: userId, status: \{ \$ne: 'archived' \} \}\)[\s\S]*\.limit\(80\)/);
+  assert.match(controller, /Media\.find\(\{ brand: contentBrandFilter, status: \{ \$ne: 'archived' \} \}\)[\s\S]*\.limit\(80\)/);
 });
 
 test('landing pricing keeps three plan cards per row on desktop', () => {
@@ -317,7 +317,7 @@ test('public pricing and plan details use the same landing design with dynamic d
   assert.match(pricingService, /getPublicPricingCards/);
   assert.doesNotMatch(pricingService, /getPublicPricingPlan/);
   assert.match(planDisplay, /viewUrl: `\/pricing\/\$\{encodeURIComponent\(slug\)\}`/);
-  assert.match(planDisplay, /limitList: buildLimitList\(limits\)/);
+  assert.match(planDisplay, /limitList: buildLimitList\(limits, \{ billingInterval, trialDays \}\)/);
   assert.match(publicController, /renderLanding\(req, res, next, \{ initialPublicPage: 'pricingPage'/);
   assert.match(publicController, /initialPublicPage: 'planDetailPage'/);
   assert.match(publicRoutes, /router\.get\('\/pricing\/:planSlug', publicController\.planDetails\)/);

@@ -70,6 +70,29 @@ ALLOW_DEVELOPMENT_EMAIL_LINKS=false
 
 Do not enable `EMAIL_VERIFICATION_REQUIRED=true` without working SMTP.
 
+
+### Database indexes and legacy index upgrades
+
+Mongoose `autoIndex` is disabled in **all environments**. AutoBrand has one central startup index manager, which creates/verifies declared indexes before the server accepts traffic. This avoids Mongoose's automatic index builder racing with migration-aware upgrades.
+
+The v1.0.5 payment-integrity upgrade specifically handles the legacy `provider_1_reference_1` Payment index. Older databases may have that key pattern as non-unique while current code requires a unique `provider + reference` boundary. Startup now inspects the existing index and first checks the Payment collection for duplicate provider/reference groups. When there are no duplicates, it safely replaces the legacy non-unique index with the stable unique index `uniq_payment_provider_reference`. If duplicates exist, startup fails closed and **does not delete or merge financial records automatically**.
+
+Before a production upgrade, run:
+
+```bash
+npm run migrate:production
+```
+
+Review `paymentReferenceUniqueness` in the dry-run report and take a database backup. If `duplicateGroups` is `0`, apply the migration:
+
+```bash
+npm run migrate:production:apply
+```
+
+If duplicates are reported, resolve them through finance review before applying the migration. Do not work around the failure by dropping the unique requirement.
+
+Critical examples include Pesapal payment references, subscription activation keys, webhook replay keys, analytics sync jobs, refresh-token expiry, team membership uniqueness, and distributed rate-limit buckets.
+
 ## 2. Publishing and scheduling runtime
 
 Publishing is a core responsibility of the web process:
@@ -78,7 +101,7 @@ Publishing is a core responsibility of the web process:
 - The MongoDB due-post publisher runs automatically after startup.
 - Publish-now posts, future schedules, approval releases, campaigns, retries, and recovered stale jobs use the same durable path.
 - A sweep runs every `DUE_POST_POLL_MS` milliseconds; the default is 10 seconds.
-- Redis is optional. When configured, BullMQ lowers dispatch latency, while MongoDB remains the correctness fallback.
+- Redis is optional. When configured, BullMQ lowers dispatch latency and Redis serves rate-limit counters; MongoDB remains the durable publishing fallback and distributed rate-limit fallback. Production never degrades rate limiting to per-process memory.
 
 Do not use the obsolete `ENABLE_SCHEDULED_PUBLISHING` variable. Old `ENABLE_SCHEDULED_PUBLISHING=false` values are ignored so existing deployments do not silently strand posts. Use `PAUSE_PUBLISHING=true` only for an intentional emergency stop.
 
@@ -115,6 +138,24 @@ Use `AI_GENERATION_WORKER_MODE=off` only for maintenance. The obsolete `ENABLE_A
 
 AI generation uses MongoDB and does not require Redis.
 
+
+## 3A. Pesapal reconciliation runtime
+
+For a normal one-service deployment:
+
+```env
+PAYMENT_RECONCILIATION_WORKER_MODE=web
+PAYMENT_RECONCILIATION_POLL_MS=60000
+PAYMENT_RECONCILIATION_CONCURRENCY=2
+PAYMENT_RECONCILIATION_LEASE_MS=300000
+PAYMENT_RECONCILIATION_PENDING_DAYS=7
+PAYMENT_RECONCILIATION_PAID_DAYS=180
+```
+
+This recovers missed/transient callback/IPN processing and periodically detects later Pesapal reversals. For a dedicated worker use `PAYMENT_RECONCILIATION_WORKER_MODE=external` and run `npm run worker:billing`.
+
+Production validation requires `BILLING_PROVIDER=pesapal`, `CHECKOUT_DEFAULT_PROVIDER=pesapal`, `PESAPAL_ENVIRONMENT=production`, consumer credentials, and IPN readiness. Pesapal callback/IPN/cancellation URLs must remain on the `APP_URL` host; a separate `PUBLIC_APP_URL` is only a media/public-origin setting.
+
 ## 4. Optional Redis publishing worker
 
 A separate publishing worker is optional and requires Redis:
@@ -145,6 +186,11 @@ npm run seed
 ```
 
 Run verification in CI before deploying when the production platform installs with development tooling omitted.
+
+
+### Superadmin seeding safety
+
+Set `SUPERADMIN_EMAIL` explicitly before running `npm run seed` or `npm run seed:superadmin` against production. A new superadmin also requires a strong explicit `SUPERADMIN_PASSWORD`; there is no production default. If the configured email already belongs to a non-superadmin user, the seeder refuses privilege escalation unless `SUPERADMIN_ALLOW_PROMOTION=true` is intentionally set after verifying the account.
 
 ## 6. Public media storage
 
@@ -180,7 +226,7 @@ THREADS_GRAPH_VERSION=v1.0
 
 Connect real accounts from the dashboard after deployment. Seeded mock accounts are excluded from production composers and cannot be published.
 
-See `INTEGRATION_SETUP.md` for each provider's variables and route.
+See `docs/INTEGRATION-SETUP.md` for each provider's variables and callback route.
 
 
 ### Existing Meta connections after this repair
@@ -208,6 +254,7 @@ Optional process layout:
 web:      npm start
 worker:   npm run worker       # only with Redis
 aiworker: npm run worker:ai    # only when web uses AI_GENERATION_WORKER_MODE=external
+billingworker: npm run worker:billing # only when PAYMENT_RECONCILIATION_WORKER_MODE=external
 ```
 
 Health endpoint:
@@ -280,11 +327,11 @@ Generate it once and preserve it in `.env` or the hosting secrets dashboard:
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
 
-During a planned rotation, set the new key as `TOKEN_ENCRYPTION_KEY` and keep the old key temporarily in `TOKEN_ENCRYPTION_KEY_PREVIOUS`. In local development only, if the variable is blank, the app persists a key in `.autobrand-token-key`; keep that file when replacing source code. If the old key has already been lost, reconnect provider accounts once after configuring the stable key.
+During a planned rotation, set the new key as `TOKEN_ENCRYPTION_KEY` and keep the old key temporarily in `TOKEN_ENCRYPTION_KEY_PREVIOUS`. In local development only, if the variable is blank, the app persists a key outside the repository at `~/.autobrand-ai/token-encryption-key`; keep that secret-store file if you want local provider connections to survive source replacement. If the old key has already been lost, reconnect provider accounts once after configuring the stable key.
 
 ## Connectivity resilience (v7)
 
-Redis is optional. For the standard one-service deployment, leave it disabled:
+Redis is optional. For the standard one-service deployment, it may be left disabled; MongoDB then provides the shared rate-limit and publishing fallback:
 
 ```env
 REDIS_ENABLED=false

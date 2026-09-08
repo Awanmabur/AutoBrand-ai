@@ -47,6 +47,34 @@ const defaultTemplates = [
   }
 ];
 
+
+function cleanText(value, maxLength) {
+  return String(value || '').replace(/\0/g, '').replace(/\r\n?/g, '\n').trim().slice(0, maxLength);
+}
+
+function validateRenderInput(body = {}) {
+  const value = {
+    headline: cleanText(body.headline, 140),
+    offer: cleanText(body.offer, 600),
+    price: cleanText(body.price, 80),
+    cta: cleanText(body.cta, 100),
+    phone: cleanText(body.phone, 50),
+    website: cleanText(body.website, 300),
+    style: cleanText(body.style, 160),
+    aspectRatio: ['9:16', '1:1', '16:9'].includes(String(body.aspectRatio || '')) ? String(body.aspectRatio) : ''
+  };
+  if (!value.headline) throw Object.assign(new Error('Headline is required for template rendering.'), { status: 400 });
+  if (!value.offer) throw Object.assign(new Error('Offer/details are required for template rendering.'), { status: 400 });
+  if (value.website) {
+    let parsed;
+    try { parsed = new URL(value.website); } catch (_error) { parsed = null; }
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
+      throw Object.assign(new Error('Website must be a valid HTTP or HTTPS URL.'), { status: 400 });
+    }
+  }
+  return value;
+}
+
 async function ensureDefaultTemplates() {
   const count = await VideoTemplate.countDocuments();
   if (count) return;
@@ -54,30 +82,31 @@ async function ensureDefaultTemplates() {
 }
 
 function buildRenderInput({ brand, template, body }) {
-  const headline = body.headline || `${brand.name} ${body.goal || 'promo'}`;
-  const offer = body.offer || brand.offers?.[0]?.title || brand.description || 'A clear offer for your audience';
-  const cta = body.cta || brand.preferredCta || 'Contact us today';
+  const validated = validateRenderInput(body);
+  const headline = validated.headline || `${brand.name} ${body.goal || 'promo'}`;
+  const offer = validated.offer || brand.offers?.[0]?.title || brand.description || 'A clear offer for your audience';
+  const cta = validated.cta || brand.preferredCta || 'Contact us today';
 
   return {
     headline,
     offer,
-    price: body.price || brand.products?.[0]?.price || '',
+    price: validated.price || brand.products?.[0]?.price || '',
     cta,
-    phone: body.phone || '',
-    website: body.website || brand.website || '',
+    phone: validated.phone || '',
+    website: validated.website || brand.website || '',
     brandName: brand.name,
     logo: brand.logo || '',
     colors: brand.brandColors || [],
-    style: body.style || brand.localStyle || brand.tone || 'clean, friendly, local',
-    aspectRatio: body.aspectRatio || template.aspectRatio,
+    style: validated.style || brand.localStyle || brand.tone || 'clean, friendly, local',
+    aspectRatio: validated.aspectRatio || template.aspectRatio,
     scenes: template.scenes.map((scene, index) => ({
       order: index + 1,
       name: scene.name,
       layout: scene.layout,
       durationSeconds: scene.durationSeconds,
-      text: scene.requiredFields.map((field) => ({ field, value: { headline, offer, price: body.price || '', cta, phone: body.phone || '', website: body.website || '' }[field] || '' }))
+      text: scene.requiredFields.map((field) => ({ field, value: { headline, offer, price: validated.price || '', cta, phone: validated.phone || '', website: validated.website || '' }[field] || '' }))
     }))
   };
 }
 
-module.exports = { buildRenderInput, ensureDefaultTemplates };
+module.exports = { buildRenderInput, ensureDefaultTemplates, validateRenderInput };

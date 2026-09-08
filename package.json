@@ -1,6 +1,6 @@
 {
   "name": "autobrand-ai-social-saas",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "private": true,
   "description": "AI social media management SaaS platform",
   "main": "server.js",
@@ -25,7 +25,16 @@
     "verify": "npm run lint && npm test && npm run security",
     "diagnose:publishing": "node scripts/diagnosePublishing.js",
     "repair:publishing": "node scripts/repairPublishing.js",
-    "diagnose:connectivity": "node scripts/diagnoseConnectivity.js"
+    "diagnose:connectivity": "node scripts/diagnoseConnectivity.js",
+    "worker:analytics": "node workers/analyticsSyncWorker.js",
+    "migrate:production": "node scripts/migrateProductionData.js",
+    "migrate:production:apply": "node scripts/migrateProductionData.js --apply",
+    "prestart": "node scripts/preflightProduction.js",
+    "preflight:source": "node scripts/preflightProduction.js",
+    "preflight:runtime": "node scripts/preflightProduction.js --runtime",
+    "release:scan": "node scripts/releaseCheck.js",
+    "verify:release": "npm run lint && npm test && npm run security && npm run preflight:source && npm run release:scan",
+    "worker:billing": "node workers/paymentReconciliationWorker.js"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",

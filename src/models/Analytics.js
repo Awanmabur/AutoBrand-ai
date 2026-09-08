@@ -7,6 +7,9 @@ const analyticsSchema = new mongoose.Schema(
     campaign: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign', index: true },
     account: { type: mongoose.Schema.Types.ObjectId, ref: 'SocialAccount', index: true },
     platform: { type: String, required: true },
+    providerPostId: { type: String, trim: true, default: '', index: true },
+    recordKind: { type: String, enum: ['lifetime', 'daily'], default: 'lifetime', index: true },
+    availableMetrics: [{ type: String }],
     impressions: { type: Number, default: 0 },
     views: { type: Number, default: 0 },
     watchTimeSeconds: { type: Number, default: 0 },
@@ -21,7 +24,8 @@ const analyticsSchema = new mongoose.Schema(
     summary: { type: String },
     source: { type: String, enum: ['provider', 'manual', 'mock'], default: 'provider', index: true },
     metricDate: { type: Date, default: Date.now, index: true },
-    lastSyncedAt: { type: Date }
+    lastSyncedAt: { type: Date },
+    syncMeta: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
 );
@@ -29,5 +33,6 @@ const analyticsSchema = new mongoose.Schema(
 analyticsSchema.index({ brand: 1, platform: 1, metricDate: -1 });
 analyticsSchema.index({ campaign: 1, metricDate: -1 });
 analyticsSchema.index({ post: 1, platform: 1 });
+analyticsSchema.index({ post: 1, account: 1, platform: 1, recordKind: 1 }, { unique: true, partialFilterExpression: { recordKind: 'lifetime' } });
 
 module.exports = mongoose.model('Analytics', analyticsSchema);

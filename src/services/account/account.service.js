@@ -79,10 +79,22 @@ function applyPendingEmailChange(user, email, now = Date.now()) {
   return createEmailVerificationToken(user, now);
 }
 
-function applyDeleteAccountRequest(user, reason = '', now = Date.now()) {
+function applyDeleteAccountRequest(user, reason = '', now = Date.now(), graceDays = 30) {
+  const requestedAt = new Date(now);
   user.accountDeletionStatus = 'requested';
-  user.accountDeletionRequestedAt = new Date(now);
+  user.accountDeletionRequestedAt = requestedAt;
+  user.accountDeletionScheduledFor = new Date(requestedAt.getTime() + Math.max(1, Number(graceDays || 30)) * 86400000);
+  user.accountDeletionCancelledAt = undefined;
+  user.accountDeletionCompletedAt = undefined;
   user.accountDeletionReason = String(reason || '').trim().slice(0, 1000);
+}
+
+function cancelDeleteAccountRequest(user, now = Date.now()) {
+  if (user.accountDeletionStatus !== 'requested') throw new Error('There is no pending account deletion request to cancel.');
+  user.accountDeletionStatus = 'cancelled';
+  user.accountDeletionCancelledAt = new Date(now);
+  user.accountDeletionScheduledFor = undefined;
+  user.accountDeletionReason = '';
 }
 
 function verificationUrl(token) {
@@ -93,6 +105,7 @@ module.exports = {
   EMAIL_TOKEN_TTL_MS,
   PASSWORD_RESET_TTL_MS,
   applyDeleteAccountRequest,
+  cancelDeleteAccountRequest,
   applyPendingEmailChange,
   applyProfileUpdate,
   createEmailVerificationToken,

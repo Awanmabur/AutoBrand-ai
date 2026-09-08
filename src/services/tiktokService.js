@@ -15,7 +15,7 @@ class TikTokProviderError extends Error {
 
 const AUTH_BASE = 'https://www.tiktok.com/v2/auth/authorize/';
 const API_BASE = 'https://open.tiktokapis.com/v2';
-const DEFAULT_SCOPES = ['user.info.basic', 'video.upload', 'video.publish'];
+const DEFAULT_SCOPES = ['user.info.basic', 'video.list', 'video.upload', 'video.publish'];
 
 function configuredScopes() {
   return String(env.tiktokScopes || DEFAULT_SCOPES.join(','))
@@ -204,16 +204,112 @@ async function videoUploadSource(post) {
   throw new TikTokProviderError('TikTok video path is invalid. Regenerate or upload the video again.');
 }
 
+async function refreshTikTokAccessToken(account) {
+  const refreshToken = account.refreshTokenEncrypted ? decryptToken(account.refreshTokenEncrypted) : '';
+  if (!refreshToken) throw new TikTokProviderError('TikTok refresh token is missing. Reconnect TikTok.');
+  const response = await fetchWithTimeout(`${API_BASE}/oauth/token/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_key: normalizedTikTokClientKey(),
+      client_secret: normalizedTikTokClientSecret(),
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken
+    })
+  });
+  const tokenData = await response.json().catch(() => ({}));
+  if (!response.ok || tokenData.error || !tokenData.access_token) {
+    throw new TikTokProviderError(tokenData.error_description || tokenData.message || tokenData.error || `TikTok token refresh failed: ${response.status}`);
+  }
+  account.accessTokenEncrypted = encryptToken(tokenData.access_token);
+  if (tokenData.refresh_token) account.refreshTokenEncrypted = encryptToken(tokenData.refresh_token);
+  account.tokenExpiresAt = tokenData.expires_in ? new Date(Date.now() + Number(tokenData.expires_in) * 1000) : account.tokenExpiresAt;
+  account.permissions = String(tokenData.scope || '').split(',').map((scope) => scope.trim()).filter(Boolean).length
+    ? String(tokenData.scope).split(',').map((scope) => scope.trim()).filter(Boolean)
+    : account.permissions;
+  account.status = 'connected';
+  account.lastSyncAt = new Date();
+  if (typeof account.save === 'function') await account.save();
+  return tokenData.access_token;
+}
+
+async function accessTokenFor(account) {
+  const token = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
+  if (!token) return refreshTikTokAccessToken(account);
+  if (account.tokenExpiresAt && new Date(account.tokenExpiresAt).getTime() < Date.now() + 60_000) {
+    return refreshTikTokAccessToken(account);
+  }
+  return token;
+}
+
 async function queryCreatorInfo({ account }) {
-  const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
-  if (!accessToken) throw new TikTokProviderError('TikTok access token is missing. Reconnect TikTok.');
+  const accessToken = await accessTokenFor(account);
   const data = await tikTokJson('/post/publish/creator_info/query/', { method: 'POST', accessToken });
   return data.data || {};
 }
 
+async function fetchTikTokPostMetrics({ account, platformPostId }) {
+  const accessToken = await accessTokenFor(account);
+  let postId = String(platformPostId || '').trim();
+  if (!postId) throw new TikTokProviderError('TikTok post ID is missing for analytics sync.');
+
+  if (/^[vp]_(?:pub|inbox)_/i.test(postId) || postId.includes('~v2')) {
+    const status = await tikTokJson('/post/publish/status/fetch/', {
+      method: 'POST',
+      accessToken,
+      body: { publish_id: postId }
+    });
+    const state = String(status.data?.status || '').toUpperCase();
+    if (state === 'FAILED') {
+      const error = new TikTokProviderError(`TikTok publishing failed before analytics became available: ${status.data?.fail_reason || 'unknown reason'}.`);
+      error.permanent = true;
+      error.publicationFailed = true;
+      error.publishState = state;
+      throw error;
+    }
+    const publicIds = Array.isArray(status.data?.publicaly_available_post_id) ? status.data.publicaly_available_post_id : [];
+    if (!publicIds.length) {
+      const error = new TikTokProviderError(`TikTok post is still ${state || 'processing'}; analytics will retry after the public post ID is available.`);
+      error.publishState = state;
+      if (state === 'PUBLISH_COMPLETE') {
+        error.code = 'ANALYTICS_UNSUPPORTED';
+        error.permanent = true;
+        error.publicationComplete = true;
+      } else {
+        error.code = 'ANALYTICS_NOT_READY';
+        error.retryable = true;
+      }
+      throw error;
+    }
+    postId = String(publicIds[0]);
+  }
+
+  const data = await tikTokJson('/video/query/?fields=id,share_url,like_count,comment_count,share_count,view_count', {
+    method: 'POST',
+    accessToken,
+    body: { filters: { video_ids: [postId] } }
+  });
+  const video = Array.isArray(data.data?.videos) ? data.data.videos[0] : null;
+  if (!video) {
+    const error = new TikTokProviderError('TikTok did not return the published video for analytics.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  return {
+    providerPostId: String(video.id || postId),
+    providerPostUrl: String(video.share_url || ''),
+    publicationComplete: true,
+    views: Number(video.view_count || 0),
+    likes: Number(video.like_count || 0),
+    comments: Number(video.comment_count || 0),
+    shares: Number(video.share_count || 0),
+    availableMetrics: ['views', 'likes', 'comments', 'shares']
+  };
+}
+
 async function publishTikTokVideo({ post, account }) {
-  const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
-  if (!accessToken) throw new TikTokProviderError('TikTok access token is missing. Reconnect TikTok.');
+  const accessToken = await accessTokenFor(account);
 
   const creator = await queryCreatorInfo({ account });
   const privacyOptions = Array.isArray(creator.privacy_level_options) ? creator.privacy_level_options : [];
@@ -264,7 +360,7 @@ async function publishTikTokVideo({ post, account }) {
     const text = await uploadResponse.text().catch(() => '');
     throw new TikTokProviderError(`TikTok video upload failed: ${uploadResponse.status} ${text}`);
   }
-  return { id: init.data?.publish_id || `tiktok_${post._id}`, raw: init };
+  return { id: init.data?.publish_id || `tiktok_${post._id}`, raw: init, providerProcessing: true };
 }
 
 module.exports = { getTikTokSetupIssue,
@@ -275,5 +371,6 @@ module.exports = { getTikTokSetupIssue,
   createCodeChallenge,
   createCodeVerifier,
   publishTikTokVideo,
-  queryCreatorInfo
+  queryCreatorInfo,
+  fetchTikTokPostMetrics
 };

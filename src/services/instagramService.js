@@ -196,6 +196,42 @@ async function publishCarousel({ post, accountId, accessToken, images }) {
   return { id: published.id, raw: published };
 }
 
+
+async function fetchInstagramPostMetrics({ account, platformPostId }) {
+  const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
+  if (!accessToken) throw new InstagramProviderError('Instagram access token is missing. Reconnect through Meta.');
+  const mediaId = String(platformPostId || '').trim();
+  if (!mediaId) throw new InstagramProviderError('Instagram media ID is missing for analytics sync.');
+
+  const result = { providerPostId: mediaId, availableMetrics: [] };
+  const media = await instagramRequest(`/${encodeURIComponent(mediaId)}`, {
+    params: { fields: 'like_count,comments_count', access_token: accessToken }
+  }).catch(() => ({}));
+  if (media.like_count !== undefined) { result.likes = Number(media.like_count || 0); result.availableMetrics.push('likes'); }
+  if (media.comments_count !== undefined) { result.comments = Number(media.comments_count || 0); result.availableMetrics.push('comments'); }
+
+  const insights = await instagramRequest(`/${encodeURIComponent(mediaId)}/insights`, {
+    params: { metric: 'views,reach,saved,shares,total_interactions', access_token: accessToken }
+  }).catch((error) => {
+    // Some media types/account permissions expose only the basic public counters.
+    if (result.availableMetrics.length) return { data: [] };
+    throw error;
+  });
+  for (const metric of insights.data || []) {
+    const name = String(metric.name || '').toLowerCase();
+    const value = Number(metric.values?.[0]?.value ?? metric.value ?? 0);
+    const target = { views: 'views', reach: 'reach', saved: 'saves', shares: 'shares' }[name];
+    if (target) { result[target] = value; if (!result.availableMetrics.includes(target)) result.availableMetrics.push(target); }
+  }
+  if (!result.availableMetrics.length) {
+    const error = new InstagramProviderError('Instagram has not returned media insights yet.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  return result;
+}
+
 async function publishInstagramPost({ post, account }) {
   const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
   if (!accessToken) throw new InstagramProviderError('Instagram access token is missing. Reconnect through Meta.');
@@ -217,4 +253,4 @@ async function publishInstagramPost({ post, account }) {
   throw new InstagramProviderError('Instagram publishing requires image, carousel, or video media.');
 }
 
-module.exports = { InstagramProviderError, publishInstagramPost };
+module.exports = { InstagramProviderError, publishInstagramPost, fetchInstagramPostMetrics };

@@ -7,13 +7,26 @@ const providers = {
   mistral: () => require('./providers/mistral.provider'),
   replicate: () => require('./providers/replicate.provider'),
   stability: () => require('./providers/stability.provider'),
-  fal: () => require('./providers/fal.provider'),
-  local: () => require('./providers/local.provider')
+  fal: () => require('./providers/fal.provider')
 };
 
-function getProvider(slug = 'local') {
-  const factory = providers[String(slug || 'local').toLowerCase()] || providers.local;
+function providerError(message, status = 422) {
+  const error = new Error(message);
+  error.status = status;
+  error.safeMessage = message;
+  return error;
+}
+
+function getProvider(slug) {
+  const normalized = String(slug || '').trim().toLowerCase();
+  if (!normalized) throw providerError('No AI provider is configured for this task.', 503);
+  const factory = providers[normalized];
+  if (!factory) throw providerError(`Unsupported AI provider: ${normalized}.`, 422);
   return factory();
 }
 
-module.exports = { getProvider };
+function supportedProviders() {
+  return Object.keys(providers);
+}
+
+module.exports = { getProvider, supportedProviders };

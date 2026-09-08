@@ -42,15 +42,11 @@ test('text post format removes media output', () => {
   assert.deepEqual(body.__mediaIntent.allowedMediaTypes, []);
 });
 
-test('link and WhatsApp message formats are text-like composer outputs', () => {
+test('link format is a text-like composer output and WhatsApp is not a publishing format', () => {
   const link = resolveComposerMediaIntent({ type: 'link', mediaPreset: 'image-1', imageCount: 1 });
   assert.equal(link.type, 'link');
   assert.equal(link.mediaPreset, 'text');
   assert.equal(link.mediaFormat, 'link_post');
   assert.deepEqual(link.__mediaIntent.allowedMediaTypes, []);
 
-  const whatsapp = resolveComposerMediaIntent({ type: 'whatsapp', mediaPreset: 'video' });
-  assert.equal(whatsapp.type, 'whatsapp_message');
-  assert.equal(whatsapp.mediaPreset, 'text');
-  assert.equal(whatsapp.mediaFormat, 'whatsapp_message');
 });

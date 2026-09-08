@@ -1,15 +1,17 @@
+<% const composerAiEnabled = typeof allowAI === 'boolean' ? allowAI : true; %>
+<% const composerManualEnabled = typeof allowManual === 'boolean' ? allowManual : true; %>
 <section class="composer-hero">
   <div>
     <p class="eyebrow">post studio</p>
-    <h2>Create from Brand Brain</h2>
-    <p>Choose the brand, then save, schedule, or publish. AutoBrand uses the saved audience, offer, tone, CTA, hashtags, media mix, and posting rules automatically.</p>
+    <h2><%= composerAiEnabled ? 'Create from Brand Brain' : 'Manual Publisher' %></h2>
+    <p><%= composerAiEnabled ? 'Choose the brand, then save, schedule, or publish. AutoBrand uses saved brand context for AI-assisted creation.' : 'Write your exact copy, attach your own media, then validate, schedule, publish and track it without generative AI.' %></p>
   </div>
   <div class="composer-checklist">
-    <strong>Default output</strong>
+    <strong><%= composerAiEnabled ? 'Default output' : 'No-AI workflow' %></strong>
     <span>Caption</span>
-    <span>Image/slides</span>
-    <span>Video storyboard</span>
-    <span>Facebook Pages</span>
+    <span>Your media</span>
+    <span>Validation</span>
+    <span>Multi-channel publish</span>
   </div>
 </section>
 
@@ -32,8 +34,8 @@
 
     <label>Creation mode
       <select name="creationMode">
-        <option value="ai" <%= form.creationMode !== 'manual' ? 'selected' : '' %>>Use Brand Brain</option>
-        <option value="manual" <%= form.creationMode === 'manual' ? 'selected' : '' %>>Manual with Brand Brain defaults</option>
+        <% if (composerAiEnabled) { %><option value="ai" <%= form.creationMode !== 'manual' ? 'selected' : '' %>>AI-assisted Brand Brain</option><% } %>
+        <% if (composerManualEnabled) { %><option value="manual" <%= !composerAiEnabled || form.creationMode === 'manual' ? 'selected' : '' %>>Manual / no AI</option><% } %>
       </select>
     </label>
 
@@ -53,6 +55,7 @@
       </select>
     </label>
 
+    <% if (composerAiEnabled) { %>
     <label>AI output
       <select name="outputType">
         <% [
@@ -75,17 +78,18 @@
         <% }) %>
       </select>
     </label>
+    <% } %>
 
     <label class="checkbox-row"><input name="approvalRequired" type="checkbox" value="on" <%= form.approvalRequired === 'on' || form.approvalRequired === true ? 'checked' : '' %>> Require approval first</label>
     <label class="checkbox-row"><input name="publishAfterApproval" type="checkbox" value="on" <%= form.publishAfterApproval === 'on' || form.publishAfterApproval === true ? 'checked' : '' %>> Publish after approval</label>
 
     <label class="span-2">Caption override
-      <textarea name="caption" rows="6" placeholder="Leave empty to create from Brand Brain"><%= form.caption || generated?.caption || '' %></textarea>
+      <textarea name="caption" rows="6" placeholder="<%= composerAiEnabled ? 'Leave empty to create from Brand Brain' : 'Write the exact caption you want published' %>"><%= form.caption || generated?.caption || '' %></textarea>
     </label>
 
     <label>Schedule time <input name="scheduledAt" type="datetime-local" value="<%= form.scheduledAt || '' %>"></label>
     <div class="composer-actions">
-      <button class="button ghost" type="submit" name="action" value="regenerate">Regenerate draft</button>
+      <% if (composerAiEnabled) { %><button class="button ghost" type="submit" name="action" value="regenerate">Regenerate draft</button><% } %>
       <button class="button ghost" type="submit" name="action" value="save">Save draft</button>
       <button class="button ghost" type="submit" name="action" value="schedule">Schedule</button>
       <button class="button" type="submit" name="action" value="publish">Publish now</button>
@@ -205,8 +209,10 @@
         <textarea name="hashtags" rows="3"><%= form.hashtags || generated?.hashtags?.join(' ') || '' %></textarea>
       </label>
       <label>Client reviewer email <input type="email" name="handoffReviewerEmail" value="<%= form.handoffReviewerEmail || '' %>" placeholder="client@example.com"></label>
+      <% if (composerAiEnabled) { %>
       <label>AI provider <input name="aiProvider" value="<%= form.aiProvider || '' %>" placeholder="Plan default"></label>
       <label>AI model <input name="aiModel" value="<%= form.aiModel || '' %>" placeholder="Plan default"></label>
+      <% } %>
       <label class="span-2">Handoff notes
         <textarea name="handoffNotes" rows="3"><%= form.handoffNotes || '' %></textarea>
       </label>
@@ -215,7 +221,7 @@
     <details class="span-2 fieldset" data-intent-section="existing-media">
       <summary>Use uploaded media or URLs</summary>
       <% const chosenMedia = Array.isArray(form.media) ? form.media : form.media ? [form.media] : []; %>
-      <% if (!media.length) { %><p class="muted">No media yet. AutoBrand will generate media that matches the selected format.</p><% } %>
+      <% if (!media.length) { %><p class="muted">No media yet. <%= composerAiEnabled ? 'AutoBrand can generate matching media on an AI-enabled plan.' : 'Upload or import your own media before publishing image/video formats.' %></p><% } %>
       <p class="muted" data-media-intent-note>Media choices will filter automatically by post format.</p>
       <div class="media-picker-grid" data-media-picker-grid>
         <% media.forEach((item) => { %>
@@ -241,6 +247,7 @@
       </label>
     </details>
 
+    <% if (composerAiEnabled) { %>
     <details class="span-2 fieldset" data-intent-section="ai-media">
       <summary>AI media overrides</summary>
       <input type="hidden" name="generateImage" value="on">
@@ -280,6 +287,9 @@
       </label>
       <label class="checkbox-row span-2" data-intent-group="video"><input name="selectedOwnerMediaConsent" type="checkbox"> Selected personal/owner images can be used for owner/avatar or image-to-video planning.</label>
     </details>
+    <% } else { %>
+      <input type="hidden" name="generateImage" value="off">
+    <% } %>
   </form>
 </section>
 

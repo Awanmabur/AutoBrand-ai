@@ -120,6 +120,7 @@ async function requestApproval({ post, requestedBy, reviewerEmail, reviewerName,
   const approval = await Approval.create({
     targetType: 'post',
     post: post._id,
+    brand: targetBrand(post),
     requestedBy: requestedBy?._id || requestedBy,
     reviewerEmail,
     clientName: reviewerName || '',
@@ -139,6 +140,7 @@ async function requestCampaignApproval({ campaign, requestedBy, reviewerEmail, r
   const approval = await Approval.create({
     targetType: 'campaign',
     campaign: campaign._id,
+    brand: targetBrand(campaign),
     requestedBy: requestedBy?._id || requestedBy,
     reviewerEmail,
     clientName: reviewerName || '',

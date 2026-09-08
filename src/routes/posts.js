@@ -9,6 +9,7 @@ router.use(requireAuth);
 router.use(requireVerified);
 router.post('/handoff', postController.createHandoff);
 router.post('/bulk-reschedule', postController.bulkReschedule);
+router.post('/manual-import', postController.importManualPosts);
 router.post('/', postController.createPost);
 router.put('/:id', postController.update);
 router.post('/:id/schedule', postController.schedule);

@@ -1,14 +1,13 @@
 const { extractHashtags, getPlatformRule, validateAgainstRule } = require('./composerValidation.service');
 
 const MEDIA_REQUIRED_TYPES = new Set(['image', 'carousel', 'video', 'reel', 'story']);
-const TEXT_LIKE_TYPES = new Set(['text', 'article', 'link', 'whatsapp_message']);
+const TEXT_LIKE_TYPES = new Set(['text', 'article', 'link']);
 const DEFAULT_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_VIDEO_BYTES = 200 * 1024 * 1024;
 
 function normalizeComposerType(value = '') {
   const type = String(value || 'text').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (type === 'short' || type === 'short_video' || type === 'tiktok') return 'reel';
-  if (type === 'whatsapp') return 'whatsapp_message';
   return type;
 }
 
@@ -79,7 +78,6 @@ async function validateComposerSubmission(payload = {}) {
   if (MEDIA_REQUIRED_TYPES.has(type) && !media.length) warnings.push(`${type.replace(/_/g, ' ')} posts need matching media.`);
   if (type === 'carousel' && media.filter((item) => mediaKind(item) === 'image').length < 2) warnings.push('Carousel posts need at least two image assets.');
   if ((type === 'video' || type === 'reel') && !hasMediaOfKind(media, 'video')) warnings.push(`${type === 'reel' ? 'Reel/Short/TikTok' : 'Video'} posts need a video asset.`);
-  if (type === 'whatsapp_message' && !platforms.includes('whatsapp')) warnings.push('WhatsApp message drafts should include the WhatsApp platform.');
 
   for (const platform of platforms) {
     const rule = await getPlatformRule(platform);
@@ -98,7 +96,6 @@ async function validateComposerSubmission(payload = {}) {
   }
 
   const hashtags = extractHashtags(payload.caption, payload.hashtags);
-  if (type === 'whatsapp_message' && hashtags.length) warnings.push('WhatsApp promotional messages should avoid hashtags.');
   if (TEXT_LIKE_TYPES.has(type) && media.length && type !== 'link') warnings.push(`${type.replace(/_/g, ' ')} posts usually do not need attached media.`);
 
   return [...new Set(warnings.filter(Boolean))];

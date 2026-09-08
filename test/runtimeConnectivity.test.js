@@ -72,11 +72,20 @@ test('queue does not instantiate ioredis when Redis is disabled', () => {
 test('connectivity backoff suppresses repeated attempts and resets after recovery', () => {
   const { createConnectivityBackoff } = require('../src/services/runtimeConnectivity.service');
   const logs = [];
-  const backoff = createConnectivityBackoff({ label: 'test', minMs: 50, maxMs: 100, logIntervalMs: 1000, logger: (...args) => logs.push(args) });
+  let now = 1_000;
+  const backoff = createConnectivityBackoff({
+    label: 'test', minMs: 50, maxMs: 100, logIntervalMs: 1000,
+    logger: (...args) => logs.push(args), clock: () => now
+  });
   assert.equal(backoff.canAttempt(), true);
   backoff.recordFailure(new Error('offline'));
   assert.equal(backoff.canAttempt(), false);
+  assert.equal(backoff.remainingMs(), 50);
   assert.equal(logs.length, 1);
+  now += 49;
+  assert.equal(backoff.canAttempt(), false);
+  now += 1;
+  assert.equal(backoff.canAttempt(), true);
   assert.equal(backoff.recordSuccess(), true);
   assert.equal(backoff.canAttempt(), true);
 });

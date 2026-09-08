@@ -10,12 +10,17 @@ const REQUIRED_PERMISSIONS = {
   youtube: ['https://www.googleapis.com/auth/youtube.upload'],
   x: ['tweet.write'],
   threads: ['threads_content_publish'],
-  whatsapp: ['whatsapp_business_messaging']
 };
 
 function publishingCapabilities(platform = '') {
-  const key = String(platform || 'facebook').toLowerCase();
-  const rule = DEFAULT_PLATFORM_RULES[key] || DEFAULT_PLATFORM_RULES.facebook;
+  const key = String(platform || '').toLowerCase();
+  const rule = DEFAULT_PLATFORM_RULES[key];
+  if (!rule) {
+    return {
+      text: false, image: false, carousel: false, video: false, reel: false,
+      story: false, link: false, scheduling: false, directPublishing: false
+    };
+  }
   const types = new Set(rule.mediaTypes || []);
   return {
     text: types.has('text'),
@@ -46,7 +51,22 @@ function tokenExpired(account = {}, now = new Date()) {
 
 function evaluateSocialAccountHealth(account = {}, now = new Date()) {
   const status = account.status || 'connected';
-  const missing = status === 'mock' ? [] : missingPermissions(account);
+  const platform = String(account.platform || '').toLowerCase();
+  if (!DEFAULT_PLATFORM_RULES[platform]) {
+    return {
+      status: 'unsupported',
+      healthStatus: 'failed',
+      label: 'Unsupported',
+      message: 'This saved account uses a platform that is not in the supported direct-publishing catalog.',
+      missingPermissions: [],
+      capabilities: publishingCapabilities(platform)
+    };
+  }
+  if (status === 'mock') {
+    const capabilities = publishingCapabilities(account.platform);
+    return { status: 'needs_reconnect', healthStatus: 'warning', label: 'Reconnect required', message: 'Legacy development/mock social connections cannot publish. Connect the real provider account.', missingPermissions: [], capabilities };
+  }
+  const missing = missingPermissions(account);
   const capabilities = publishingCapabilities(account.platform);
 
   if (status === 'disconnected') {
@@ -64,7 +84,7 @@ function evaluateSocialAccountHealth(account = {}, now = new Date()) {
   if (missing.length) {
     return { status: 'missing_permission', healthStatus: 'warning', label: 'Missing permission', message: `Missing permission(s): ${missing.join(', ')}`, missingPermissions: missing, capabilities };
   }
-  return { status: 'connected', healthStatus: 'healthy', label: status === 'mock' ? 'Development connected' : 'Connected', message: 'Account is ready for supported publishing actions.', missingPermissions: [], capabilities };
+  return { status: 'connected', healthStatus: 'healthy', label: 'Connected', message: 'Account is ready for supported publishing actions.', missingPermissions: [], capabilities };
 }
 
 async function applySocialAccountHealth(account, now = new Date()) {

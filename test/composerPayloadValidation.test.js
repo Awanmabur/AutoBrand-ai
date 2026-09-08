@@ -4,15 +4,11 @@ const PlatformContentRule = require('../src/models/PlatformContentRule');
 const { validateAgainstRule } = require('../src/services/composer/composerValidation.service');
 const { normalizeComposerType, validateComposerSubmission } = require('../src/services/composer/composerPayloadValidation.service');
 
-test('link and WhatsApp formats validate as text-like platform content', () => {
-  const rule = { platform: 'whatsapp', displayName: 'WhatsApp', characterLimit: 4096, hashtagLimit: 0, mediaTypes: ['text', 'image', 'video'], supportsLinks: true };
-
-  assert.deepEqual(validateAgainstRule({ type: 'whatsapp_message', caption: 'Hi there', hashtags: [] }, rule), []);
-  assert.deepEqual(validateAgainstRule({ type: 'link', caption: 'Read more', link: 'https://example.test' }, rule), []);
-  assert.equal(normalizeComposerType('whatsapp'), 'whatsapp_message');
-  assert.equal(normalizeComposerType('short_video'), 'reel');
+test('link format validates as text-like platform content', () => {
+  const rule = { platform: 'facebook', displayName: 'Facebook', characterLimit: 63206, hashtagLimit: 30, mediaTypes: ['text', 'image'], supportsLinks: true };
+  assert.deepEqual(validateAgainstRule({ type: 'link', caption: 'Hi there', link: 'https://example.org', hashtags: [] }, rule), []);
+  assert.equal(normalizeComposerType('link'), 'link');
 });
-
 test('composer submission warnings cover required media, links, size and aspect ratio', async () => {
   const originalFindOne = PlatformContentRule.findOne;
   PlatformContentRule.findOne = () => null;

@@ -25,6 +25,8 @@ const subscriptionSchema = new mongoose.Schema(
     currentPeriodStart: { type: Date },
     currentPeriodEnd: { type: Date },
     cancelAtPeriodEnd: { type: Boolean, default: false },
+    creditsUsed: { type: Number, default: 0, min: 0 },
+    activationKey: { type: String, trim: true },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
@@ -32,5 +34,6 @@ const subscriptionSchema = new mongoose.Schema(
 
 subscriptionSchema.index({ user: 1, status: 1 });
 subscriptionSchema.index({ planRef: 1, status: 1 });
+subscriptionSchema.index({ activationKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

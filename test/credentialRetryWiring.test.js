@@ -28,7 +28,8 @@ test('credential crypto failures are permanent and require reconnect', () => {
 test('development uses a persistent token key and rotations accept previous keys', () => {
   const env = source('src/config/env.js');
   const crypto = source('src/services/tokenCryptoService.js');
-  assert.match(env, /\.autobrand-token-key/);
+  assert.match(env, /\.autobrand-ai/);
+  assert.match(env, /token-encryption-key/);
   assert.match(env, /TOKEN_ENCRYPTION_KEY_PREVIOUS/);
   assert.match(crypto, /v2/);
   assert.match(crypto, /env\.tokenEncryptionKeyPrevious/);

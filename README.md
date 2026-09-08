@@ -8,7 +8,7 @@ This build keeps the existing architecture and adds the production-readiness lay
 
 - Node.js 24 LTS (the project pins `24.x` for deterministic hosting builds)
 - MongoDB
-- Optional Redis for future BullMQ workers and cache-backed jobs
+- Optional Redis for faster BullMQ dispatch and rate-limit counters; MongoDB remains the shared fallback
 - Optional Cloudinary account for uploads
 - OAuth/API apps for the social platforms you want to enable
 
@@ -33,8 +33,11 @@ CSRF_SECRET=replace_with_a_long_random_value
 
 SUPERADMIN_NAME=Super Admin
 SUPERADMIN_EMAIL=admin@example.com
-SUPERADMIN_PASSWORD=ChangeThisPassword123!
+SUPERADMIN_PASSWORD=<choose-a-strong-unique-password>
+SUPERADMIN_ALLOW_PROMOTION=false
 ```
+
+Production seeding never falls back to a built-in superadmin email/password. Creating the superadmin requires an explicit strong `SUPERADMIN_PASSWORD`; promoting an existing non-superadmin account additionally requires `SUPERADMIN_ALLOW_PROMOTION=true`.
 
 Then seed the database and start the app:
 
@@ -49,6 +52,11 @@ Open:
 http://localhost:3200
 http://localhost:3200/health
 ```
+
+
+### Existing MongoDB databases upgraded from older builds
+
+v1.0.5 can safely upgrade the legacy non-unique Payment `provider + reference` index that caused `IndexKeySpecsConflict` during startup. AutoBrand first checks for duplicate financial references. If none exist, startup replaces the old index with `uniq_payment_provider_reference` automatically. If duplicates exist, it stops without deleting financial data; run `npm run migrate:production` to inspect `paymentReferenceUniqueness`, back up the database, and resolve the duplicate payments through finance review before applying the migration.
 
 ## Required scripts
 
@@ -81,7 +89,8 @@ Feature navigation is calculated from the signed-in user role plus the current `
 Plans are now stored in MongoDB through `SubscriptionPlan`. The default matrix includes:
 
 - Free Trial
-- Starter
+- Manual Publisher (US$10 for 1 month of access, zero generative-AI credits; no automatic renewal)
+- AI Starter (US$10 for 1 month of access, generative AI included; no automatic renewal)
 - Growth
 - Pro
 - Business
@@ -146,7 +155,6 @@ Controllers should route AI work through `src/services/ai/ai.service.js`. Provid
 
 Supported provider slugs:
 
-- local
 - openai
 - gemini
 - deepseek
@@ -190,11 +198,11 @@ STABILITY_API_KEY=
 FAL_KEY=
 ```
 
-The local provider is a deterministic fallback for development and safe failure handling. Hosted adapters now make real HTTP/API calls when the matching API key is configured, and they fail with safe messages when a provider is missing or unavailable.
+Generative AI routing is fail-closed. Only hosted provider adapters are valid AI providers. Missing credentials, unsupported providers, and provider failures remain failures; they are never replaced by deterministic local content. Sharp/FFmpeg template rendering belongs to the separate Manual Publisher/media toolchain and consumes no AI credits.
 
 ## Social platform APIs
 
-Existing social integration environment placeholders remain in `.env.example` and `INTEGRATION_SETUP.md`.
+Social integration environment variables and callback paths are documented in `.env.example` and `docs/INTEGRATION-SETUP.md`.
 
 Supported account platforms in this project path:
 
@@ -332,18 +340,18 @@ npm run repair:publishing
 
 ### Publishing credential stability
 
-Social access tokens are encrypted at rest. Keep `TOKEN_ENCRYPTION_KEY` stable across restarts. Local development automatically persists a missing key to `.autobrand-token-key`, while production requires an explicit key. Run `npm run repair:publishing` to stop old retry loops and identify accounts that need reconnection.
+Social access tokens are encrypted at rest. Keep `TOKEN_ENCRYPTION_KEY` stable across restarts. Local development automatically persists a missing key outside the repository at `~/.autobrand-ai/token-encryption-key` by default, while production requires an explicit key. Run `npm run repair:publishing` to stop old retry loops and identify accounts that need reconnection.
 
 ## Smart publishing destinations and resilient runtime (v7)
 
 Post, campaign, Growth Studio, calendar and handoff forms now use a shared live-destination catalogue. Disconnected, removed, expired, permission-blocked, mock and token-decryption-failed social records remain visible only in Social management and are excluded from publishing forms. Campaigns and generated posts store exact account IDs, and disconnect/removal reconciles existing scheduled content automatically.
 
-See `SMART_PLATFORM_INTELLIGENCE_REPORT_2026-07-23.md` for destination behavior and `PLATFORM_CONNECTIVITY_RECOVERY_REPORT_2026-07-23.md` for MongoDB/Redis resilience and recovery.
+See `docs/SOCIAL-INTEGRATIONS.md`, `docs/PUBLISHING-PIPELINE.md`, `docs/BACKGROUND-WORKERS.md`, and `docs/INCIDENT-RECOVERY.md` for destination behavior and runtime recovery.
 
 
 ## Connectivity diagnostics
 
-Redis is optional. Leave `REDIS_ENABLED=false`, `REDIS_URL=` and `REDIS_HOST=` for the built-in MongoDB publishing fallback. A Redis URL enables Redis automatically; host/port mode requires `REDIS_ENABLED=true` and a real Redis server.
+Redis is optional. Leave `REDIS_ENABLED=false`, `REDIS_URL=` and `REDIS_HOST=` to use MongoDB as the shared publishing and rate-limit fallback. A Redis URL enables Redis automatically; host/port mode requires `REDIS_ENABLED=true` and a real Redis server. Production rate limiting never falls back to per-process memory.
 
 Run this before debugging workers or publishing:
 
@@ -369,3 +377,7 @@ ALLOW_DEVELOPMENT_EMAIL_LINKS=false
 
 In this mode, signup and normal platform use remain available. Password reset emails, verification emails, login-email changes, and team invitation emails show a controlled unavailable message rather than crashing the server. To require email verification, configure complete SMTP credentials and switch to `EMAIL_DELIVERY_MODE=required` with `EMAIL_VERIFICATION_REQUIRED=true`.
 
+
+## Production documentation
+
+The complete architecture, onboarding/plan journey, security, Pesapal billing, workspace RBAC, Manual Publisher, publishing, analytics, workers, migration, deployment and incident runbooks live in [`docs/README.md`](docs/README.md). Treat those documents and the production checklist as part of every release.

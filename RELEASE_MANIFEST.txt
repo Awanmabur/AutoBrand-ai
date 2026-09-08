@@ -1,0 +1,45 @@
+AutoBrand AI production release
+Version: 1.0.5
+Release date: 2026-09-08
+
+Verification on cumulative source tree:
+- JavaScript syntax: PASS (244 files)
+- Automated tests: 258 total / 257 passed / 0 failed / 1 skipped
+- Skip reason: recovered development node_modules contains Windows Sharp binaries while verification host is Linux; release excludes node_modules and production runtime preflight requires fresh Linux optional dependencies.
+- Static security gate: PASS
+- Production dependency audit (offline, omit dev): 0 vulnerabilities
+- Source production preflight: PASS
+- Release secret/mock scan: PASS
+
+v1.0.5 MongoDB index compatibility:
+- Mongoose autoIndex is disabled in all environments.
+- Central index manager owns startup index creation/upgrades.
+- Legacy non-unique Payment provider+reference index is detected before Model.createIndexes().
+- Duplicate Payment provider/reference groups are checked first.
+- Clean legacy index is replaced with unique `uniq_payment_provider_reference`.
+- Duplicate financial references fail closed; no payment rows are automatically deleted/merged.
+- Production migration reports paymentReferenceUniqueness before any apply-mode mutation.
+
+Plan/billing/onboarding contract retained from v1.0.4:
+- Free Trial: US$0 / 7 days / no payment / no automatic paid conversion.
+- Manual Publisher: US$10 / 1 month of access / zero generative AI.
+- AI Starter: US$10 / 1 month of access / generative AI included according to plan limits/credits.
+- Current Pesapal billing is manual per access period; no automatic renewal or automatic next-period charge is promised.
+- Usage quotas follow subscription currentPeriodStart -> currentPeriodEnd.
+- Trial signup enters welcome/workspace setup directly; paid signup enters exact plan review/Pesapal and reaches welcome only after verified payment.
+
+Excluded from release:
+- node_modules
+- .git
+- .env and local secret keys
+- local uploads/generated runtime files
+- logs/caches/coverage/tmp
+- nested archives
+
+Production upgrade requirement:
+1. npm ci --include=optional
+2. npm run migrate:production
+3. Back up the database and confirm paymentReferenceUniqueness.duplicateGroups = 0.
+4. npm run migrate:production:apply
+5. NODE_ENV=production npm run preflight:runtime
+6. Start web/workers only after the migration and runtime preflight pass.

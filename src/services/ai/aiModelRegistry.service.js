@@ -14,8 +14,7 @@ const DEFAULT_MODEL_REGISTRY = {
   mistral: { text: ['mistral-large-latest', 'mistral-small-latest'] },
   replicate: { image: ['black-forest-labs/flux-schnell'], video: ['default-video'] },
   stability: { image: ['stable-image-core'] },
-  fal: { image: ['fal-ai/flux/schnell'], video: ['fal-ai/video'] },
-  local: { text: ['local-fast', 'local-fallback'], image: ['local-image'], video: ['local-storyboard'] }
+  fal: { image: ['fal-ai/flux/schnell'], video: ['fal-ai/video'] }
 };
 
 function taskGroup(taskType = 'text_generation') {

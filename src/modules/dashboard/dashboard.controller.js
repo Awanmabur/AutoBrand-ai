@@ -9,6 +9,7 @@ const Approval = require('../../models/Approval');
 const Notification = require('../../models/Notification');
 const Media = require('../../models/Media');
 const Analytics = require('../../models/Analytics');
+const AnalyticsSyncJob = require('../../models/AnalyticsSyncJob');
 const GrowthAsset = require('../../models/GrowthAsset');
 const TeamMember = require('../../models/TeamMember');
 const Subscription = require('../../models/Subscription');
@@ -21,10 +22,11 @@ const ApiLog = require('../../models/ApiLog');
 const AuditLog = require('../../models/AuditLog');
 const UsageLog = require('../../models/UsageLog');
 const { getCurrentPlan, plainPlan } = require('../../services/subscription.service');
+const { getDashboardEntitlementPlan } = require('../../services/subscription/workspaceEntitlement.service');
 const { buildFeatureAccess, resolveDashboardPageForAccess } = require('../../services/subscription/featureAccess.service');
 const { buildUsageDashboard } = require('../../services/usage.service');
 const { getPublicPricingCards } = require('../../services/pricing.service');
-const { updateBrandPerformanceMemoryForOwner } = require('../../services/analyticsMemoryService');
+const { decoratePlanForDisplay, formatMoney } = require('../../services/planDisplay.service');
 const { buildBrandChecklist } = require('../../services/brandBrain/brandScore.service');
 const { suggestBestTimes } = require('../../services/scheduling/bestTime.service');
 const { capabilityList, evaluateSocialAccountHealth } = require('../../services/social/socialAccountHealth.service');
@@ -32,6 +34,8 @@ const { PLATFORM_CATALOG, buildComposerDestinationCatalog, isRealSocialAccount }
 const { buildAnalyticsDashboard } = require('../../services/analytics/analyticsDashboard.service');
 const { defaultMessage, defaultTitle } = require('../../utils/errorResponse');
 const env = require('../../config/env');
+const { accessibleBrandIds } = require('../../services/authorization/brandAccess.service');
+const { workspaceDashboardPages } = require('../../services/authorization/dashboardAccess.service');
 
 const DASHBOARD_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TIME_ZONE || process.env.TZ || 'Africa/Kampala';
 
@@ -47,6 +51,10 @@ function titleCase(value) {
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
     .trim();
+}
+
+function displayPlanName(slug, rawName = '') {
+  return decoratePlanForDisplay({ slug, name: rawName || titleCase(slug) }).name || rawName || titleCase(slug);
 }
 
 function initials(name = '') {
@@ -131,7 +139,6 @@ const PAGE_ALIASES = {
   'auto-handoff': 'approvals',
   handoff: 'approvals',
   integrations: 'social',
-  whatsapp: 'social',
   security: 'settings',
   billings: 'billing',
   'admin-plans': 'plans',
@@ -869,6 +876,7 @@ function postCard(post, options = {}) {
 function buildDashboardData({
   user,
   brands,
+  archivedBrands = [],
   campaigns,
   socialAccounts,
   approvals,
@@ -925,7 +933,8 @@ function buildDashboardData({
   socialAccounts = allSocialAccounts;
   const userName = user.name || user.email || 'User';
   const plan = currentPlan?.slug || user.plan || 'free-trial';
-  const planName = currentPlan?.name || titleCase(plan);
+  const currentPlanDisplay = currentPlan ? decoratePlanForDisplay(currentPlan) : null;
+  const planName = currentPlanDisplay?.name || currentPlan?.name || titleCase(plan);
   const normalizedFeatureAccess = featureAccess || buildFeatureAccess({ user, plan: currentPlan });
   const primaryBrand = brands[0];
   const activeCampaigns = campaignStatus.active || 0;
@@ -942,6 +951,8 @@ function buildDashboardData({
   const videoJobTotal = sum(Object.values(videoStatus));
   const generatedAssets = sum(Object.values(postTypes)) + mediaTotal + videoJobTotal;
   const creditUsage = sum(videoJobs.map((job) => job.costCredits)) + generatedAssets;
+  const activeSubscription = subscriptions.find((subscription) => ['active', 'trialing'].includes(subscription.status)) || subscriptions[0] || null;
+  const subscriptionCreditsUsed = Number(activeSubscription?.creditsUsed || 0);
   const productCount = sum(brands.map((brand) => (brand.products?.length || 0) + (brand.services?.length || 0)));
   const offerCount = sum(brands.map((brand) => brand.offers?.length || 0));
   const ruleCount = sum(brands.map((brand) => brand.brandRules?.length || 0));
@@ -1028,7 +1039,7 @@ function buildDashboardData({
         Captions: (campaign.aiPlan?.captions || []).map((item) => [item.day ? `Day ${item.day}` : '', item.platform, item.caption].filter(Boolean).join(' | ')),
         'Creative ideas': (campaign.aiPlan?.creativeIdeas || []).map((item) => [item.platform, item.format, item.title, item.description].filter(Boolean).join(' | ')),
         'Video scripts': (campaign.aiPlan?.videoScripts || []).map((item) => [item.platform, item.title, item.hook, item.cta].filter(Boolean).join(' | ')),
-        'WhatsApp messages': (campaign.aiPlan?.whatsappMessages || []).map((item) => [item.title, item.message].filter(Boolean).join(' | ')),
+        'WhatsApp handoff copy (not direct publishing)': (campaign.aiPlan?.whatsappMessages || []).map((item) => [item.title, item.message].filter(Boolean).join(' | ')),
         '7-day plan': (campaign.aiPlan?.weeklyPlan || []).map((idea) => [idea.day ? `Day ${idea.day}` : '', idea.platform, idea.title].filter(Boolean).join(' | ')),
         '30-day plan': (campaign.aiPlan?.monthlyPlan || []).map((idea) => [idea.day ? `Day ${idea.day}` : '', idea.platform, idea.title].filter(Boolean).join(' | ')),
         'Post ideas': (campaign.aiPlan?.postIdeas || []).map((idea) => [idea.day ? `Day ${idea.day}` : '', idea.platform, idea.title, idea.caption].filter(Boolean).join(' | ')),
@@ -1066,6 +1077,7 @@ function buildDashboardData({
           { name: 'brandColors', label: 'Brand colors', type: 'textarea', value: listText(brand.brandColors), rows: 3, full: true },
           { name: 'blockedWords', label: 'Blocked words', type: 'textarea', value: listText(brand.blockedWords), rows: 3, full: true }
         ],
+        archiveAction: recordId(brand) ? `/dashboard/actions/brands/${recordId(brand)}/archive` : '',
         mediaUrl: brand.logo || '',
         mediaType: brand.logo ? 'image' : '',
         details: {
@@ -1096,6 +1108,32 @@ function buildDashboardData({
       }
     );
   });
+  const archivedBrandCards = archivedBrands.map((brand) => card(
+    brand.name,
+    truncate(brand.description || brand.targetAudience || `${brand.businessType || 'Brand'} profile archived from active publishing.`),
+    'Archived',
+    {
+      id: recordId(brand),
+      kind: 'brand',
+      href: '/dashboard/brand-brain',
+      actions: recordId(brand) ? [
+        { label: 'Restore brand', action: `/dashboard/actions/brands/${recordId(brand)}/restore`, method: 'post', kind: 'restore' }
+      ] : [],
+      mediaUrl: brand.logo || '',
+      mediaType: brand.logo ? 'image' : '',
+      details: {
+        Status: 'Archived',
+        'Business type': brand.businessType,
+        Industry: brand.industry,
+        Description: brand.description,
+        Website: brand.website,
+        Location: brand.location,
+        'Auto posting': 'Disabled while archived',
+        'Updated at': brand.updatedAt ? formatDateTime(brand.updatedAt) : ''
+      }
+    }
+  ));
+
   const adminBrandCards = platformAdminView
     ? adminBrands.map((brand) => {
       const checklist = buildBrandChecklist(brand);
@@ -1157,7 +1195,7 @@ function buildDashboardData({
       editFields: [
         { name: 'accountName', label: 'Account name', type: 'text', value: account.accountName || '', required: true },
         { name: 'accountId', label: 'Account ID', type: 'text', value: account.accountId || '' },
-        { name: 'status', label: 'Status', type: 'select', value: account.status || 'connected', options: ['connected', 'mock', 'needs_reconnect', 'expired', 'failed', 'disconnected'] },
+        { name: 'status', label: 'Status', type: 'select', value: account.status || 'connected', options: ['connected', 'needs_reconnect', 'expired', 'failed', 'disconnected'] },
         { name: 'permissions', label: 'Permissions', type: 'text', value: (account.permissions || []).join(', ') },
         { name: 'accessToken', label: 'New access token', type: 'password', value: '', placeholder: 'Leave blank to keep current token' },
         { name: 'refreshToken', label: 'New refresh token', type: 'password', value: '', placeholder: 'Optional' }
@@ -1440,7 +1478,7 @@ function buildDashboardData({
           Name: workspaceUser.name,
           Email: workspaceUser.email,
           Role: titleCase(workspaceUser.role),
-          Plan: titleCase(workspaceUser.plan),
+          Plan: displayPlanName(workspaceUser.plan),
           Status: titleCase(workspaceUser.status),
           Verified: workspaceUser.isVerified ? 'Yes' : 'No',
           'Pending email': workspaceUser.pendingEmail,
@@ -1454,9 +1492,14 @@ function buildDashboardData({
 
   const subscriptionRecords = platformAdminView && adminSubscriptions.length ? adminSubscriptions : subscriptions;
   const paymentRecords = platformAdminView && adminPayments.length ? adminPayments : payments;
-  const subscriptionCards = subscriptionRecords.map((subscription) => card(
-    `${titleCase(subscription.plan)} subscription`,
-    `${subscription.user?.email ? `${subscription.user.email} · ` : ''}${titleCase(subscription.provider || 'pesapal')} · ${subscription.currentPeriodEnd ? `renews ${formatDate(subscription.currentPeriodEnd)}` : 'period not set'}`,
+  const subscriptionCards = subscriptionRecords.map((subscription) => {
+    const isTrialSubscription = subscription.status === 'trialing' || subscription.provider === 'free';
+    const periodEndText = subscription.currentPeriodEnd
+      ? (isTrialSubscription ? `trial ends ${formatDate(subscription.currentPeriodEnd)}` : `access through ${formatDate(subscription.currentPeriodEnd)} · pay again to continue`)
+      : 'access period not set';
+    return card(
+    `${displayPlanName(subscription.plan, subscription.planRef?.name)} subscription`,
+    `${subscription.user?.email ? `${subscription.user.email} · ` : ''}${titleCase(subscription.provider || 'pesapal')} · ${periodEndText}`,
     titleCase(subscription.status || 'active'),
     {
       id: recordId(subscription),
@@ -1465,19 +1508,21 @@ function buildDashboardData({
       editHref: '/dashboard/billing',
       details: {
         User: subscription.user?.email || entityId(subscription.user),
-        Plan: titleCase(subscription.plan),
+        Plan: displayPlanName(subscription.plan, subscription.planRef?.name),
         'Plan record': subscription.planRef?.name || entityId(subscription.planRef),
         Provider: titleCase(subscription.provider),
         Status: titleCase(subscription.status),
-        'Current period start': subscription.currentPeriodStart ? formatDateTime(subscription.currentPeriodStart) : '',
-        'Current period end': subscription.currentPeriodEnd ? formatDateTime(subscription.currentPeriodEnd) : '',
-        'Cancel at period end': subscription.cancelAtPeriodEnd ? 'Yes' : 'No',
+        'Access period start': subscription.currentPeriodStart ? formatDateTime(subscription.currentPeriodStart) : '',
+        'Access through': subscription.currentPeriodEnd ? formatDateTime(subscription.currentPeriodEnd) : '',
+        'Automatic renewal': isTrialSubscription ? 'No automatic paid conversion' : 'No automatic renewal or automatic charge',
+        'Next payment': isTrialSubscription ? 'Choose and pay for a paid plan after the trial if you want to continue' : 'Pay again through Pesapal after this access period if you want to continue',
         'Updated at': subscription.updatedAt ? formatDateTime(subscription.updatedAt) : ''
       }
     }
-  ));
+  );
+  });
   const paymentCards = paymentRecords.map((payment) => card(
-    `${payment.currency || 'USD'} ${Number(payment.amount || 0).toLocaleString()}`,
+    formatMoney(payment.amount, payment.currency || 'USD', { decimals: true }),
     `${payment.user?.email ? `${payment.user.email} · ` : ''}${titleCase(payment.provider || 'payment')} · ${payment.reference || 'no reference'} · ${formatDate(payment.createdAt)}`,
     titleCase(payment.status || 'pending'),
     {
@@ -1485,14 +1530,14 @@ function buildDashboardData({
       kind: 'payment',
       href: '/dashboard/billing',
       editHref: '/dashboard/billing',
-      actions: payment.status !== 'paid' && payment.checkoutUrl
+      actions: payment.status === 'pending' && payment.checkoutUrl
         ? [{ label: 'Open Pesapal checkout', href: payment.checkoutUrl, kind: 'billing' }]
         : [],
       details: {
         User: payment.user?.email || entityId(payment.user),
         Provider: titleCase(payment.provider),
-        Amount: Number(payment.amount || 0).toLocaleString(),
-        Currency: payment.currency,
+        Amount: formatMoney(payment.amount, payment.currency || 'USD', { decimals: true }),
+        Currency: payment.currency || 'USD',
         Status: titleCase(payment.status),
         Reference: payment.reference,
         Metadata: payment.metadata,
@@ -1706,9 +1751,14 @@ function buildDashboardData({
     const id = recordId(planRecord);
     const subscriptionCount = planSubscriptionCounts[String(id)] || 0;
     const price = Number(planRecord.price || 0);
+    const planMoneyLabel = planRecord.billingInterval === 'trial'
+      ? `${Number(planRecord.trialDays || 7)}-day trial · ${formatMoney(0, planRecord.currency || 'USD')}`
+      : planRecord.billingInterval === 'one_time'
+        ? `${formatMoney(price, planRecord.currency || 'USD', { decimals: price % 1 !== 0 })} · one-time payment`
+        : `${formatMoney(price, planRecord.currency || 'USD', { decimals: price % 1 !== 0 })} · ${planRecord.billingInterval === 'year' ? '1-year access' : '1-month access'}`;
     return card(
-      planRecord.name || titleCase(planRecord.slug || 'Plan'),
-      `${planRecord.currency || 'USD'} ${price.toFixed(price % 1 ? 2 : 0)} / ${planRecord.billingInterval || 'month'} · ${subscriptionCount} subscriber${subscriptionCount === 1 ? '' : 's'}`,
+      displayPlanName(planRecord.slug, planRecord.name),
+      `${planMoneyLabel} · ${subscriptionCount} subscriber${subscriptionCount === 1 ? '' : 's'}`,
       planRecord.deletedAt ? 'Deleted' : planRecord.isActive ? 'Active' : 'Inactive',
       {
         id,
@@ -1719,7 +1769,7 @@ function buildDashboardData({
         actionLabel: 'View plan',
         details: {
           Slug: planRecord.slug,
-          Price: `${planRecord.currency || 'USD'} ${planRecord.price || 0}`,
+          Price: formatMoney(planRecord.price, planRecord.currency || 'USD', { decimals: Number(planRecord.price || 0) % 1 !== 0 }),
           Interval: titleCase(planRecord.billingInterval || 'month'),
           Public: planRecord.isPublic ? 'Yes' : 'No',
           Popular: planRecord.isPopular ? 'Yes' : 'No',
@@ -1951,6 +2001,7 @@ function buildDashboardData({
         deletedAt: planRecord.deletedAt || null,
         sortOrder: Number(planRecord.sortOrder || 100),
         queuePriority: Number(planRecord.queuePriority || 5),
+        includedCredits: Number(planRecord.includedCredits || 0),
         featureList: planRecord.featureList || [],
         limits: planRecord.limits || {},
         features: planRecord.features || {},
@@ -1966,9 +2017,27 @@ function buildDashboardData({
         slug: planRecord.slug || '',
         description: planRecord.description || '',
         price: Number(planRecord.price || 0),
+        currency: planRecord.currency || 'USD',
+        currencyLabel: planRecord.currencyLabel || '',
         priceLabel: planRecord.priceLabel || '',
+        recurringPriceLabel: planRecord.recurringPriceLabel || planRecord.priceLabel || '',
         intervalLabel: planRecord.intervalLabel || '',
         billingInterval: planRecord.billingInterval || '',
+        billingSummary: planRecord.billingSummary || '',
+        paymentSummary: planRecord.paymentSummary || '',
+        paymentCadenceLabel: planRecord.paymentCadenceLabel || '',
+        autoRenewalLabel: planRecord.autoRenewalLabel || '',
+        accessPeriodLabel: planRecord.accessPeriodLabel || '',
+        localCurrencyNote: planRecord.localCurrencyNote || '',
+        usageResetLabel: planRecord.usageResetLabel || '',
+        includedCredits: Number(planRecord.includedCredits || 0),
+        aiCreditsLabel: planRecord.aiCreditsLabel || '',
+        aiModeLabel: planRecord.aiModeLabel || '',
+        family: planRecord.family || '',
+        familyLabel: planRecord.familyLabel || '',
+        workflowLabel: planRecord.workflowLabel || '',
+        bestFor: planRecord.bestFor || '',
+        outcome: planRecord.outcome || '',
         isTrial: Boolean(planRecord.isTrial),
         isPopular: Boolean(planRecord.isPopular),
         checkoutUrl: planRecord.checkoutUrl || `/dashboard/billing/checkout/${encodeURIComponent(planRecord.slug || '')}`,
@@ -1986,11 +2055,17 @@ function buildDashboardData({
       pendingEmail: user.pendingEmail || '',
       avatar: user.avatar || '',
       isVerified: Boolean(user.isVerified),
+      googleLinked: Boolean(user.googleId),
       emailVerificationRequired: Boolean(env.emailVerificationRequired),
       emailDeliveryEnabled: Boolean(env.emailDeliveryEnabled),
       status: user.status || 'active',
       accountDeletionStatus: user.accountDeletionStatus || 'none',
       accountDeletionRequestedAt: user.accountDeletionRequestedAt || '',
+      accountDeletionScheduledFor: user.accountDeletionScheduledFor || '',
+      accountDeletionProcessingAt: user.accountDeletionProcessingAt || '',
+      accountDeletionCompletedAt: user.accountDeletionCompletedAt || '',
+      accountDeletionCancelledAt: user.accountDeletionCancelledAt || '',
+      accountDeletionError: user.accountDeletionError || '',
       role: titleCase(user.role || 'brand_owner'),
       plan: planName,
       planSlug: plan
@@ -2000,7 +2075,7 @@ function buildDashboardData({
       subtitle: `${planName} plan · ${brands.length} active ${brands.length === 1 ? 'brand' : 'brands'}`,
       primaryBrandName: primaryBrand?.name || 'Your first brand'
     },
-    currentPlan: currentPlan ? plainPlan(currentPlan) : null,
+    currentPlan: currentPlanDisplay || (currentPlan ? plainPlan(currentPlan) : null),
     usageDashboard,
     featureAccess: normalizedFeatureAccess,
     roleAccess: {
@@ -2103,14 +2178,14 @@ function buildDashboardData({
       },
       'brand-brain': {
         stats: [
-          [compactNumber(brands.length), 'Brand kits', 'Saved profiles'],
+          [compactNumber(brands.length), 'Active brands', 'Publishing workspaces'],
           [`${brandCompletionAverage}%`, 'Avg completion', 'Checklist'],
           [compactNumber(productCount), 'Products/services', 'Offer library'],
-          [compactNumber(proofCount), 'Proof points', 'Testimonials']
+          [compactNumber(archivedBrands.length), 'Archived', 'Restorable']
         ],
-        cards: brandCards,
-        rows: brandCards,
-        tableRows: brandCards,
+        cards: [...brandCards, ...archivedBrandCards],
+        rows: [...brandCards, ...archivedBrandCards],
+        tableRows: [...brandCards, ...archivedBrandCards],
         form: true
       },
       'content-library': {
@@ -2293,7 +2368,7 @@ function buildDashboardData({
       },
       analytics: {
         stats: [
-          [compactNumber(analyticsTotalMetrics.impressions), 'Impressions', analyticsView.hasMockData ? 'Live + dev data' : 'Synced analytics'],
+          [compactNumber(analyticsTotalMetrics.impressions), 'Impressions', analyticsView.awaitingSyncCount ? `${analyticsView.awaitingSyncCount} awaiting provider sync` : 'Provider synced'],
           [compactNumber(analyticsTotalMetrics.reach), 'Reach', 'Audience'],
           [analyticsTotalMetrics.engagementRate ? `${Number(analyticsTotalMetrics.engagementRate).toFixed(2)}%` : '0%', 'Engagement', 'Average'],
           [titleCase(analyticsBestPlatform), 'Best platform', analyticsView.bestTime ? `Best time ${analyticsView.bestTime}` : 'By engagement']
@@ -2335,10 +2410,11 @@ function buildDashboardData({
       billing: {
         stats: [
           [planName, 'Current plan', user.status || 'Active'],
-          [compactNumber(creditUsage), 'Credits used', 'Estimated'],
-          [compactNumber(payments.length), 'Payments', 'Recorded'],
-          [compactNumber(subscriptions.length), 'Subscriptions', 'Recorded']
+          [compactNumber(subscriptionCreditsUsed), 'AI credits used', 'Current access period'],
+          [compactNumber(payments.length), 'Pesapal payments', 'Recorded'],
+          [usageDashboard?.period?.end ? formatDate(usageDashboard.period.end) : '—', 'Usage through', usageDashboard?.period?.source === 'trial' ? 'Trial period' : 'Access period']
         ],
+        period: usageDashboard?.period || null,
         cards: billingCards,
         rows: billingCards,
         tableRows: billingCards,
@@ -2425,10 +2501,17 @@ function buildDashboardData({
 
 async function index(req, res, next) {
   try {
-    const currentPlan = await getCurrentPlan(req.user);
-    const featureAccess = buildFeatureAccess({ user: req.user, plan: currentPlan });
-    const requestedPage = resolveDashboardPageForAccess({ page: req.params.page, featureAccess });
     const userId = req.user._id;
+    const [visibleBrandIds, allVisibleBrandIds] = await Promise.all([
+      accessibleBrandIds(req.user, 'brand.view'),
+      accessibleBrandIds(req.user, 'brand.view', { status: null })
+    ]);
+    const [currentPlan, roleAllowedPages] = await Promise.all([
+      getDashboardEntitlementPlan(req.user, visibleBrandIds),
+      workspaceDashboardPages(req.user)
+    ]);
+    const featureAccess = buildFeatureAccess({ user: req.user, plan: currentPlan, roleAllowedPages });
+    const requestedPage = resolveDashboardPageForAccess({ page: req.params.page, featureAccess });
     const selectedCalendarMonth = parseMonthValue(req.query.month);
     const requestedCalendarView = String(req.query.view || 'month').toLowerCase();
     const calendarView = ['month', 'week', 'day', 'list'].includes(requestedCalendarView) ? requestedCalendarView : 'month';
@@ -2440,7 +2523,13 @@ async function index(req, res, next) {
     const shouldLoadAdminPlans = shouldLoadPlans || canViewPlatformAdmin;
     const recentPostLimit = requestedPage === 'content-library' ? 48 : 12;
 
-    await updateBrandPerformanceMemoryForOwner(userId);
+
+    const contentBrandIds = await accessibleBrandIds(req.user, 'content.view');
+    const archivedBrands = allVisibleBrandIds.length
+      ? await Brand.find({ _id: { $in: allVisibleBrandIds }, status: 'archived' }).sort({ updatedAt: -1 }).limit(24).lean()
+      : [];
+    const visibleBrandFilter = { $in: visibleBrandIds };
+    const contentBrandFilter = { $in: contentBrandIds };
 
     const [
       brands,
@@ -2486,27 +2575,27 @@ async function index(req, res, next) {
       planCountRows,
       publicPricingPlans
     ] = await Promise.all([
-      Brand.find({ owner: userId, status: 'active' }).sort({ updatedAt: -1 }).limit(12).lean(),
-      Campaign.find({ createdBy: userId, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
-      SocialAccount.find({ owner: userId }).populate('brand').sort({ updatedAt: -1 }).limit(200).lean(),
-      Approval.find({ requestedBy: userId }).populate({ path: 'post', populate: [{ path: 'brand' }, { path: 'media' }, { path: 'targetAccounts' }] }).populate({ path: 'campaign', populate: { path: 'brand' } }).sort({ updatedAt: -1 }).limit(12).lean(),
-      Post.find({ createdBy: userId }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(recentPostLimit).lean(),
-      Post.find({ createdBy: userId, status: 'scheduled' }).populate('brand').populate('media').populate('targetAccounts').sort({ scheduledAt: 1 }).limit(12).lean(),
-      Media.find({ uploadedBy: userId, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(80).lean(),
-      AiVideoJob.find({ createdBy: userId }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
+      Brand.find({ _id: visibleBrandFilter, status: 'active' }).sort({ updatedAt: -1 }).limit(12).lean(),
+      Campaign.find({ brand: contentBrandFilter, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
+      SocialAccount.find({ brand: visibleBrandFilter }).populate('brand').sort({ updatedAt: -1 }).limit(200).lean(),
+      Approval.find({ brand: contentBrandFilter }).populate({ path: 'post', populate: [{ path: 'brand' }, { path: 'media' }, { path: 'targetAccounts' }] }).populate({ path: 'campaign', populate: { path: 'brand' } }).sort({ updatedAt: -1 }).limit(12).lean(),
+      Post.find({ brand: contentBrandFilter }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(recentPostLimit).lean(),
+      Post.find({ brand: contentBrandFilter, status: 'scheduled' }).populate('brand').populate('media').populate('targetAccounts').sort({ scheduledAt: 1 }).limit(12).lean(),
+      Media.find({ brand: contentBrandFilter, status: { $ne: 'archived' } }).populate('brand').sort({ updatedAt: -1 }).limit(80).lean(),
+      AiVideoJob.find({ brand: contentBrandFilter }).populate('brand').sort({ updatedAt: -1 }).limit(12).lean(),
       Notification.countDocuments({ user: userId, readAt: null }),
-      Post.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Post.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$type', count: { $sum: 1 } } }]),
-      Post.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$platform', count: { $sum: 1 } } }]),
-      SocialAccount.aggregate([{ $match: { owner: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Campaign.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Media.aggregate([{ $match: { uploadedBy: userId, status: { $ne: 'archived' } } }, { $group: { _id: '$fileType', count: { $sum: 1 } } }]),
-      AiVideoJob.aggregate([{ $match: { createdBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Approval.aggregate([{ $match: { requestedBy: userId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Post.aggregate([{ $match: { brand: contentBrandFilter } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Post.aggregate([{ $match: { brand: contentBrandFilter } }, { $group: { _id: '$type', count: { $sum: 1 } } }]),
+      Post.aggregate([{ $match: { brand: contentBrandFilter } }, { $group: { _id: '$platform', count: { $sum: 1 } } }]),
+      SocialAccount.aggregate([{ $match: { brand: visibleBrandFilter } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Campaign.aggregate([{ $match: { brand: contentBrandFilter } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Media.aggregate([{ $match: { brand: contentBrandFilter, status: { $ne: 'archived' } } }, { $group: { _id: '$fileType', count: { $sum: 1 } } }]),
+      AiVideoJob.aggregate([{ $match: { brand: contentBrandFilter } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Approval.aggregate([{ $match: { brand: contentBrandFilter } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Notification.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
-      GrowthAsset.find({ owner: userId }).populate('brand').sort({ createdAt: -1 }).limit(12).lean(),
+      GrowthAsset.find({ brand: contentBrandFilter }).populate('brand').sort({ createdAt: -1 }).limit(12).lean(),
       Post.find({
-        createdBy: userId,
+        brand: contentBrandFilter,
         status: { $in: ['scheduled', 'publishing', 'published', 'failed', 'cancelled'] },
         $or: [
           { scheduledAt: { $gte: calendarStart, $lte: calendarEnd } },
@@ -2520,15 +2609,15 @@ async function index(req, res, next) {
         .sort({ scheduledAt: 1, publishedAt: 1, createdAt: -1 })
         .limit(240)
         .lean(),
-      TeamMember.find({ $or: [{ invitedBy: userId }, { user: userId }] }).populate('brand').populate('user').sort({ updatedAt: -1 }).limit(24).lean(),
+      TeamMember.find({ brand: visibleBrandFilter, status: { $ne: 'removed' } }).populate('brand').populate('user').sort({ updatedAt: -1 }).limit(24).lean(),
       Subscription.find({ user: userId }).sort({ updatedAt: -1 }).limit(6).lean(),
       Payment.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
       VideoTemplate.find({ status: { $ne: 'archived' } }).sort({ updatedAt: -1 }).limit(12).lean(),
-      VideoRender.find({ createdBy: userId }).populate('brand').populate('template').sort({ updatedAt: -1 }).limit(12).lean(),
-      AvatarProfile.find({ owner: userId }).populate('brand').populate('sourceMedia').sort({ updatedAt: -1 }).limit(12).lean(),
+      VideoRender.find({ brand: contentBrandFilter }).populate('brand').populate('template').sort({ updatedAt: -1 }).limit(12).lean(),
+      AvatarProfile.find({ brand: contentBrandFilter }).populate('brand').populate('sourceMedia').sort({ updatedAt: -1 }).limit(12).lean(),
       ApiLog.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
       AuditLog.find({ user: userId }).sort({ createdAt: -1 }).limit(12).lean(),
-      Post.find({ createdBy: userId, status: 'failed' }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(12).lean(),
+      Post.find({ brand: contentBrandFilter, status: 'failed' }).populate('brand').populate('media').populate('targetAccounts').sort({ updatedAt: -1 }).limit(12).lean(),
       canViewPlatformAdmin ? User.find().sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
       canViewPlatformAdmin ? Brand.find().populate('owner').sort({ updatedAt: -1 }).limit(48).lean() : Promise.resolve([]),
       canViewPlatformAdmin ? Subscription.find().populate('user').populate('planRef').sort({ updatedAt: -1 }).limit(48).lean() : Promise.resolve([]),
@@ -2567,17 +2656,26 @@ async function index(req, res, next) {
       ...calendarPosts,
       ...failedPosts
     ];
+    const analyticsSyncJobs = brandIds.length
+      ? await AnalyticsSyncJob.find({ brand: { $in: brandIds } })
+          .select('post account platform status lastSuccessAt lastError unsupportedReason nextAttemptAt')
+          .sort({ updatedAt: -1 })
+          .limit(1000)
+          .lean()
+      : [];
     const analyticsDashboard = buildAnalyticsDashboard({
       analyticsRecords,
       posts: analyticsPosts,
       campaigns,
-      socialAccounts
+      socialAccounts,
+      analyticsSyncJobs
     });
     const analyticsTotals = analyticsDashboard.totals || {};
 
     const dashboardData = buildDashboardData({
       user: req.user,
       brands,
+      archivedBrands,
       campaigns,
       socialAccounts,
       approvals,
@@ -2690,7 +2788,8 @@ async function postsApi(req, res, next) {
   try {
     const rawLimit = Number(req.query.limit || 24);
     const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(48, Math.floor(rawLimit))) : 24;
-    const baseFilter = { createdBy: req.user._id };
+    const contentBrandIds = await accessibleBrandIds(req.user, 'content.view');
+    const baseFilter = { brand: { $in: contentBrandIds } };
     const requestedType = String(req.query.type || '').trim().toLowerCase();
     const requestedStatus = String(req.query.status || '').trim().toLowerCase();
     const search = String(req.query.search || '').trim().slice(0, 120);
@@ -2731,7 +2830,7 @@ async function postsApi(req, res, next) {
         .lean(),
       Post.countDocuments(filterClauses.length && search ? { ...baseFilter, $and: filterClauses.slice(0, 1) } : baseFilter),
       Post.countDocuments({
-        createdBy: req.user._id,
+        brand: { $in: contentBrandIds },
         'platformMetadata.generation.status': { $in: ['queued', 'running'] }
       }),
       AiJob.countDocuments({
@@ -2740,13 +2839,13 @@ async function postsApi(req, res, next) {
         status: { $in: ['queued', 'running'] }
       }),
       Post.countDocuments({
-        createdBy: req.user._id,
+        brand: { $in: contentBrandIds },
         $or: [
           { status: 'publishing' },
           { status: 'scheduled', scheduledAt: { $lte: new Date() } }
         ]
       }),
-      SocialAccount.find({ owner: req.user._id, status: 'connected' })
+      SocialAccount.find({ brand: { $in: contentBrandIds }, status: 'connected' })
         .select('_id brand platform accountName accountId accessTokenEncrypted tokenExpiresAt status permissions providerMeta healthStatus')
         .lean()
     ]);

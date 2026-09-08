@@ -935,6 +935,78 @@
         align-items: stretch;
       }
 
+      .pricing-paths {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin: 0 0 24px;
+      }
+
+      .pricing-path {
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        background: rgba(255,255,255,.88);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .pricing-path strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--primary);
+        font-size: 1rem;
+      }
+
+      .pricing-path p,
+      .plan-best-for,
+      .plan-billing-note,
+      .pricing-money-note {
+        color: var(--muted);
+        line-height: 1.55;
+        font-size: .88rem;
+      }
+
+      .plan-context {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 12px;
+      }
+
+      .plan-context span {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: var(--surface-soft);
+        border: 1px solid var(--border);
+        color: var(--primary);
+        font-weight: 750;
+        font-size: .72rem;
+      }
+
+      .plan-best-for {
+        min-height: 68px;
+        margin-bottom: 16px;
+      }
+
+      .plan-billing-note {
+        margin: -8px 0 14px;
+      }
+
+      .pricing-money-note {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--surface-soft);
+      }
+
+      .price-card .price {
+        margin-bottom: 10px;
+      }
+
       .price-card {
         padding: 26px;
         border-radius: var(--radius-xl);
@@ -2719,6 +2791,11 @@
           justify-content: center !important;
         }
       }
+
+      @media (max-width: 760px) {
+        .pricing-paths { grid-template-columns: 1fr; }
+        .plan-best-for { min-height: 0; }
+      }
     </style>
   </head>
   <body>
@@ -3122,29 +3199,38 @@
         <section class="section" id="pricing">
           <div class="container">
             <div class="section-head reveal">
-              <div class="section-kicker">Pricing</div>
-              <h2>Simple plans for every stage of growth.</h2>
+              <div class="section-kicker">Plans & pricing</div>
+              <h2>Choose the workflow first. Then choose the scale.</h2>
               <p>
-                Start with one brand workspace, then scale into team workflows
-                and client campaign systems.
+                AutoBrand has two paid paths: Manual Publisher for users who bring their own text and media, and AI plans for users who want generative AI. All public prices are shown in USD.
               </p>
+            </div>
+
+            <div class="pricing-paths reveal">
+              <article class="pricing-path"><strong>1. Try it first</strong><p>Use the 7-day Free Trial. No payment is required and it does not automatically become a paid plan.</p></article>
+              <article class="pricing-path"><strong>2. Publish without AI</strong><p>Choose Manual Publisher at US$10 for 1 month of access if you already create your own captions, ads, images and videos. Pay again through Pesapal only when you want another access period.</p></article>
+              <article class="pricing-path"><strong>3. Create with AI</strong><p>Start with AI Starter at US$10 for 1 month of access, then move to Growth, Pro, Business or Agency as your team and automation needs increase.</p></article>
             </div>
 
             <div class="pricing-grid">
               <% (pricingPlans || []).forEach((plan) => { %>
                 <article class="price-card <%= plan.isPopular ? 'popular' : '' %> reveal">
-                  <div class="plan-badge"><%= plan.isPopular ? 'Most popular' : plan.name %></div>
+                  <div class="plan-badge"><%= plan.isPopular ? 'Most popular' : plan.familyLabel %></div>
                   <h3><%= plan.name %></h3>
-                  <p class="desc"><%= plan.description %></p>
-                  <div class="price"><%= plan.priceLabel %><% if (!plan.isTrial) { %><span>/<%= plan.intervalLabel %></span><% } %></div>
-                  <div class="price-actions"><a href="<%= plan.signupUrl %>" class="btn <%= plan.isPopular ? 'btn-primary' : 'btn-ghost' %>">Start <%= plan.name %></a><a href="<%= plan.viewUrl %>" class="btn btn-ghost">View details</a></div>
+                  <div class="plan-context"><span><%= plan.workflowLabel %></span><span><%= plan.aiModeLabel %></span></div>
+                  <p class="plan-best-for"><strong>Best for:</strong> <%= plan.bestFor %></p>
+                  <div class="price"><%= plan.recurringPriceLabel %></div>
+                  <p class="plan-billing-note"><%= plan.billingSummary %></p>
+                  <div class="price-actions"><a href="<%= plan.signupUrl %>" class="btn <%= plan.isPopular ? 'btn-primary' : 'btn-ghost' %>"><%= plan.isTrial ? 'Start free trial' : `Choose ${plan.name}` %></a><a href="<%= plan.viewUrl %>" class="btn btn-ghost">See limits</a></div>
                   <ul class="feature-list">
-                    <% plan.featureList.slice(0, 5).forEach((feature) => { %><li><%= feature %></li><% }) %>
+                    <li><%= plan.aiCreditsLabel %></li>
+                    <% plan.featureList.slice(0, 4).forEach((feature) => { %><li><%= feature %></li><% }) %>
                   </ul>
                 </article>
               <% }) %>
             </div>
-            <div class="pricing-compare-cta"><a href="/pricing" class="btn btn-primary">View and compare all plans</a></div>
+            <p class="pricing-money-note"><strong>Money clarity:</strong> paid plan prices are charged in US dollars (USD) through Pesapal. One verified payment activates one access period. AutoBrand does not automatically charge the next period. Your available mobile-money/card options are shown by Pesapal; if your payment provider converts currency, its exchange rate or fees may apply.</p>
+            <div class="pricing-compare-cta"><a href="/pricing" class="btn btn-primary">Compare every limit and feature</a></div>
           </div>
         </section>
 
@@ -3294,45 +3380,48 @@
           <div class="container">
             <div class="page-hero-card reveal">
               <div>
-                <div class="section-kicker">Pricing</div>
-                <h1>Plans for creators, teams and agencies.</h1>
+                <div class="section-kicker">Plans & pricing</div>
+                <h1>Pick the way you want to work before you compare limits.</h1>
                 <p>
-                  Choose a workspace size that matches how many brands,
-                  campaigns and clients you manage.
+                  Free Trial lets you test AutoBrand for 7 days at US$0. Manual Publisher is the US$10-for-1-month no-AI path. AI Starter starts at the same US$10-for-1-month price but adds generative AI; higher AI plans add larger limits and automation.
                 </p>
               </div>
-              <a
-                href="#contact"
-                class="btn btn-primary"
-                data-page-link="contactPage"
-                >Talk to sales</a
-              >
+              <a href="/start/free-trial" class="btn btn-primary">Start 7-day trial</a>
             </div>
           </div>
         </section>
         <section class="section">
-          <div class="container pricing-grid">
-            <% (pricingPlans || []).forEach((plan) => { %>
-              <article class="price-card <%= plan.isPopular ? 'popular' : '' %> reveal">
-                <div class="plan-badge"><%= plan.isPopular ? 'Most popular' : plan.name %></div>
-                <h3><%= plan.name %></h3>
-                <p class="desc"><%= plan.description %></p>
-                <div class="price"><%= plan.priceLabel %><% if (!plan.isTrial) { %><span>/<%= plan.intervalLabel %></span><% } %></div>
-                <div class="limit-pills">
-                  <% (plan.limitList || []).slice(0, 4).forEach((limit) => { %><span><strong><%= limit.value %></strong><%= limit.label %></span><% }) %>
-                </div>
-                <div class="price-actions"><a href="<%= plan.signupUrl %>" class="btn <%= plan.isPopular ? 'btn-primary' : 'btn-ghost' %>">Choose <%= plan.name %></a><a href="<%= plan.viewUrl %>" class="btn btn-ghost">View details</a></div>
-                <ul class="feature-list">
-                  <% plan.featureList.slice(0, 6).forEach((feature) => { %><li><%= feature %></li><% }) %>
-                </ul>
-              </article>
-            <% }) %>
+          <div class="container">
+            <div class="pricing-paths reveal">
+              <article class="pricing-path"><strong>Free Trial · US$0 · 7 days</strong><p>No payment. No automatic paid conversion. Best for testing the real workflow.</p></article>
+              <article class="pricing-path"><strong>Manual Publisher · US$10 · 1 month access</strong><p>No generative AI. Bring your own copy and media; AutoBrand handles validation, scheduling, approvals, publishing and analytics. No automatic renewal.</p></article>
+              <article class="pricing-path"><strong>AI plans · from US$10 · 1 month access</strong><p>AI Starter adds generative text/images. Growth and higher plans add campaigns, video, automation and larger team limits. No automatic renewal.</p></article>
+            </div>
+            <div class="pricing-grid">
+              <% (pricingPlans || []).forEach((plan) => { %>
+                <article class="price-card <%= plan.isPopular ? 'popular' : '' %> reveal">
+                  <div class="plan-badge"><%= plan.isPopular ? 'Most popular' : plan.familyLabel %></div>
+                  <h3><%= plan.name %></h3>
+                  <div class="plan-context"><span><%= plan.workflowLabel %></span><span><%= plan.aiModeLabel %></span></div>
+                  <p class="plan-best-for"><strong>Best for:</strong> <%= plan.bestFor %></p>
+                  <div class="price"><%= plan.recurringPriceLabel %></div>
+                  <p class="plan-billing-note"><%= plan.billingSummary %></p>
+                  <div class="limit-pills">
+                    <% (plan.limitList || []).slice(0, 4).forEach((limit) => { %><span><strong><%= limit.value %></strong><%= limit.label %></span><% }) %>
+                  </div>
+                  <div class="price-actions"><a href="<%= plan.signupUrl %>" class="btn <%= plan.isPopular ? 'btn-primary' : 'btn-ghost' %>"><%= plan.isTrial ? 'Start free trial' : `Choose ${plan.name}` %></a><a href="<%= plan.viewUrl %>" class="btn btn-ghost">See full details</a></div>
+                  <ul class="feature-list"><li><%= plan.aiCreditsLabel %></li><% plan.featureList.slice(0, 5).forEach((feature) => { %><li><%= feature %></li><% }) %></ul>
+                </article>
+              <% }) %>
+            </div>
+            <p class="pricing-money-note"><strong>Billing clarity:</strong> all prices are shown in US dollars (USD). One verified Pesapal payment buys the access period shown. AutoBrand does not automatically charge or renew the next period; pay again through Pesapal only if you want to continue. Pesapal shows available payment methods at checkout, and provider currency conversion or fees may apply.</p>
           </div>
         </section>
         <section class="section">
           <div class="container plan-compare-card reveal">
             <div class="section-kicker">Compare plans</div>
-            <h2>See the real limits from your SubscriptionPlan database.</h2>
+            <h2>Compare price, workflow, AI budget and every usage limit.</h2>
+            <p class="pricing-money-note">AI credits are the plan's AI spending budget. AI generation counts are separate safety ceilings. A request must fit both when both limits apply. Capacity limits such as brands/accounts are concurrent; usage limits reset on the period shown.</p>
             <div class="comparison-scroll">
               <table class="plan-compare-table">
                 <thead><tr><th>Limit</th><% (pricingPlans || []).forEach((plan) => { %><th><%= plan.name %></th><% }) %></tr></thead>
@@ -3365,23 +3454,29 @@
           <div class="container plan-detail-layout">
             <% if (selectedPlan) { %>
               <article class="plan-detail-card reveal">
-                <div class="plan-badge"><%= selectedPlan.isPopular ? 'Most popular' : 'Selected plan' %></div>
+                <div class="plan-badge"><%= selectedPlan.isPopular ? 'Most popular' : selectedPlan.familyLabel %></div>
                 <h2><%= selectedPlan.name %></h2>
+                <div class="plan-context"><span><%= selectedPlan.workflowLabel %></span><span><%= selectedPlan.aiModeLabel %></span></div>
                 <p class="desc"><%= selectedPlan.description %></p>
-                <div class="price"><%= selectedPlan.priceLabel %><% if (!selectedPlan.isTrial) { %><span>/<%= selectedPlan.intervalLabel %></span><% } %></div>
+                <p class="plan-best-for"><strong>Best for:</strong> <%= selectedPlan.bestFor %></p>
+                <div class="price"><%= selectedPlan.recurringPriceLabel %></div>
+                <p class="plan-billing-note"><%= selectedPlan.billingSummary %></p>
+                <p class="plan-billing-note"><strong>AI budget:</strong> <%= selectedPlan.aiCreditsLabel %>. <%= selectedPlan.usageResetLabel %>.</p>
                 <div class="price-actions">
-                  <a href="<%= selectedPlan.signupUrl %>" class="btn btn-primary">Start <%= selectedPlan.name %></a>
+                  <a href="<%= selectedPlan.signupUrl %>" class="btn btn-primary"><%= selectedPlan.isTrial ? 'Start free trial' : `Choose ${selectedPlan.name}` %></a>
                   <a href="/pricing" class="btn btn-ghost">Back to pricing</a>
                 </div>
                 <ul class="feature-list">
                   <% selectedPlan.featureList.forEach((feature) => { %><li><%= feature %></li><% }) %>
                 </ul>
+                <% if (selectedPlan.localCurrencyNote) { %><p class="pricing-money-note"><%= selectedPlan.localCurrencyNote %></p><% } %>
               </article>
               <article class="plan-compare-card reveal">
                 <div class="section-kicker">Limits</div>
                 <h2>What this plan includes</h2>
+                <p class="desc">Capacity limits are simultaneous workspace capacity. Usage limits follow the active trial or paid access period shown; they do not reset simply because the calendar month changes.</p>
                 <div class="limit-pills">
-                  <% selectedPlan.limitList.forEach((limit) => { %><span><strong><%= limit.value %></strong><%= limit.label %></span><% }) %>
+                  <% selectedPlan.limitList.forEach((limit) => { %><span><strong><%= limit.value %></strong><%= limit.label %><small><%= limit.type === 'period' ? selectedPlan.usageResetLabel : (limit.type === 'capacity' ? 'Capacity' : 'Storage capacity') %></small></span><% }) %>
                 </div>
                 <div class="section-kicker">Plan comparison</div>
                 <div class="comparison-scroll">
@@ -4176,9 +4271,10 @@
             <h2>Subscriptions and billing</h2>
             <p>
               Paid plans may include usage limits, workspace limits, team
-              features or support levels. Billing terms, renewals and
-              cancellations should be clearly shown at checkout or account
-              settings.
+              features or support levels. One verified Pesapal payment buys the access
+              period shown at checkout. AutoBrand does not automatically charge the
+              next period; users pay again through Pesapal if they want to continue.
+              Payment history and access-period status are shown in account settings.
             </p>
 
             <h2>Intellectual property</h2>

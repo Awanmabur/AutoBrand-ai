@@ -36,6 +36,7 @@ const postSchema = new mongoose.Schema(
       default: 'awareness'
     },
     workflowMode: { type: String, enum: ['manual', 'handoff', 'auto'], default: 'manual', index: true },
+    contentSource: { type: String, enum: ['manual', 'ai', 'import'], default: 'manual', index: true },
     autoPublishEnabled: { type: Boolean, default: false },
     publishAfterApproval: { type: Boolean, default: false },
     approvalRequired: { type: Boolean, default: false },
@@ -48,7 +49,7 @@ const postSchema = new mongoose.Schema(
 
     title: { type: String, trim: true },
     description: { type: String, trim: true },
-    caption: { type: String, required: true, trim: true },
+    caption: { type: String, default: '', trim: true },
     hashtags: [{ type: String }],
     firstComment: { type: String, default: '' },
     altText: { type: String, default: '' },
@@ -71,7 +72,7 @@ const postSchema = new mongoose.Schema(
     link: { type: String },
     status: {
       type: String,
-      enum: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled', 'rejected'],
+      enum: ['draft', 'pending_approval', 'approved', 'scheduled', 'publishing', 'provider_processing', 'published', 'failed', 'cancelled', 'rejected'],
       default: 'draft',
       index: true
     },
@@ -87,7 +88,7 @@ const postSchema = new mongoose.Schema(
         account: { type: mongoose.Schema.Types.ObjectId, ref: 'SocialAccount' },
         accountName: String,
         platform: String,
-        status: { type: String, enum: ['published', 'failed'], default: 'published' },
+        status: { type: String, enum: ['processing', 'published', 'failed'], default: 'published' },
         platformPostId: String,
         platformPostUrl: String,
         errorMessage: String,
@@ -107,5 +108,6 @@ const postSchema = new mongoose.Schema(
 postSchema.index({ brand: 1, status: 1, scheduledAt: 1 });
 postSchema.index({ createdBy: 1, createdAt: -1 });
 postSchema.index({ workflowMode: 1, status: 1 });
+postSchema.index({ brand: 1, contentSource: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Post', postSchema);

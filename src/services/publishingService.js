@@ -17,6 +17,7 @@ const { applyRetryPolicy } = require('./publishingRetryPolicyService');
 const { buildPublishingReadiness, publicUrlFromPublishResult } = require('./publishingReadiness.service');
 const { notifyAccountDisconnected, notifyUser } = require('./notification.service');
 const { isTokenDecryptionError } = require('./tokenCryptoService');
+const { ensureAnalyticsSyncJobsForPost } = require('./analytics/analyticsSync.service');
 
 async function bestEffort(label, task) {
   try {
@@ -58,7 +59,7 @@ async function accountsForPlatform(post, platform) {
   const allowedStatuses = ['connected'];
   const filter = {
     brand: post.brand._id,
-    owner: post.createdBy,
+    owner: post.brand.owner,
     platform,
     status: { $in: allowedStatuses }
   };
@@ -102,7 +103,7 @@ async function publishToAccount({ post, account }) {
   if (post.platform === 'threads') return publishThreadsPost({ post, account });
   if (post.platform === 'tiktok') return publishTikTokVideo({ post, account });
   if (post.platform === 'youtube') return publishYouTubeVideo({ post, account });
-  throw new Error(`Direct publishing is not implemented for ${post.platform}.`);
+  throw new Error(`Unsupported publishing destination: ${post.platform || 'unknown'}. Select a connected destination from the supported platform catalog.`);
 }
 
 function canPersistAccount(account) {
@@ -294,14 +295,14 @@ async function publishPost(postId, { expectedScheduleVersion } = {}) {
     const previousResults = Array.isArray(post.publishResults) ? post.publishResults : [];
     const succeededKeys = new Set(
       previousResults
-        .filter((item) => item.status === 'published')
+        .filter((item) => ['published', 'processing'].includes(item.status))
         .map((item) => `${item.platform}:${item.account ? String(item.account) : 'mock'}`)
     );
     const platformsWithPriorSuccess = new Set(
-      previousResults.filter((item) => item.status === 'published').map((item) => item.platform)
+      previousResults.filter((item) => ['published', 'processing'].includes(item.status)).map((item) => item.platform)
     );
 
-    const results = previousResults.filter((item) => item.status === 'published');
+    const results = previousResults.filter((item) => ['published', 'processing'].includes(item.status));
     const failures = [];
     const jobs = [];
 
@@ -395,10 +396,10 @@ async function publishPost(postId, { expectedScheduleVersion } = {}) {
           account: account._id || undefined,
           accountName: account.accountName,
           platform: account.platform || platform,
-          status: 'published',
+          status: platformResult?.providerProcessing ? 'processing' : 'published',
           platformPostId: platformResult.id,
           platformPostUrl,
-          publishedAt: new Date()
+          publishedAt: platformResult?.providerProcessing ? undefined : new Date()
         });
       } else {
         const error = outcome.reason;
@@ -423,15 +424,16 @@ async function publishPost(postId, { expectedScheduleVersion } = {}) {
     }
 
     post.publishResults = results;
-    post.status = failures.length ? 'failed' : 'published';
-    post.publishedAt = failures.length ? undefined : new Date();
+    const hasProviderProcessing = results.some((item) => item.status === 'processing');
+    post.status = failures.length ? 'failed' : hasProviderProcessing ? 'provider_processing' : 'published';
+    post.publishedAt = failures.length || hasProviderProcessing ? undefined : new Date();
     post.platformPostId = results.find((item) => item.status === 'published')?.platformPostId || post.platformPostId;
     post.platformPostUrl = results.find((item) => item.status === 'published' && item.platformPostUrl)?.platformPostUrl || post.platformPostUrl;
     post.platformMetadata = {
       ...(post.platformMetadata || {}),
       publishReadiness: {
         ...(post.platformMetadata?.publishReadiness || {}),
-        status: failures.length ? 'failed' : 'published',
+        status: failures.length ? 'failed' : hasProviderProcessing ? 'provider_processing' : 'published',
         checkedAt: new Date()
       },
       publishUrls: results.reduce((map, item) => {
@@ -443,6 +445,7 @@ async function publishPost(postId, { expectedScheduleVersion } = {}) {
     post.publishingStartedAt = undefined;
     post.publishingAttemptId = '';
     await post.save();
+    await bestEffort('Could not schedule analytics sync', () => ensureAnalyticsSyncJobsForPost(post));
 
     console.log('[publishing] post attempt completed', {
       postId: String(post._id),
@@ -470,6 +473,21 @@ async function publishPost(postId, { expectedScheduleVersion } = {}) {
         metadata: { failures }
       });
       throw new Error(failures.join(' | '));
+    }
+
+    if (hasProviderProcessing) {
+      await safeNotifyUser({
+        user: post.createdBy,
+        type: 'post_provider_processing',
+        title: 'Post accepted by provider',
+        message: `${post.title || post.platform} was accepted and is still being processed by one or more destinations. AutoBrand will confirm final publication without re-posting it.`,
+        severity: 'info',
+        entityType: 'Post',
+        entityId: post._id,
+        actionUrl: '/dashboard/calendar',
+        metadata: { results }
+      });
+      return post;
     }
 
     await safeNotifyUser({

@@ -4,12 +4,13 @@ const Post = require('../models/Post');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { createUploadSignature } = require('../services/cloudinaryService');
 const { buildMediaInsights } = require('../services/mediaInsightService');
-const { createBrandedVariant, createCompressedVariant, createResizeVariants } = require('../services/mediaTransformService');
+const { createBackgroundRemovedVariant, createBrandedVariant, createCompressedVariant, createResizeVariants } = require('../services/mediaTransformService');
 const { assertCanUseStorage } = require('../services/usageLimitService');
 const { inspectRemoteResource } = require('../services/remoteFetch.service');
 const env = require('../config/env');
 const path = require('path');
 const { deleteGridFsFile, gridFsIdFromUrl } = require('../services/gridFsMediaStorage.service');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
 
 function isHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || ''));
@@ -29,7 +30,8 @@ async function index(req, res) {
 
 async function destroy(req, res, next) {
   try {
-    const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id });
+    const media = await Media.findById(req.params.id);
+    if (media) await assertBrandAccess(req.user, media.brand, 'brand.manage', { status: { $in: ['active', 'archived'] } });
     if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     const gridFsId = gridFsIdFromUrl(media.fileUrl);
     if (gridFsId) await deleteGridFsFile(gridFsId).catch((error) => console.warn('GridFS media cleanup failed:', error.message));
@@ -42,7 +44,8 @@ async function destroy(req, res, next) {
 
 async function archive(req, res, next) {
   try {
-    const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id });
+    const media = await Media.findById(req.params.id);
+    if (media) await assertBrandAccess(req.user, media.brand, 'content.edit', { status: { $in: ['active', 'archived'] } });
     if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     media.status = 'archived';
     await media.save();
@@ -54,7 +57,7 @@ async function archive(req, res, next) {
 
 async function store(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (!req.body.fileUrl || !isHttpUrl(req.body.fileUrl)) {
@@ -70,7 +73,7 @@ async function store(req, res, next) {
     });
     const mimeType = verified.mimeType;
     const size = verified.size;
-    await assertCanUseStorage(req.user, size);
+    await assertCanUseStorage(req.user, size, brand._id);
 
     const expectedFolder = `autobrand/${req.user._id}/${brand._id}`;
     const publicId = String(req.body.publicId || '').trim();
@@ -109,7 +112,7 @@ async function signature(req, res, next) {
   try {
     let brand = null;
     if (req.query.brand) {
-      brand = await Brand.findOne({ _id: req.query.brand, owner: req.user._id });
+      brand = await assertBrandAccess(req.user, req.query.brand, 'content.create', { status: 'active' });
       if (!brand) return res.status(404).json({ error: 'Brand not found.' });
     }
 
@@ -122,7 +125,8 @@ async function signature(req, res, next) {
 
 async function creativeAction(req, res, next) {
   try {
-    const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id }).populate('brand');
+    const media = await Media.findById(req.params.id).populate('brand');
+    if (media) await assertBrandAccess(req.user, media.brand?._id || media.brand, 'content.edit', { status: 'active' });
     if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (req.body.actionType === 'accept_consent') {
@@ -144,12 +148,10 @@ async function creativeAction(req, res, next) {
     }
 
     if (req.body.actionType === 'background') {
-      media.variants.push({
-        kind: 'background_removal',
-        label: 'Background removal request',
-        prompt: `Remove the background from ${media.fileName} and keep the subject clean for branded posts.`,
-        status: 'planned'
-      });
+      media.variants.push(await createBackgroundRemovedVariant(media, media.brand, {
+        threshold: req.body.threshold,
+        feather: req.body.feather
+      }));
     }
 
     if (req.body.actionType === 'resize') {
@@ -197,7 +199,8 @@ async function creativeAction(req, res, next) {
 
 async function createDraft(req, res, next) {
   try {
-    const media = await Media.findOne({ _id: req.params.id, uploadedBy: req.user._id }).populate('brand');
+    const media = await Media.findById(req.params.id).populate('brand');
+    if (media) await assertBrandAccess(req.user, media.brand?._id || media.brand, 'content.create', { status: 'active' });
     if (!media) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (!media.aiInsights?.summary) {
@@ -223,6 +226,7 @@ async function createDraft(req, res, next) {
         safetyNotes: media.aiInsights.safetyNotes
       },
       status: 'draft',
+      contentSource: 'manual',
       createdBy: req.user._id
     });
 

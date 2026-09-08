@@ -428,6 +428,42 @@ async function publishLinkedInPost({ post, account, downloadRemote = downloadRem
   return { id: response.headers.get('x-restli-id') || data.id || `linkedin_${post._id}`, raw: data };
 }
 
+
+async function fetchLinkedInPostMetrics({ account, platformPostId }) {
+  const accessToken = await accessTokenFor(account);
+  const author = linkedinAuthorUrn(account);
+  if (!author.startsWith('urn:li:organization:')) {
+    const error = new LinkedInProviderError('LinkedIn organic post analytics are unavailable for this connected member profile. Connect an organization Page with reporting permissions.');
+    error.code = 'ANALYTICS_UNSUPPORTED';
+    error.permanent = true;
+    throw error;
+  }
+  const postUrn = String(platformPostId || '').trim();
+  if (!postUrn) throw new LinkedInProviderError('LinkedIn post URN is missing for analytics sync.');
+  const params = new URLSearchParams({ q: 'organizationalEntity', organizationalEntity: author });
+  if (/urn:li:ugcPost:/i.test(postUrn)) params.set('ugcPosts[0]', postUrn);
+  else params.set('shares', `List(${postUrn})`);
+  const data = await linkedinRest(`/organizationalEntityShareStatistics?${params.toString()}`, { accessToken });
+  const stats = data.elements?.[0]?.totalShareStatistics;
+  if (!stats) {
+    const error = new LinkedInProviderError('LinkedIn has not returned organic statistics for this organization post yet.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  return {
+    providerPostId: postUrn,
+    impressions: Number(stats.impressionCount || 0),
+    reach: Number(stats.uniqueImpressionsCount || 0),
+    clicks: Number(stats.clickCount || 0),
+    likes: Number(stats.likeCount || 0),
+    comments: Number(stats.commentCount || 0),
+    shares: Number(stats.shareCount || 0),
+    engagementRate: Number(stats.engagement || 0) * 100,
+    availableMetrics: ['impressions', 'reach', 'clicks', 'likes', 'comments', 'shares', 'engagementRate']
+  };
+}
+
 async function syncLinkedInAccount({ account }) {
   const accessToken = await accessTokenFor(account);
   const author = linkedinAuthorUrn(account);
@@ -451,6 +487,7 @@ module.exports = {
   getLinkedInSetupIssue,
   isLinkedInConfigured,
   publishLinkedInPost,
+  fetchLinkedInPostMetrics,
   syncLinkedInAccount,
   __private: {
     linkedinAuthorUrn,

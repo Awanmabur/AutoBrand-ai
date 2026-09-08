@@ -53,7 +53,7 @@ function fallbackPost({ brand, platform, goal, contentType }) {
     bestPostingTime: 'Evening, 6 PM to 9 PM',
     contentScore: 78,
     improvementSuggestion: 'Add a stronger offer or price to make the post more specific.',
-    provider: 'local_fallback'
+    provider: 'deterministic_defaults'
   };
 }
 
@@ -326,16 +326,28 @@ async function generateVideoScenePlan(input) {
     'Keep it 4 to 6 scenes. Make prompts usable in video APIs. Do not claim the video is already rendered.'
   ].join('\n');
 
-  const result = await generateJsonText({ prompt, fallback: { scenes: local }, preferredProvider: input.provider || input.preferredProvider });
-  const scenes = Array.isArray(result.data?.scenes) ? result.data.scenes : local;
+  const result = await generateJsonText({ prompt, preferredProvider: input.provider || input.preferredProvider });
+  if (!result.ok) {
+    const error = new Error(result.message || 'AI video scene planning failed.');
+    error.status = 502;
+    error.safeMessage = error.message;
+    throw error;
+  }
+  const scenes = Array.isArray(result.data?.scenes) ? result.data.scenes : [];
+  if (!scenes.length) {
+    const error = new Error('AI provider returned no usable video scenes.');
+    error.status = 502;
+    error.safeMessage = error.message;
+    throw error;
+  }
   return scenes.map((scene, index) => ({
     order: Number(scene.order || index + 1),
     title: scene.title || `Scene ${index + 1}`,
-    visualPrompt: scene.visualPrompt || scene.prompt || local[index % local.length]?.visualPrompt || '',
-    narration: scene.narration || scene.script || local[index % local.length]?.narration || '',
+    visualPrompt: scene.visualPrompt || scene.prompt || '',
+    narration: scene.narration || scene.script || '',
     durationSeconds: Number(scene.durationSeconds || (index === 0 ? 4 : 5)),
     status: 'planned'
-  })).slice(0, 6);
+  })).filter((scene) => scene.visualPrompt || scene.narration).slice(0, 6);
 }
 
 

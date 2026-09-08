@@ -12,6 +12,14 @@
   <% const visibleDashboardPages = dashboardData.roleAccess && Array.isArray(dashboardData.roleAccess.unlockedPages) ? dashboardData.roleAccess.unlockedPages : []; %>
   <% const canSeePage = (page) => visibleDashboardPages.includes(page); %>
   <% const canSeeDashboardPlans = visibleDashboardPages.includes('plans') || (dashboardData.user && /Admin/i.test(dashboardData.user.role || '')); %>
+  <% const planFeatures = (dashboardData.featureAccess && dashboardData.featureAccess.features) || {}; %>
+  <% const planLimits = (dashboardData.currentPlan && dashboardData.currentPlan.limits) || {}; %>
+  <% const aiComposerEnabled = String(planFeatures.smartComposerLevel || 'none').toLowerCase() !== 'none' && Number(planLimits.maxAiTextGenerations || 0) !== 0; %>
+  <% const aiImageEnabled = Number(planLimits.maxAiImageGenerations || 0) !== 0; %>
+  <% const aiVideoEnabled = Number(planLimits.maxAiVideoGenerations || 0) !== 0; %>
+  <% const manualPublisherEnabled = Boolean(planFeatures.manualPublisherAccess); %>
+  <% const bulkManualImportEnabled = Boolean(planFeatures.bulkImportAccess); %>
+  <% const templateVideoEnabled = Boolean(planFeatures.templateAccess); %>
   <% const socialAccounts = options.publishingAccounts || []; %>
   <% const mediaAssets = options.media || []; %>
   <% const approvalPosts = options.posts || []; %>
@@ -97,7 +105,7 @@
       <p class="nav-label">Overview</p>
       <nav class="side-nav">
         <a class="active" href="/dashboard/overview" data-page="overview"><span><svg class="icon"><use href="#icon-home"></use></svg>Dashboard</span><b>Home</b></a>
-        <% if (canSeePage('quick-create')) { %><a href="/dashboard/quick-create" data-page="quick-create"><span><svg class="icon"><use href="#icon-plus"></use></svg>Full Composer</span><b>AI</b></a><% } %>
+        <% if (canSeePage('quick-create')) { %><a href="/dashboard/quick-create" data-page="quick-create"><span><svg class="icon"><use href="#icon-plus"></use></svg><%= aiComposerEnabled ? 'Full Composer' : 'Manual Publisher' %></span><b><%= aiComposerEnabled ? 'AI' : 'No AI' %></b></a><% } %>
         <% if (canSeePage('brand-brain')) { %><a href="/dashboard/brand-brain" data-page="brand-brain"><span><svg class="icon"><use href="#icon-brain"></use></svg>Brand Brain</span><b><%= dashboardData.nav.brands %></b></a><% } %>
         <% if (canSeePage('content-library')) { %><a href="/dashboard/content-library" data-page="content-library"><span><svg class="icon"><use href="#icon-grid"></use></svg>Content Library</span><b><%= dashboardData.nav.content %></b></a><% } %>
       </nav>
@@ -122,7 +130,7 @@
       <p class="nav-label">Admin</p>
       <nav class="side-nav">
         <% if (canSeePage('team')) { %><a href="/dashboard/team" data-page="team"><span><svg class="icon"><use href="#icon-users"></use></svg>Team & Roles</span><b><%= dashboardData.nav.team || 0 %></b></a><% } %>
-        <a href="/dashboard/billing" data-page="billing"><span><svg class="icon"><use href="#icon-card"></use></svg>Billing & Usage</span><b><%= dashboardData.nav.plan %></b></a>
+        <a href="/dashboard/billing" data-page="billing"><span><svg class="icon"><use href="#icon-card"></use></svg>Plan & Billing</span><b><%= dashboardData.nav.plan %></b></a>
         <% if (canSeeDashboardPlans) { %><a href="/dashboard/plans" data-page="plans"><span><svg class="icon"><use href="#icon-card"></use></svg>Plan Management</span><b>Plans</b></a><% } %>
         <a href="/dashboard/settings" data-page="settings"><span><svg class="icon"><use href="#icon-settings"></use></svg>Settings & Security</span><b><%= dashboardData.nav.unread || '.' %></b></a>
         <% if (visibleDashboardPages.includes('admin')) { %><a href="/dashboard/admin" data-page="admin"><span><svg class="icon"><use href="#icon-shield"></use></svg>Admin</span><b>Root</b></a><% } %>
@@ -143,9 +151,9 @@
       </nav>
 
       <div class="upgrade-card">
-        <strong>Upgrade to Studio</strong>
-        <p>Unlock client approvals, clean AI video, avatar video, larger workspaces and premium exports.</p>
-        <a class="btn btn-light" href="/dashboard/billing">View plan</a>
+        <strong>Need more capacity?</strong>
+        <p>Compare your current plan with Manual Publisher and the AI plans before you upgrade.</p>
+        <a class="btn btn-light" href="/dashboard/billing">View plan & usage</a>
       </div>
     </div>
   </aside>
@@ -230,6 +238,7 @@
           <%- include('partials/brand-quick-form', { csrfToken }) %>
         </article>
       <% } else { %>
+        <% if (aiComposerEnabled) { %>
         <article class="card real-form-card">
           <div class="card-head"><div><h3>Generate a real post</h3><p>Uses saved Brand Brain fields, connected accounts and media defaults.</p></div><span class="badge">Live post</span></div>
           <form action="/dashboard/actions/posts" method="post" class="real-form-grid smart-destination-form composer-form">
@@ -261,6 +270,52 @@
             </div>
           </form>
         </article>
+        <% } %>
+        <% if (manualPublisherEnabled) { %>
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Manual / No-AI Publisher</h3><p>Write the ad yourself, choose your own uploaded images or videos, then let AutoBrand validate, schedule and publish it. This path makes zero generative-AI calls.</p></div><span class="badge">US$10 Manual plan</span></div>
+          <form action="/dashboard/actions/posts" method="post" class="real-form-grid smart-destination-form composer-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="creationMode" value="manual">
+            <input type="hidden" name="generateImage" value="off">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>Post format<select name="type"><option value="text">Text post</option><option value="image">Image post</option><option value="carousel">Carousel</option><option value="video">Video post</option><option value="reel">Reel/Short/TikTok</option><option value="story">Story</option><option value="link">Link post</option></select></label>
+            <label class="full">Caption / ad text<textarea name="caption" rows="5" required placeholder="Write the exact text you want AutoBrand to publish. No AI will rewrite it."></textarea></label>
+            <label>Hashtags<input name="hashtags" placeholder="#kampala #offer"></label>
+            <label>Link<input name="link" type="url" placeholder="https://..."></label>
+            <label>Schedule time<input name="scheduledAt" type="datetime-local"></label>
+            <label>Content goal<select name="contentGoal"><option value="awareness">Awareness</option><option value="engagement">Engagement</option><option value="sales">Sales</option><option value="traffic">Traffic</option><option value="lead_generation">Lead generation</option></select></label>
+            <fieldset class="composer-fieldset full"><legend>Your uploaded media</legend><div class="composer-check-grid channel-spaced-grid">
+              <% mediaAssets.forEach((asset) => { %><label class="composer-check-card media-option" data-brand="<%= asset.brandId || '' %>"><input name="media" type="checkbox" value="<%= asset.id %>"><span><strong><%= asset.fileName || 'Media asset' %></strong><small><%= asset.fileType %> / <%= asset.brandName || 'Brand' %></small></span></label><% }) %>
+              <% if (!mediaAssets.length) { %><p class="muted">Upload your images/videos in Media Library first, then return here to combine them with your text.</p><% } %>
+            </div></fieldset>
+            <fieldset class="composer-fieldset full"><legend>Publish to platforms</legend><div class="composer-check-grid compact-checkboxes">
+              <% platformOptions.forEach((platform, index) => { %><label class="composer-check-card platform-option" data-platform-option data-brands="<%= platform.brandIds.join(',') %>"><input name="platforms" type="checkbox" value="<%= platform.key %>" <%= index === 0 ? 'checked' : '' %>><span><strong><%= platform.label %></strong><small><%= platform.accountCount %> live destination<%= platform.accountCount === 1 ? '' : 's' %></small></span></label><% }) %>
+            </div></fieldset>
+            <fieldset class="composer-fieldset full"><legend>Exact connected destinations</legend><div class="composer-check-grid channel-spaced-grid">
+              <% socialAccounts.forEach((account) => { %><label class="composer-check-card target-account-option" data-brand="<%= account.brandId || '' %>" data-platform="<%= account.platform %>"><input name="targetAccounts" type="checkbox" value="<%= account.id %>"><span><strong><%= account.accountName %></strong><small><%= account.platform %> / <%= account.brandName || 'Workspace' %></small></span></label><% }) %>
+            </div></fieldset>
+            <div class="real-form-actions full"><button class="btn btn-ghost" name="action" value="save" type="submit">Save manual draft</button><button class="btn btn-ghost" name="action" value="schedule" type="submit">Schedule</button><button class="btn btn-primary" name="action" value="publish" type="submit">Publish now</button></div>
+          </form>
+        </article>
+        <% } %>
+
+        <% if (bulkManualImportEnabled) { %>
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Bulk Manual Import</h3><p>Import up to 100 pre-written posts at once. Upload media first, then reference its Media Library ID. Imported rows remain AI-free.</p></div><a class="btn btn-ghost" href="/downloads/autobrand-manual-import-template.csv" download>CSV template</a></div>
+          <form action="/dashboard/actions/posts/manual-import" method="post" class="real-form-grid" data-manual-import-form>
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+            <label>CSV file<input type="file" accept=".csv,text/csv" data-manual-import-file required></label>
+            <label class="full"><input name="approvalRequired" type="checkbox"> Require approval before any scheduled imported post can publish</label>
+            <textarea name="csvData" hidden data-manual-import-data></textarea>
+            <p class="muted full">Columns: caption, title, type, platforms, scheduled_at, media_ids, target_account_ids, hashtags, link, content_goal. Separate multiple IDs/platforms with <strong>|</strong> or <strong>;</strong>.</p>
+            <button class="btn btn-primary full" type="submit">Validate and import without AI</button>
+          </form>
+        </article>
+        <% } %>
+
+        <% if (aiImageEnabled) { %>
         <article class="card real-form-card">
           <div class="card-head"><div><h3>Generate AI image</h3><p>Create prompt, Brand Brain, product promo, story/reel cover, or carousel images and save them to media.</p></div><span class="badge">Image</span></div>
           <form action="/dashboard/actions/ai/generate-image" method="post" class="real-form-grid smart-destination-form">
@@ -275,7 +330,7 @@
               <option value="carousel_image">Carousel images</option>
             </select></label>
             <label>Platform<select name="platform" data-smart-platform-select><% platformOptions.forEach((platform) => { %><option value="<%= platform.key %>" data-brands="<%= platform.brandIds.join(',') %>"><%= platform.label %></option><% }) %></select></label>
-            <label>Provider<select name="imageProvider"><option value="">Plan/default provider</option><option value="openai">OpenAI</option><option value="replicate">Replicate</option><option value="gemini">Gemini</option><option value="local">Local mock fallback</option></select></label>
+            <label>Provider<select name="imageProvider"><option value="">Plan/default provider</option><option value="openai">OpenAI</option><option value="replicate">Replicate</option><option value="gemini">Gemini</option></select></label>
             <label>Image size<select name="imageSize"><option value="1024x1024">Square feed</option><option value="1024x1536">Vertical story/reel</option><option value="1536x1024">Landscape</option></select></label>
             <label>Image count<input name="imageCount" type="number" min="1" max="5" value="1"></label>
             <label>Product/service<input name="productName" placeholder="Optional product or service"></label>
@@ -289,6 +344,7 @@
             </div>
           </form>
         </article>
+        <% } %>
       <% } %>
     </template>
 
@@ -314,7 +370,9 @@
           postTypes: composerPostTypes,
           contentTypes: composerContentTypes,
           contentGoals: composerContentGoals,
-          media: composerMedia
+          media: composerMedia,
+          allowAI: aiComposerEnabled,
+          allowManual: manualPublisherEnabled
         }) %>
       </div>
     </template>
@@ -436,6 +494,7 @@
     </template>
 
     <template id="dashboard-form-video-system">
+      <% if (aiVideoEnabled) { %>
       <article class="card real-form-card">
         <div class="card-head"><div><h3>Generate video</h3><p>Creates a real AI video job using saved Brand Brain context.</p></div><a class="btn btn-ghost" href="/dashboard/video-system">Video studio</a></div>
         <% if (!brands.length) { %><p class="empty-state">Create a brand first before generating videos.</p><% } else { %>
@@ -443,18 +502,45 @@
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Platform<select name="platform" data-smart-platform-select required><% platformOptions.forEach((platform) => { %><option value="<%= platform.key %>" data-brands="<%= platform.brandIds.join(',') %>"><%= platform.label %></option><% }) %></select></label>
-            <label>Provider<select name="provider"><option value="planning">Plan only</option><option value="mock">Mock/demo render</option><option value="openai">OpenAI video</option><option value="replicate">Replicate video</option></select></label>
+            <label>Provider<select name="provider"><option value="planning">Plan only</option><option value="openai">OpenAI video</option><option value="replicate">Replicate video</option></select></label>
             <label>Aspect ratio<select name="aspectRatio"><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
             <label>Duration<input name="durationSeconds" type="number" min="6" max="60" value="20"></label>
             <label class="full">Goal<input name="goal" placeholder="Sell weekend offer"></label>
             <label class="full">Offer<input name="offer" placeholder="Main offer"></label>
             <label class="full">Style<input name="style" placeholder="premium realistic, bright, smooth motion"></label>
             <label class="full">Prompt<textarea name="prompt" rows="3" placeholder="Optional extra direction"></textarea></label>
-            <label class="checkbox-line full"><input name="renderVideo" type="checkbox"> Render video now or create a mock demo render</label>
+            <label class="checkbox-line full"><input name="renderVideo" type="checkbox"> Render video now with the configured real video provider</label>
             <button class="btn btn-primary full" type="submit">Create video job</button>
           </form>
         <% } %>
       </article>
+      <% } %>
+      <% if (templateVideoEnabled) { %>
+        <article class="card real-form-card">
+          <div class="card-head"><div><h3>Local Template Video Studio</h3><p>Render a deterministic MP4 from your own copy and Brand Brain styling. This path does not call a generative-AI provider or consume AI credits.</p></div><span class="badge">0 AI credits</span></div>
+          <% if (!brands.length) { %>
+            <p class="empty-state">Create a brand first before rendering a local template video.</p>
+          <% } else if (!videoTemplates.length) { %>
+            <p class="empty-state">No active video templates are available. Default templates are created automatically at server startup.</p>
+          <% } else { %>
+            <form action="/dashboard/actions/templates/render" method="post" class="real-form-grid">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
+              <label>Template<select name="template" required><% videoTemplates.filter((template) => template.status === 'active').forEach((template) => { %><option value="<%= template._id || template.id %>"><%= template.name %> · <%= template.aspectRatio %> · <%= template.durationSeconds %>s</option><% }) %></select></label>
+              <label class="full">Headline<input name="headline" maxlength="140" placeholder="Weekend sale — save 20%" required></label>
+              <label class="full">Offer<textarea name="offer" rows="3" maxlength="600" placeholder="Describe the exact offer, product, service or event." required></textarea></label>
+              <label>Price<input name="price" maxlength="80" placeholder="UGX 50,000"></label>
+              <label>CTA<input name="cta" maxlength="100" placeholder="Order today"></label>
+              <label>Phone<input name="phone" maxlength="50" placeholder="+256..."></label>
+              <label>Website<input name="website" type="url" maxlength="300" placeholder="https://example.com"></label>
+              <label>Aspect ratio<select name="aspectRatio"><option value="9:16">9:16 vertical</option><option value="1:1">1:1 square</option><option value="16:9">16:9 landscape</option></select></label>
+              <label>Style<input name="style" maxlength="160" placeholder="Clean, bold, premium"></label>
+              <p class="muted full">Your text is rendered as supplied. AutoBrand performs deterministic layout, encoding and storage only; it does not rewrite this content with AI.</p>
+              <button class="btn btn-primary full" type="submit">Render local video · 0 AI credits</button>
+            </form>
+          <% } %>
+        </article>
+      <% } %>
     </template>
 
     <template id="dashboard-form-avatar-video">
@@ -465,7 +551,7 @@
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label>Brand<select name="brand" required><% brands.forEach((brand) => { %><option value="<%= brand.id %>"><%= brand.name %></option><% }) %></select></label>
             <label>Name<input name="name" placeholder="Owner / presenter name" required></label>
-            <label>Provider<select name="provider"><option value="mock_avatar_provider">Mock avatar provider</option><option value="external_avatar_provider">External avatar provider</option></select></label>
+            <label>Provider<select name="provider"><option value="openai">OpenAI video</option><option value="replicate">Replicate video</option></select></label>
             <label>Allowed use<select name="allowedUse"><option value="brand_content">Brand content</option><option value="ads">Ads</option><option value="internal_training">Internal training</option></select></label>
             <label class="full">Training media<select name="sourceMedia" required><% mediaAssets.slice(0, 30).forEach((asset) => { %><option value="<%= asset.id %>"><%= asset.fileName || asset.name || 'Media asset' %></option><% }) %></select></label>
             <label class="full">Default script<textarea name="defaultScript" rows="3" placeholder="Optional default avatar script"></textarea></label>
@@ -677,27 +763,53 @@
       </article>
 
       <article class="card real-form-card">
+        <div class="card-head"><div><h3>Google sign-in</h3><p>Link Google explicitly. AutoBrand never links accounts just because email addresses happen to match.</p></div><span class="badge"><%= dashboardData.user.googleLinked ? 'Linked' : 'Not linked' %></span></div>
+        <% if (dashboardData.user.googleLinked) { %>
+          <form action="/dashboard/actions/settings/unlink-google" method="post" class="real-form-grid" data-confirm="Unlink Google sign-in from this account?">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label class="full">Current password<input name="password" type="password" autocomplete="current-password" required placeholder="Required so you keep another sign-in method"></label>
+            <button class="btn btn-ghost full" type="submit">Unlink Google</button>
+          </form>
+        <% } else { %>
+          <form action="/dashboard/actions/settings/link-google" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label class="full">Current password<input name="password" type="password" autocomplete="current-password" required placeholder="Re-authenticate before linking"></label>
+            <button class="btn btn-primary full" type="submit">Link Google securely</button>
+          </form>
+        <% } %>
+      </article>
+
+      <article class="card real-form-card">
         <div class="card-head"><div><h3>Password</h3><p>Set or update the password used for email login.</p></div><span class="badge">Security</span></div>
         <form action="/dashboard/actions/settings/password" method="post" class="real-form-grid">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <label class="full">Current password<input name="currentPassword" type="password" autocomplete="current-password" placeholder="Leave empty if this is a Google-only account"></label>
-          <label>New password<input name="newPassword" type="password" minlength="8" autocomplete="new-password" required></label>
-          <label>Confirm password<input name="confirmPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+          <label>New password<input name="newPassword" type="password" minlength="12" autocomplete="new-password" required></label>
+          <label>Confirm password<input name="confirmPassword" type="password" minlength="12" autocomplete="new-password" required></label>
           <button class="btn btn-primary full" type="submit">Update password</button>
         </form>
       </article>
 
       <article class="card real-form-card">
-        <div class="card-head"><div><h3>Account deletion request</h3><p>Record a deletion request for admin review without removing data immediately.</p></div><span class="badge"><%= dashboardData.user.accountDeletionStatus === 'requested' ? 'Requested' : 'Available' %></span></div>
-        <% if (dashboardData.user.accountDeletionStatus === 'requested') { %>
-          <div class="data-row"><div><strong>Deletion requested</strong><span>Your request is recorded and awaiting admin handling.</span></div><span class="badge">Pending</span></div>
+        <% const deletionState = dashboardData.user.accountDeletionStatus || 'none'; %>
+        <div class="card-head"><div><h3>Account deletion</h3><p>Deletion uses a grace period, then securely removes owned workspace data and anonymizes records that must be retained for financial or security integrity.</p></div><span class="badge"><%= deletionState === 'requested' ? 'Scheduled' : deletionState === 'processing' ? 'Processing' : deletionState === 'completed' ? 'Completed' : 'Available' %></span></div>
+        <% if (deletionState === 'requested') { %>
+          <div class="data-row full"><div><strong>Deletion scheduled</strong><span>Your account is scheduled for deletion on <%= dashboardData.user.accountDeletionScheduledFor ? new Date(dashboardData.user.accountDeletionScheduledFor).toLocaleString() : 'the configured grace-period date' %>. You can cancel before processing starts.</span></div><span class="badge">Grace period</span></div>
+          <form action="/dashboard/actions/settings/cancel-delete-account" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn-primary full" type="submit">Cancel account deletion</button>
+          </form>
+        <% } else if (deletionState === 'processing') { %>
+          <div class="data-row full"><div><strong>Deletion is processing</strong><span>The grace period has ended and secure deletion has started. Sign-in credentials, sessions, owned brand content, connected social credentials and stored media are being removed.</span></div><span class="badge">Processing</span></div>
+        <% } else if (deletionState === 'completed') { %>
+          <div class="data-row full"><div><strong>Deletion completed</strong><span>The account has been anonymized and owned operational data removed. Legally or financially necessary records remain minimized and non-operational.</span></div><span class="badge">Completed</span></div>
         <% } else { %>
-          <form action="/dashboard/actions/settings/delete-account" method="post" class="real-form-grid" data-confirm="Request account deletion?">
+          <form action="/dashboard/actions/settings/delete-account" method="post" class="real-form-grid" data-confirm="Schedule permanent account deletion?">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <label class="full">Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
             <label>Current password<input name="password" type="password" autocomplete="current-password" placeholder="Required for password accounts"></label>
             <label>Confirm<input name="confirmation" placeholder="Type DELETE or your email" required></label>
-            <button class="btn btn-ghost btn-danger-subtle full" type="submit">Request deletion</button>
+            <button class="btn btn-ghost btn-danger-subtle full" type="submit">Schedule account deletion</button>
           </form>
         <% } %>
       </article>
@@ -733,6 +845,7 @@
   </script>
     <script src="/js/brand-logo-upload.js?v=20260524-upload-intent"></script>
   <script src="/js/media-upload.js?v=20260607-media-library"></script>
+<script src="/js/manual-import.js?v=20260908-no-ai"></script>
   <script src="/js/composer-intent.js?v=20260524-smart-output"></script>
   <script src="/js/dashboard-experience.js?v=20260723-smart-platform-v6"></script>
 </body>

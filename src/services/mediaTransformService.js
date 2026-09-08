@@ -1,7 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
-const { isCloudinaryConfigured } = require('../config/cloudinary');
-const { uploadBuffer } = require('./cloudinaryService');
+const { persistGeneratedFile } = require('./generatedMediaPersistence.service');
 const { downloadRemoteBuffer } = require('./remoteFetch.service');
 let sharp = null;
 
@@ -17,16 +16,13 @@ const GENERATED_UPLOAD_DIR = path.join(__dirname, '..', '..', 'public', 'uploads
 // restart anyway. Local disk is only actually kept as storage when
 // Cloudinary isn't configured or the upload fails.
 async function persistedUrl(absolutePath, folder) {
-  if (!isCloudinaryConfigured()) return '';
-  try {
-    const buffer = await fs.readFile(absolutePath);
-    const uploaded = await uploadBuffer({ buffer, folder, resourceType: 'image' });
-    await fs.unlink(absolutePath).catch(() => {});
-    return uploaded.secure_url;
-  } catch (error) {
-    console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
-    return '';
-  }
+  const persisted = await persistGeneratedFile({
+    absolutePath,
+    folder,
+    resourceType: 'image',
+    mimeType: absolutePath.toLowerCase().endsWith('.jpg') || absolutePath.toLowerCase().endsWith('.jpeg') ? 'image/jpeg' : 'image/png'
+  });
+  return persisted.fileUrl;
 }
 
 function localPublicFilePath(fileUrl) {
@@ -113,7 +109,7 @@ async function createResizeVariants(media, brand, ratios = ['1:1', '9:16', '4:5'
     created.push({
       kind: 'resize',
       label: ratioLabel(ratio),
-      url: persistedFileUrl || `/uploads/ai/${filename}`,
+      url: persistedFileUrl,
       prompt: `Resized ${media.fileName} for ${ratio} while preserving the key subject and brand space.`,
       status: 'ready',
       metadata: { aspectRatio: ratio, width, height, bytes: stat.size, brand: brand?.name || '' },
@@ -141,7 +137,7 @@ async function createCompressedVariant(media, brand, { width = 1400, quality = 7
   return {
     kind: 'compress',
     label: 'Compressed image',
-    url: persistedFileUrl || `/uploads/ai/${filename}`,
+    url: persistedFileUrl,
     prompt: `Compressed ${media.fileName} for faster uploads and smaller social assets.`,
     status: 'ready',
     metadata: { width: Number(width || 1400), quality: Number(quality || 78), bytes: stat.size, brand: brand?.name || '' },
@@ -187,7 +183,7 @@ async function createBrandedVariant(media, brand, { label = 'Brand style variant
   return {
     kind: 'image_variant',
     label,
-    url: persistedFileUrl || `/uploads/ai/${filename}`,
+    url: persistedFileUrl,
     prompt: prompt || `Created a branded variation for ${brand?.name || 'this brand'}.`,
     status: 'ready',
     metadata: { width, height, bytes: stat.size, brand: brand?.name || '' },
@@ -195,4 +191,81 @@ async function createBrandedVariant(media, brand, { label = 'Brand style variant
   };
 }
 
-module.exports = { createBrandedVariant, createCompressedVariant, createResizeVariants };
+
+async function createBackgroundRemovedVariant(media, brand, { threshold = 34, feather = 42 } = {}) {
+  assertSharp();
+  if (media.fileType !== 'image') throw new Error('Background removal only supports image media.');
+  await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
+  const input = await imageInput(media);
+  const normalized = sharp(input).rotate().ensureAlpha();
+  const { data, info } = await normalized.raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  if (channels < 4 || !width || !height) throw new Error('Could not decode image pixels for background removal.');
+
+  const sample = [];
+  const radiusX = Math.max(1, Math.floor(width * 0.06));
+  const radiusY = Math.max(1, Math.floor(height * 0.06));
+  const stepX = Math.max(1, Math.floor(radiusX / 8));
+  const stepY = Math.max(1, Math.floor(radiusY / 8));
+  const corners = [
+    [0, radiusX, 0, radiusY],
+    [Math.max(0, width - radiusX), width, 0, radiusY],
+    [0, radiusX, Math.max(0, height - radiusY), height],
+    [Math.max(0, width - radiusX), width, Math.max(0, height - radiusY), height]
+  ];
+  for (const [x0, x1, y0, y1] of corners) {
+    for (let y = y0; y < y1; y += stepY) {
+      for (let x = x0; x < x1; x += stepX) {
+        const i = (y * width + x) * channels;
+        if (data[i + 3] > 24) sample.push([data[i], data[i + 1], data[i + 2]]);
+      }
+    }
+  }
+  if (!sample.length) throw new Error('Could not estimate the image background.');
+  const background = [0, 1, 2].map((channel) => Math.round(sample.reduce((total, pixel) => total + pixel[channel], 0) / sample.length));
+  const hard = Math.max(5, Math.min(120, Number(threshold || 34)));
+  const soft = Math.max(5, Math.min(120, Number(feather || 42)));
+  let transparentPixels = 0;
+  for (let i = 0; i < data.length; i += channels) {
+    const dr = data[i] - background[0];
+    const dg = data[i + 1] - background[1];
+    const db = data[i + 2] - background[2];
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    const originalAlpha = data[i + 3];
+    if (distance <= hard) {
+      data[i + 3] = 0;
+      transparentPixels += 1;
+    } else if (distance < hard + soft) {
+      const ratio = (distance - hard) / soft;
+      data[i + 3] = Math.round(originalAlpha * ratio);
+      if (data[i + 3] < 10) transparentPixels += 1;
+    }
+  }
+
+  const filename = `${Date.now()}-${safeFilePart(media.fileName)}-background-removed.png`;
+  const absoluteOutput = path.join(GENERATED_UPLOAD_DIR, filename);
+  await sharp(data, { raw: { width, height, channels } }).png({ quality: 94 }).toFile(absoluteOutput);
+  const stat = await fs.stat(absoluteOutput);
+  const persistedFileUrl = await persistedUrl(absoluteOutput, 'background-removed');
+  return {
+    kind: 'background_removal',
+    label: 'Background removed',
+    url: persistedFileUrl,
+    prompt: 'Local non-AI edge-color background removal.',
+    status: 'ready',
+    metadata: {
+      method: 'edge-color-alpha-local-v1',
+      width,
+      height,
+      bytes: stat.size,
+      brand: brand?.name || '',
+      estimatedBackgroundRgb: background,
+      threshold: hard,
+      feather: soft,
+      transparentPixels
+    },
+    createdAt: new Date()
+  };
+}
+
+module.exports = { createBackgroundRemovedVariant, createBrandedVariant, createCompressedVariant, createResizeVariants };

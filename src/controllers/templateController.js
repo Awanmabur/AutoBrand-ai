@@ -1,12 +1,21 @@
-const Brand = require('../models/Brand');
 const Post = require('../models/Post');
 const Media = require('../models/Media');
 const VideoRender = require('../models/VideoRender');
 const VideoTemplate = require('../models/VideoTemplate');
 const { buildRenderInput, ensureDefaultTemplates } = require('../services/templateVideoService');
-const { spendCredits } = require('../services/creditService');
 const { createTemplateVideo } = require('../services/localVideoService');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
+const { assertCanUseStorage, assertPlanFeature } = require('../services/usageLimitService');
 
+
+async function accessibleRender(req, id, permission = 'content.edit', { populate = false } = {}) {
+  let query = VideoRender.findById(id);
+  if (populate) query = query.populate('brand').populate('template');
+  const render = await query;
+  if (!render) return null;
+  await assertBrandAccess(req.user, render.brand?._id || render.brand, permission, { status: 'active' });
+  return render;
+}
 async function index(req, res) {
   return res.redirect(303, '/dashboard/video-system');
 }
@@ -14,10 +23,11 @@ async function index(req, res) {
 async function renderTemplate(req, res, next) {
   try {
     const [brand, template] = await Promise.all([
-      Brand.findOne({ _id: req.body.brand, owner: req.user._id }),
+      assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' }),
       VideoTemplate.findOne({ _id: req.body.template, status: 'active' })
     ]);
     if (!brand || !template) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await assertPlanFeature(req.user, 'templateAccess', 'template video rendering', brand._id);
 
     const inputData = buildRenderInput({ brand, template, body: req.body });
     const render = await VideoRender.create({
@@ -26,15 +36,7 @@ async function renderTemplate(req, res, next) {
       createdBy: req.user._id,
       inputData,
       status: 'rendering',
-      costCredits: 20
-    });
-
-    await spendCredits({
-      user: req.user,
-      amount: 20,
-      reason: 'Template video render',
-      referenceType: 'VideoRender',
-      referenceId: render._id
+      costCredits: 0
     });
 
     try {
@@ -46,6 +48,7 @@ async function renderTemplate(req, res, next) {
         durationSeconds: template.durationSeconds || inputData.durationSeconds || 15,
         aspectRatio: inputData.aspectRatio || template.aspectRatio
       });
+      await assertCanUseStorage(req.user, output.size || 0, brand._id);
 
       await Media.create({
         brand: brand._id,
@@ -94,7 +97,7 @@ async function renderTemplate(req, res, next) {
 
 async function updateRenderStatus(req, res, next) {
   try {
-    const render = await VideoRender.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const render = await accessibleRender(req, req.params.id, 'content.edit');
     if (!render) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     render.status = req.body.status;
@@ -110,7 +113,7 @@ async function updateRenderStatus(req, res, next) {
 
 async function createPostFromRender(req, res, next) {
   try {
-    const render = await VideoRender.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand').populate('template');
+    const render = await accessibleRender(req, req.params.id, 'content.create', { populate: true });
     if (!render) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (!render.outputUrl) {
       return res.redirect('/dashboard/video-system?error=Render%20this%20template%20to%20an%20MP4%20before%20creating%20a%20video%20post');
@@ -118,7 +121,6 @@ async function createPostFromRender(req, res, next) {
 
     let outputMedia = await Media.findOne({
       brand: render.brand._id,
-      uploadedBy: req.user._id,
       fileType: 'video',
       fileUrl: render.outputUrl
     });

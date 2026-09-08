@@ -3,8 +3,7 @@ const assert = require('node:assert/strict');
 const {
   buildAvatarScenePlan,
   buildAvatarScript,
-  enrichAvatarVideoJob,
-  mockAvatarVideoResult
+  enrichAvatarVideoJob
 } = require('../src/services/avatarVideoWorkflow.service');
 
 test('avatar workflow builds default scripts and consent-safe scenes', () => {
@@ -18,7 +17,7 @@ test('avatar workflow builds default scripts and consent-safe scenes', () => {
   assert.match(scenes[0].visualPrompt, /AI-generated disclosure/);
 });
 
-test('avatar workflow enriches mock avatar jobs', () => {
+test('avatar workflow enriches consent metadata without fake provider output', () => {
   const avatar = { _id: 'avatar-1', name: 'Awan', consentVersion: '2026-05-16', allowedUse: 'brand_content' };
   const brand = { name: 'Kampala Coffee' };
   const job = {
@@ -30,9 +29,7 @@ test('avatar workflow enriches mock avatar jobs', () => {
   };
 
   enrichAvatarVideoJob(job, { avatar, brand });
-  const result = mockAvatarVideoResult({ job, avatar, brand });
-
-  assert.equal(job.metadata.avatar.mockProvider, true);
+  assert.equal(job.metadata.avatar.mockProvider, undefined);
+  assert.match(job.metadata.avatar.disclosure, /AI-generated avatar media/);
   assert.ok(job.subtitles.length);
-  assert.equal(result.provider, 'mock_avatar_provider');
 });

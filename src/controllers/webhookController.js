@@ -1,9 +1,8 @@
 const crypto = require('crypto');
 const env = require('../config/env');
-const Payment = require('../models/Payment');
 const WebhookEvent = require('../models/WebhookEvent');
 
-const ALLOWED_PROVIDERS = new Set(['autobrand', 'openai', 'cloudinary', 'meta', 'facebook', 'instagram', 'tiktok', 'youtube', 'linkedin']);
+const ALLOWED_PROVIDERS = new Set(['autobrand']);
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 function safeEqual(left, right) {
@@ -49,17 +48,6 @@ async function receive(req, res, next) {
     );
 
     if (event.status === 'processed') return res.json({ ok: true, duplicate: true });
-
-    const reference = String(req.body.reference || req.body.data?.reference || req.body.data?.id || '').trim();
-    const paid = ['paid', 'payment_succeeded', 'charge.completed', 'checkout.session.completed'].includes(eventType)
-      || String(req.body.status || '').toLowerCase() === 'paid';
-    if (reference && paid) {
-      await Payment.findOneAndUpdate(
-        { reference, provider, status: { $ne: 'paid' } },
-        { $set: { status: 'paid', paidAt: new Date() } },
-        { new: true }
-      );
-    }
 
     event.status = 'processed';
     event.processedAt = new Date();

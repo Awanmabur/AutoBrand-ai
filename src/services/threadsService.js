@@ -237,6 +237,36 @@ async function publishThreadsPost({ post, account }) {
   return { id: data.id || `threads_${post._id}` };
 }
 
+
+async function fetchThreadsPostMetrics({ account, platformPostId }) {
+  const accessToken = await accessTokenFor(account);
+  const mediaId = String(platformPostId || '').trim();
+  if (!mediaId) throw new ThreadsProviderError('Threads media ID is missing for analytics sync.');
+  const data = await threadsGraph(`/${encodeURIComponent(mediaId)}/insights?metric=views,likes,replies,reposts,quotes,shares`, { accessToken });
+  const values = {};
+  for (const metric of data.data || []) {
+    const value = metric.values?.[0]?.value ?? metric.value;
+    if (value !== undefined) values[String(metric.name || '').toLowerCase()] = Number(value || 0);
+  }
+  const availableMetrics = [];
+  const result = { providerPostId: mediaId, availableMetrics };
+  const set = (target, source) => { if (values[source] !== undefined) { result[target] = values[source]; availableMetrics.push(target); } };
+  set('views', 'views');
+  set('likes', 'likes');
+  set('comments', 'replies');
+  if (values.reposts !== undefined || values.quotes !== undefined || values.shares !== undefined) {
+    result.shares = Number(values.reposts || 0) + Number(values.quotes || 0) + Number(values.shares || 0);
+    availableMetrics.push('shares');
+  }
+  if (!availableMetrics.length) {
+    const error = new ThreadsProviderError('Threads returned no supported insight metrics for this media yet.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  return result;
+}
+
 async function syncThreadsAccount({ account }) {
   const accessToken = await accessTokenFor(account);
   const profile = await getThreadsProfile(accessToken);
@@ -258,6 +288,7 @@ module.exports = {
   getThreadsSetupIssue,
   isThreadsConfigured,
   publishThreadsPost,
+  fetchThreadsPostMetrics,
   syncThreadsAccount,
   ThreadsProviderError,
   __private: { signState, verifyState, postText, graphUrl }

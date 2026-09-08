@@ -41,6 +41,7 @@ const {
   archiveMissingGeneratedMedia,
   partitionAvailableMedia,
 } = require("./mediaAvailability.service");
+const { canAccessBrand } = require("./authorization/brandAccess.service");
 
 const TASK_TYPE = "post_content_generation";
 const LEGACY_VIDEO_TASK_TYPE = "post_video_generation";
@@ -117,6 +118,21 @@ function trustedOperator(operator) {
   return mongoose.trusted(operator);
 }
 
+
+function requiredPermissionForRequestedAction(requestedAction = "save") {
+  if (requestedAction === "publish") return "content.publish";
+  if (requestedAction === "schedule") return "schedule.manage";
+  return "content.edit";
+}
+
+async function assertGenerationActorAccess(user, brand, metadata = {}) {
+  const permission = requiredPermissionForRequestedAction(metadata.requestedAction || "save");
+  if (!(await canAccessBrand(user, brand, permission))) {
+    throw new Error(`The account no longer has ${permission} permission for this brand.`);
+  }
+  return permission;
+}
+
 function generationJobTag(jobId) {
   return `generation-job-${cleanObjectId(jobId)}`;
 }
@@ -171,8 +187,8 @@ function normalizeProvider(value, kind) {
 
   const supported =
     kind === "video"
-      ? ["openai", "replicate", "local"]
-      : ["openai", "replicate", "gemini", "local"];
+      ? ["openai", "replicate"]
+      : ["openai", "replicate", "gemini"];
 
   return supported.includes(provider) ? provider : undefined;
 }
@@ -227,15 +243,16 @@ function buildPostGenerationPlan(
 
   const creationMode = String(body.creationMode || "ai").toLowerCase();
 
+  // AI mode does not mean "rewrite text no matter what". If the user or a
+  // campaign already supplied a caption, preserve it and spend AI only on the
+  // missing asset. Regenerate remains an explicit request to replace text.
   const needsText =
-    creationMode !== "manual" ||
     body.action === "regenerate" ||
-    !String(body.caption || "").trim();
+    (creationMode !== "manual" && !String(body.caption || "").trim());
 
   const imageGenerationRequested =
-    isImage &&
-    (creationMode !== "manual" ||
-      body.generateImage === "on" ||
+    isImage && creationMode !== "manual" &&
+    (body.generateImage === "on" ||
       ["ai_image", "openai_image", "replicate_image", "gemini_image"].includes(
         String(body.imageMode || "").toLowerCase(),
       ) ||
@@ -247,7 +264,7 @@ function buildPostGenerationPlan(
     ? Math.max(0, targetImageCount - imageRows.length)
     : 0;
 
-  const needsVideo = isVideo && videoRows.length === 0;
+  const needsVideo = creationMode !== 'manual' && isVideo && videoRows.length === 0;
 
   return {
     type,
@@ -704,9 +721,16 @@ async function connectedTargetsForPost(post) {
   const selectedIds = toArray(post.targetAccounts)
     .map((value) => value?._id || value)
     .filter(Boolean);
+  const brandId = post.brand?._id || post.brand;
+  const brand = post.brand?.owner
+    ? post.brand
+    : await Brand.findById(brandId).select("owner").lean();
+  if (!brand?.owner) {
+    throw new Error("The brand for this post is unavailable.");
+  }
   const filter = {
-    owner: post.createdBy || post.user,
-    brand: post.brand?._id || post.brand,
+    owner: brand.owner,
+    brand: brandId,
     platform: trustedOperator({ $in: platforms }),
     status: "connected",
   };
@@ -859,6 +883,7 @@ async function chargeGeneration({
 
   await spendCredits({
     user,
+    brandId: brand._id,
     amount: generationCredits,
     reason: `Composer ${generationControls.outputType} generation`,
     referenceType: "Post",
@@ -877,6 +902,7 @@ async function chargeGeneration({
       controls: generationControls,
       outputType: generationControls.outputType,
       mediaGenerated,
+      actorUserId: job.user,
     },
   });
 
@@ -892,6 +918,7 @@ async function chargeGeneration({
 async function recordGeneratedMediaUsage({
   job,
   brand,
+  billingUser,
   generatedImageIds = [],
   provider,
 }) {
@@ -900,7 +927,7 @@ async function recordGeneratedMediaUsage({
   }
 
   const existing = await UsageLog.exists({
-    user: job.user,
+    user: billingUser?._id || brand.owner,
     action: "ai_generate_image",
     "metadata.job": job._id,
   });
@@ -910,7 +937,7 @@ async function recordGeneratedMediaUsage({
   }
 
   await UsageLog.create({
-    user: job.user,
+    user: billingUser?._id || brand.owner,
     brand: brand._id,
     action: "ai_generate_image",
     provider: provider || job.provider || "ai",
@@ -920,6 +947,7 @@ async function recordGeneratedMediaUsage({
       count: generatedImageIds.length,
       media: generatedImageIds,
       source: "post_generation_worker",
+      actorUserId: job.user,
     },
   });
 }
@@ -927,10 +955,7 @@ async function recordGeneratedMediaUsage({
 async function processPostGenerationJob(job) {
   const rawMetadata = job.metadata || {};
 
-  const post = await Post.findOne({
-    _id: rawMetadata.postId,
-    createdBy: job.user,
-  });
+  const post = await Post.findById(rawMetadata.postId);
 
   if (!post) {
     throw new Error("The post for this generation job no longer exists.");
@@ -947,7 +972,6 @@ async function processPostGenerationJob(job) {
   const [brand, user] = await Promise.all([
     Brand.findOne({
       _id: post.brand,
-      owner: job.user,
       status: "active",
     }),
     User.findById(job.user),
@@ -961,6 +985,17 @@ async function processPostGenerationJob(job) {
     throw new Error("The account for this generation job is unavailable.");
   }
 
+  if (!(await canAccessBrand(user, brand, "content.edit"))) {
+    throw new Error("The account no longer has content.edit permission for this brand.");
+  }
+
+  const billingUser = String(brand.owner) === String(user._id)
+    ? user
+    : await User.findById(brand.owner);
+  if (!billingUser) {
+    throw new Error("The billing owner for this generation job is unavailable.");
+  }
+
   const metadata = normalizeJobMetadata(job, post);
 
   const body = metadata.body || {};
@@ -970,7 +1005,7 @@ async function processPostGenerationJob(job) {
         _id: trustedOperator({
           $in: metadata.selectedMediaIds,
         }),
-        uploadedBy: job.user,
+        brand: brand._id,
         status: trustedOperator({
           $ne: "archived",
         }),
@@ -1005,7 +1040,7 @@ async function processPostGenerationJob(job) {
   }
 
   const artifactRowsRaw = await Media.find({
-    uploadedBy: job.user,
+    brand: brand._id,
     status: trustedOperator({
       $ne: "archived",
     }),
@@ -1302,7 +1337,7 @@ async function processPostGenerationJob(job) {
 
   const cancelledPost = await Post.findOne({
     _id: post._id,
-    createdBy: job.user,
+    brand: brand._id,
     status: "cancelled",
   })
     .select("_id")
@@ -1370,7 +1405,8 @@ async function processPostGenerationJob(job) {
         _id: trustedOperator({
           $in: post.targetAccounts,
         }),
-        owner: job.user,
+        owner: brand.owner,
+        brand: brand._id,
       }).lean()
     : [];
 
@@ -1386,7 +1422,7 @@ async function processPostGenerationJob(job) {
         _id: trustedOperator({
           $in: finalMediaIds,
         }),
-        uploadedBy: job.user,
+        brand: brand._id,
         status: trustedOperator({ $ne: "archived" }),
       })
     : [];
@@ -1494,6 +1530,7 @@ async function processPostGenerationJob(job) {
   // bookkeeping so a CreditLedger/UsageLog/notification write cannot leave a
   // fully generated post stranded as a draft.
   try {
+    await assertGenerationActorAccess(user, brand, metadata);
     await finishRequestedAction(post, metadata);
   } catch (error) {
     actionWarning =
@@ -1524,7 +1561,7 @@ async function processPostGenerationJob(job) {
     await chargeGeneration({
       job,
       post,
-      user,
+      user: billingUser,
       brand,
       body,
       generated,
@@ -1545,6 +1582,7 @@ async function processPostGenerationJob(job) {
     await recordGeneratedMediaUsage({
       job,
       brand,
+      billingUser,
       generatedImageIds,
       provider: generated?.provider || job.provider,
     });
@@ -1647,10 +1685,7 @@ async function markJobFailure(job, error) {
 
   await job.save();
 
-  const post = await Post.findOne({
-    _id: job.metadata?.postId,
-    createdBy: job.user,
-  });
+  const post = await Post.findById(job.metadata?.postId);
 
   if (!post) {
     return;
@@ -1914,10 +1949,7 @@ async function recoverCompletedJobsWithMissingMedia({ limit = 50 } = {}) {
   let requeued = 0;
   for (const job of jobs) {
     const resultMediaIds = dedupeIds(job.result?.mediaIds || []).map(cleanObjectId).filter(Boolean);
-    const post = await Post.findOne({
-      _id: job.metadata?.postId,
-      createdBy: job.user,
-    }).populate("media");
+    const post = await Post.findById(job.metadata?.postId).populate("media");
     if (!post) continue;
 
     const resultRows = resultMediaIds.length
@@ -2007,10 +2039,7 @@ async function recoverCompletedGenerationActions({ limit = 50 } = {}) {
   let failed = 0;
 
   for (const job of jobs) {
-    const post = await Post.findOne({
-      _id: job.metadata?.postId,
-      createdBy: job.user,
-    });
+    const post = await Post.findById(job.metadata?.postId);
     if (!post) continue;
 
     const generation = post.platformMetadata?.generation || {};
@@ -2019,6 +2048,14 @@ async function recoverCompletedGenerationActions({ limit = 50 } = {}) {
     if (["scheduled", "publishing", "published", "pending_approval"].includes(post.status)) continue;
 
     try {
+      const [brand, actor] = await Promise.all([
+        Brand.findOne({ _id: post.brand, status: "active" }),
+        User.findById(job.user),
+      ]);
+      if (!brand || !actor) {
+        throw new Error("The generation actor or brand is unavailable for action recovery.");
+      }
+      await assertGenerationActorAccess(actor, brand, job.metadata || {});
       await finishRequestedAction(post, job.metadata || {});
       recovered += 1;
     } catch (error) {
@@ -2081,9 +2118,8 @@ async function enqueuePostGeneration({
     taskType: TASK_TYPE,
     provider: plan?.needsVideo
       ? normalizeProvider(body.videoProvider, "video") ||
-        activeProvider("video") ||
-        "local"
-      : activeProvider("text") || "local",
+        activeProvider("video")
+      : activeProvider("text"),
     model: plan?.needsVideo ? body.videoModel || "" : body.aiModel || "",
     status: "queued",
     priority: plan?.needsVideo ? 4 : plan?.imagesToGenerate > 0 ? 2 : 1,
@@ -2094,6 +2130,9 @@ async function enqueuePostGeneration({
       plan,
       requestedAction: requestedAction || "save",
       scheduledAt: scheduledAt || null,
+      actorUserId: cleanObjectId(userId),
+      billingWorkspaceId: cleanObjectId(brand.owner),
+      requiredPermission: requiredPermissionForRequestedAction(requestedAction || "save"),
       queuedAt: new Date(),
     },
   });

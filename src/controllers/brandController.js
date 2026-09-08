@@ -5,6 +5,7 @@ const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { assertCanCreateBrand } = require('../services/usageLimitService');
 const { addBrandAsset } = require('../services/brandBrain/brandAsset.service');
 const { updateBrandScore } = require('../services/brandBrain/brandScore.service');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
 
 async function index(req, res, next) {
   try {
@@ -299,7 +300,7 @@ async function store(req, res, next) {
 
 async function show(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.params.id, 'brand.view', { status: { $in: ['active', 'archived'] } });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     return res.redirect('/dashboard/brand-brain');
@@ -310,7 +311,7 @@ async function show(req, res, next) {
 
 async function edit(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.params.id, 'brand.manage', { status: { $in: ['active', 'archived'] } });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     return res.redirect('/dashboard/brand-brain');
@@ -321,7 +322,7 @@ async function edit(req, res, next) {
 
 async function update(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.params.id, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.params.id, 'brand.manage', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     Object.assign(brand, brandPayload(req.body));
@@ -339,4 +340,24 @@ async function update(req, res, next) {
   }
 }
 
-module.exports = { index, create, store, show, edit, update };
+
+async function archive(req, res, next) {
+  try {
+    const brand = await assertBrandAccess(req.user, req.params.id, 'brand.manage', { status: 'active' });
+    brand.status = 'archived';
+    brand.autoPosting = { ...(brand.autoPosting?.toObject?.() || brand.autoPosting || {}), enabled: false };
+    await brand.save();
+    return res.redirect('/dashboard/brand-brain?brand_archived=1');
+  } catch (error) { return next(error); }
+}
+
+async function restore(req, res, next) {
+  try {
+    const brand = await assertBrandAccess(req.user, req.params.id, 'brand.manage', { status: 'archived' });
+    brand.status = 'active';
+    await brand.save();
+    return res.redirect('/dashboard/brand-brain?brand_restored=1');
+  } catch (error) { return next(error); }
+}
+
+module.exports = { archive, restore, index, create, store, show, edit, update };

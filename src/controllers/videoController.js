@@ -1,4 +1,3 @@
-const Brand = require('../models/Brand');
 const AiVideoJob = require('../models/AiVideoJob');
 const Media = require('../models/Media');
 const Post = require('../models/Post');
@@ -8,8 +7,9 @@ const { generateVideo, activeProvider } = require('../services/ai.service');
 const { assertCanCreateAvatarVideo, assertCanCreateVideo, assertCanUseStorage } = require('../services/usageLimitService');
 const { spendCredits } = require('../services/creditService');
 const { applyMediaToScenes } = require('../services/mediaInsightService');
-const { enrichVideoJob, mockVideoResult } = require('../services/videoWorkflow.service');
+const { enrichVideoJob } = require('../services/videoWorkflow.service');
 const { notifyVideoRendered } = require('../services/notification.service');
+const { accessibleBrandIds, assertBrandAccess } = require('../services/authorization/brandAccess.service');
 
 
 function buildHighImpactVideoPrompt({ brand, req, mode, sourceMedia }) {
@@ -33,13 +33,13 @@ function buildHighImpactVideoPrompt({ brand, req, mode, sourceMedia }) {
 async function selectedMedia(req, brandId) {
   const ids = Array.isArray(req.body.sourceMedia) ? req.body.sourceMedia.filter(Boolean) : req.body.sourceMedia ? [req.body.sourceMedia] : [];
   if (!ids.length) return [];
-  return Media.find({ _id: { $in: ids }, uploadedBy: req.user._id, brand: brandId, fileType: { $in: ['image', 'video'] } }).sort({ createdAt: -1 });
+  return Media.find({ _id: { $in: ids }, brand: brandId, status: { $ne: 'archived' }, fileType: { $in: ['image', 'video'] } }).sort({ createdAt: -1 });
 }
 
 async function maybeRenderVideo({ req, brand, job, prompt, sourceMedia }) {
   const renderProviders = ['openai', 'replicate'];
   const requestedProvider = String(req.body.provider || '').toLowerCase();
-  const shouldRender = req.body.renderVideo === 'on' || requestedProvider === 'mock' || renderProviders.includes(requestedProvider) || renderProviders.includes(activeProvider('video'));
+  const shouldRender = req.body.renderVideo === 'on' || renderProviders.includes(requestedProvider) || renderProviders.includes(activeProvider('video'));
   enrichVideoJob(job, { brand });
   if (!shouldRender) {
     await job.save();
@@ -49,31 +49,31 @@ async function maybeRenderVideo({ req, brand, job, prompt, sourceMedia }) {
   job.status = 'processing';
   await job.save();
 
-  let result = requestedProvider === 'mock'
-    ? { ok: false, provider: 'mock', message: 'Mock video render requested.' }
-    : await generateVideo({
-        prompt,
-        brand,
-        userId: req.user._id,
-        sourceMedia,
-        aspectRatio: req.body.aspectRatio || job.aspectRatio,
-        durationSeconds: req.body.durationSeconds || job.durationSeconds,
-        preferredProvider: renderProviders.includes(requestedProvider) ? requestedProvider : undefined,
-        model: req.body.videoModel || undefined
-      });
+  const result = await generateVideo({
+    prompt,
+    brand,
+    userId: req.user._id,
+    sourceMedia,
+    aspectRatio: req.body.aspectRatio || job.aspectRatio,
+    durationSeconds: req.body.durationSeconds || job.durationSeconds,
+    preferredProvider: renderProviders.includes(requestedProvider) ? requestedProvider : undefined,
+    model: req.body.videoModel || undefined
+  });
 
   if (!result.ok || !result.outputUrl) {
-    const providerMessage = result.message || 'Video API did not return output.';
-    result = mockVideoResult({ job, brand });
+    const providerMessage = result.message || 'Video provider did not return a publishable output.';
+    job.status = 'failed';
     job.errorMessage = providerMessage;
     job.metadata = {
       ...(job.metadata || {}),
-      providerFallback: {
+      providerFailure: {
+        provider: result.provider || requestedProvider || activeProvider('video') || 'unconfigured',
         message: providerMessage,
-        fallbackProvider: result.provider,
         createdAt: new Date()
       }
     };
+    await job.save();
+    return job;
   }
 
   job.provider = result.provider || job.provider;
@@ -99,14 +99,13 @@ async function saveRenderedVideoToMedia({ req, brand, job, result = {}, prompt =
   if (!job.outputUrl && !result.outputUrl) throw new Error('This video job has no rendered output URL yet.');
   const fileUrl = job.outputUrl || result.outputUrl;
   const existing = await Media.findOne({
-    uploadedBy: req.user._id,
     brand: brand._id,
     fileType: 'video',
     fileUrl
   }).sort({ createdAt: -1 });
   if (existing) return existing;
 
-  await assertCanUseStorage(req.user, result.size || 0);
+  await assertCanUseStorage(req.user, result.size || 0, brand._id);
 
   return Media.create({
     brand: brand._id,
@@ -118,16 +117,14 @@ async function saveRenderedVideoToMedia({ req, brand, job, result = {}, prompt =
     mimeType: 'video/mp4',
     size: result.size || 0,
     folder: `${result.provider || job.provider || 'ai'}-generated-video`,
-    tags: [result.provider || job.provider || 'ai', 'generated', 'video', result.provider === 'mock_video_provider' ? 'mock' : 'rendered'].filter(Boolean),
+    tags: [result.provider || job.provider || 'ai', 'generated', 'video', 'rendered'].filter(Boolean),
     aiPrompt: prompt || job.prompt,
     aiInsights: {
       summary: `${result.provider || job.provider || 'AI'} generated video for ${brand.name}.`,
       visualPrompt: prompt || job.prompt,
       contentAngles: [req.body.goal, req.body.offer].filter(Boolean),
       recommendedPlatforms: [req.body.platform || 'facebook'],
-      safetyNotes: [
-        result.provider === 'mock_video_provider' ? 'Mock demo output. Replace with a real rendered MP4 before publishing externally.' : 'Review generated video before publishing.'
-      ],
+      safetyNotes: ['Review generated video before publishing.'],
       reuseInstructions: ['Use this generated video in posts for this brand.'],
       generatedFrom: `${result.provider || job.provider || 'ai'}_video_workflow`,
       generatedAt: new Date(),
@@ -138,12 +135,24 @@ async function saveRenderedVideoToMedia({ req, brand, job, result = {}, prompt =
 }
 
 async function videoIndexData(req, error = null) {
+  const brandIds = await accessibleBrandIds(req.user, 'content.create', { status: 'active' });
+  const brandFilter = brandIds.length ? { $in: brandIds } : { $in: [] };
+  const Brand = require('../models/Brand');
   const [brands, media, jobs] = await Promise.all([
-    Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 }),
-    Media.find({ uploadedBy: req.user._id, fileType: { $in: ['image', 'video'] } }).populate('brand').sort({ createdAt: -1 }).limit(40),
-    AiVideoJob.find({ createdBy: req.user._id }).populate('brand').sort({ createdAt: -1 }).limit(20)
+    Brand.find({ _id: brandFilter }).sort({ name: 1 }),
+    Media.find({ brand: brandFilter, status: { $ne: 'archived' }, fileType: { $in: ['image', 'video'] } }).populate('brand').sort({ createdAt: -1 }).limit(40),
+    AiVideoJob.find({ brand: brandFilter }).populate('brand').sort({ createdAt: -1 }).limit(20)
   ]);
   return { title: 'AI Videos', layout: 'layouts/dashboard', brands, media, jobs, error };
+}
+
+async function accessibleVideoJob(req, id, permission = 'content.edit', { populateBrand = false } = {}) {
+  let query = AiVideoJob.findById(id);
+  if (populateBrand) query = query.populate('brand');
+  const job = await query;
+  if (!job) return null;
+  await assertBrandAccess(req.user, job.brand?._id || job.brand, permission, { status: 'active' });
+  return job;
 }
 
 async function index(req, res) {
@@ -152,9 +161,9 @@ async function index(req, res) {
 
 async function storeAutoVideo(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertCanCreateVideo(req.user);
+    await assertCanCreateVideo(req.user, brand._id);
 
     const mediaItems = await selectedMedia(req, brand._id);
     const aiScenes = await generateVideoScenePlan({
@@ -175,8 +184,18 @@ async function storeAutoVideo(req, res, next) {
       aspectRatio: req.body.aspectRatio || '9:16',
       durationSeconds: Number(req.body.durationSeconds || 20),
       status: 'planning',
+      costCredits: 100,
       scenePlan,
       sourceMedia: mediaItems.map((item) => item._id)
+    });
+
+    await spendCredits({
+      user: req.user,
+      brandId: brand._id,
+      amount: 100,
+      reason: 'AI brand video generation',
+      referenceType: 'AiVideoJob',
+      referenceId: job._id
     });
 
     await maybeRenderVideo({ req, brand, job, prompt: buildHighImpactVideoPrompt({ brand, req, mode: 'brand_to_video', sourceMedia: mediaItems[0] }), sourceMedia: mediaItems[0] });
@@ -188,9 +207,9 @@ async function storeAutoVideo(req, res, next) {
 
 async function storeCleanVideo(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertCanCreateVideo(req.user);
+    await assertCanCreateVideo(req.user, brand._id);
 
     const mediaItems = await selectedMedia(req, brand._id);
     const aiScenes = await generateVideoScenePlan({
@@ -222,6 +241,7 @@ async function storeCleanVideo(req, res, next) {
 
     await spendCredits({
       user: req.user,
+      brandId: brand._id,
       amount: 100,
       reason: 'Clean AI video generation',
       referenceType: 'AiVideoJob',
@@ -237,9 +257,9 @@ async function storeCleanVideo(req, res, next) {
 
 async function storeImageToVideo(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertCanCreateVideo(req.user);
+    await assertCanCreateVideo(req.user, brand._id);
 
     const mediaItems = await selectedMedia(req, brand._id);
     if (!mediaItems.length) {
@@ -273,6 +293,15 @@ async function storeImageToVideo(req, res, next) {
       costCredits: 100
     });
 
+    await spendCredits({
+      user: req.user,
+      brandId: brand._id,
+      amount: 100,
+      reason: 'AI image-to-video generation',
+      referenceType: 'AiVideoJob',
+      referenceId: job._id
+    });
+
     await maybeRenderVideo({ req, brand, job, prompt: req.body.prompt || `Image-to-video for ${brand.name}`, sourceMedia: mediaItems[0] });
     res.redirect('/dashboard/video-system');
   } catch (error) {
@@ -282,9 +311,9 @@ async function storeImageToVideo(req, res, next) {
 
 async function storeAvatarVideo(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertCanCreateAvatarVideo(req.user);
+    await assertCanCreateAvatarVideo(req.user, 1, brand._id);
 
     const mediaItems = await selectedMedia(req, brand._id);
     const consented = mediaItems.every((item) => !item.consentRequired || item.consentStatus === 'accepted');
@@ -320,6 +349,15 @@ async function storeAvatarVideo(req, res, next) {
       costCredits: 150
     });
 
+    await spendCredits({
+      user: req.user,
+      brandId: brand._id,
+      amount: 150,
+      reason: 'AI avatar video generation',
+      referenceType: 'AiVideoJob',
+      referenceId: job._id
+    });
+
     await maybeRenderVideo({ req, brand, job, prompt: req.body.script || req.body.prompt || `Owner avatar video for ${brand.name}`, sourceMedia: mediaItems[0] });
     res.redirect('/dashboard/video-system');
   } catch (error) {
@@ -329,7 +367,7 @@ async function storeAvatarVideo(req, res, next) {
 
 async function updateStatus(req, res, next) {
   try {
-    const job = await AiVideoJob.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const job = await accessibleVideoJob(req, req.params.id, 'content.edit');
     if (!job) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     job.status = req.body.status;
@@ -345,7 +383,7 @@ async function updateStatus(req, res, next) {
 
 async function regenerateScene(req, res, next) {
   try {
-    const job = await AiVideoJob.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const job = await accessibleVideoJob(req, req.params.id, 'content.edit');
     if (!job) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const sceneIndex = Number(req.body.sceneIndex || 0);
@@ -364,7 +402,7 @@ async function regenerateScene(req, res, next) {
 
 async function createPostFromVideo(req, res, next) {
   try {
-    const job = await AiVideoJob.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand');
+    const job = await accessibleVideoJob(req, req.params.id, 'content.create', { populateBrand: true });
     if (!job) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (!job.outputUrl) {
       return res.redirect('/dashboard/video-system?error=This%20video%20job%20has%20no%20rendered%20MP4%20yet');
@@ -399,7 +437,7 @@ async function createPostFromVideo(req, res, next) {
 
 async function saveMedia(req, res, next) {
   try {
-    const job = await AiVideoJob.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand');
+    const job = await accessibleVideoJob(req, req.params.id, 'content.edit', { populateBrand: true });
     if (!job) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     if (!job.outputUrl) return res.redirect('/dashboard/video-system?error=This%20video%20job%20has%20no%20output%20URL%20yet');
 
@@ -415,7 +453,7 @@ async function saveMedia(req, res, next) {
 
 async function cancel(req, res, next) {
   try {
-    const job = await AiVideoJob.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const job = await accessibleVideoJob(req, req.params.id, 'content.edit');
     if (!job) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     job.status = 'cancelled';

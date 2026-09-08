@@ -86,7 +86,6 @@ function platformRules(platform) {
     tiktok: 'Video-first. Give a 3-5 scene script with a first-second hook and spoken narration.',
     youtube: 'Shorts-first. Give title, description, tags, 15-45 second script, and thumbnail prompt.',
     linkedin: 'Professional proof, founder insight, case study, less hype, clear business CTA.',
-    whatsapp: 'Conversational, direct, short, with offer and contact CTA. Avoid too many hashtags.',
     x: 'Very concise, punchy, one clear thought, optional thread angle.',
     pinterest: 'Evergreen visual idea, keyword-rich title, clean image/slide prompt.'
   };
@@ -173,10 +172,21 @@ async function generateCampaignBatch(input) {
   });
   const result = await generateJsonText({
     preferredProvider: input.aiProvider || input.textProvider || undefined,
-    prompt: buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, customerGoal: input.customerGoal, strengthTarget }),
-    fallback: { campaignTitle: `${brand.name} auto campaign`, strategySummary: 'Local fallback campaign.', posts: fallbackPosts }
+    prompt: buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, customerGoal: input.customerGoal, strengthTarget })
   });
-  const rawPosts = Array.isArray(result.data?.posts) ? result.data.posts : fallbackPosts;
+  if (!result.ok) {
+    const error = new Error(result.message || 'AI campaign generation failed.');
+    error.status = 502;
+    error.safeMessage = error.message;
+    throw error;
+  }
+  const rawPosts = Array.isArray(result.data?.posts) ? result.data.posts : [];
+  if (!rawPosts.length) {
+    const error = new Error('AI provider returned no campaign posts.');
+    error.status = 502;
+    error.safeMessage = error.message;
+    throw error;
+  }
   const posts = rawPosts.slice(0, count).map((post, index) => ({
     ...fallbackPosts[index % fallbackPosts.length],
     ...post,
@@ -192,7 +202,7 @@ async function generateCampaignBatch(input) {
     provider: result.provider || 'openai',
     message: result.message,
     campaignTitle: result.data?.campaignTitle || `${brand.name} auto campaign`,
-    strategySummary: result.data?.strategySummary || 'OpenAI generated a conversion-focused content batch.',
+    strategySummary: result.data?.strategySummary || 'AI-generated conversion-focused content batch.',
     posts,
     frequencyUnit
   };

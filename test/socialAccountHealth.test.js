@@ -31,9 +31,9 @@ test('social account health reports missing permissions and capabilities', () =>
   assert.ok(capabilityList(health.capabilities).includes('direct publishing'));
 });
 
-test('mock social accounts are development-connected without token checks', () => {
+test('historical mock social accounts are always reconnect-required and never publishable', () => {
   const health = evaluateSocialAccountHealth({ platform: 'facebook', status: 'mock', permissions: [] });
 
-  assert.equal(health.status, 'connected');
-  assert.equal(health.label, 'Development connected');
+  assert.equal(health.status, 'needs_reconnect');
+  assert.match(health.label, /Reconnect/i);
 });

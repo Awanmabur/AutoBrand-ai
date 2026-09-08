@@ -8,13 +8,33 @@ const { startPostGenerationWorker, stopPostGenerationWorker } = require('./src/s
 const { closeQueueResources } = require('./src/config/queue');
 const { markLegacyInstagramAccountsForReconnect } = require('./src/services/metaAccountReadiness.service');
 const { markUndecryptableSocialAccountsForReconnect } = require('./src/services/socialCredentialReadiness.service');
+const { startAccountDeletionProcessor, stopAccountDeletionProcessor } = require('./src/services/account/accountDeletionProcessor.service');
+const { startAnalyticsSyncProcessor, stopAnalyticsSyncProcessor } = require('./src/services/analytics/analyticsSync.service');
+const { ensureDefaultTemplates } = require('./src/services/templateVideoService');
+const { startPaymentReconciliationProcessor, stopPaymentReconciliationProcessor } = require('./src/services/billing/paymentReconciliation.service');
 
 async function startServer() {
   const validation = validateEnvironment();
   validation.warnings.forEach((warning) => console.warn(`Configuration warning: ${warning}`));
   await connectDb();
+  await ensureDefaultTemplates();
   await markLegacyInstagramAccountsForReconnect();
   await markUndecryptableSocialAccountsForReconnect();
+  startAccountDeletionProcessor();
+  if (env.runAnalyticsSyncWorkerInWeb) {
+    startAnalyticsSyncProcessor({ pollMs: env.analyticsSyncPollMs, concurrency: env.analyticsSyncConcurrency });
+  } else if (env.analyticsSyncWorkerMode === 'external') {
+    console.log('Provider analytics synchronization is delegated to a dedicated worker (ANALYTICS_SYNC_WORKER_MODE=external).');
+  } else {
+    console.warn('Provider analytics synchronization is intentionally disabled (ANALYTICS_SYNC_WORKER_MODE=off).');
+  }
+  if (env.runPaymentReconciliationWorkerInWeb) {
+    startPaymentReconciliationProcessor({ pollMs: env.paymentReconciliationPollMs, concurrency: env.paymentReconciliationConcurrency });
+  } else if (env.paymentReconciliationWorkerMode === 'external') {
+    console.log('Pesapal reconciliation is delegated to a dedicated worker (PAYMENT_RECONCILIATION_WORKER_MODE=external).');
+  } else {
+    console.warn('Pesapal reconciliation is intentionally disabled (PAYMENT_RECONCILIATION_WORKER_MODE=off). Callback/IPN verification remains active.');
+  }
   if (env.publishingPaused) {
     console.warn('Publishing is intentionally paused (PAUSE_PUBLISHING=true).');
   } else {
@@ -42,6 +62,9 @@ async function startServer() {
     console.log(`${signal} received. Shutting down gracefully.`);
     stopDuePostPublisher();
     stopPostGenerationWorker();
+    stopAccountDeletionProcessor();
+    stopAnalyticsSyncProcessor();
+    stopPaymentReconciliationProcessor();
     server.close(async () => {
       await closeQueueResources().catch(() => {});
       await mongoose.connection.close().catch(() => {});

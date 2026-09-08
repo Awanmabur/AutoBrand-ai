@@ -50,19 +50,25 @@ function bestPostMemory(item) {
   };
 }
 
-async function updateBrandPerformanceMemoryForOwner(ownerId) {
-  const brands = await Brand.find({ owner: ownerId }).select('_id');
-  const brandIds = brands.map((brand) => brand._id);
-  if (!brandIds.length) return { updated: 0 };
+function normalizeBrandIds(brandIds = []) {
+  return [...new Set((Array.isArray(brandIds) ? brandIds : [brandIds]).map((value) => value?._id || value).filter(Boolean).map(String))];
+}
 
-  const analytics = await Analytics.find({ brand: { $in: brandIds }, post: { $ne: null } })
+async function updateBrandPerformanceMemory({ brandIds } = {}) {
+  const ids = normalizeBrandIds(brandIds);
+  if (!ids.length) return { updated: 0 };
+
+  const brands = await Brand.find({ _id: { $in: ids } }).select('_id brandKnowledgeBase').lean();
+  const existing = new Set(brands.map((brand) => String(brand._id)));
+  const analytics = await Analytics.find({ brand: { $in: [...existing] }, post: { $ne: null }, source: 'provider' })
     .populate('post')
     .sort({ updatedAt: -1 })
-    .limit(300);
+    .limit(Math.min(1000, Math.max(300, existing.size * 100)));
 
   const grouped = analytics.reduce((map, item) => {
     if (!item.post) return map;
     const key = String(item.brand);
+    if (!existing.has(key)) return map;
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(item);
     return map;
@@ -70,42 +76,38 @@ async function updateBrandPerformanceMemoryForOwner(ownerId) {
 
   let updated = 0;
   for (const [brandId, records] of grouped.entries()) {
-    const ranked = records
-      .sort((a, b) => engagementScore(b) - engagementScore(a))
-      .slice(0, 10);
+    const ranked = records.sort((a, b) => engagementScore(b) - engagementScore(a)).slice(0, 10);
     if (!ranked.length) continue;
-
     const previousBestPosts = ranked.map(bestPostMemory);
     const highPerformingTopics = [...new Set(ranked.map((item) => topicFromPost(item.post)).filter(Boolean))].slice(0, 12);
-    await Brand.updateOne(
-      { _id: brandId, owner: ownerId },
-      {
-        $set: {
-          previousBestPosts,
-          highPerformingTopics
-        }
-      }
-    );
+    const memoryContent = previousBestPosts.slice(0, 5)
+      .map((post) => `${post.platform}: ${post.title} (${Math.round(post.metrics.score)} score)`)
+      .join('\n');
 
-    const brand = await Brand.findOne({ _id: brandId, owner: ownerId });
-    const memoryContent = previousBestPosts.slice(0, 5).map((post) => `${post.platform}: ${post.title} (${Math.round(post.metrics.score)} score)`).join('\n');
-    const memoryEntry = brand?.brandKnowledgeBase.find((entry) => entry.source === 'analytics_memory');
+    // Refresh the shared brand itself; actor identity is irrelevant here because this is
+    // provider-derived workspace memory, not an interactive user mutation.
+    const brand = await Brand.findById(brandId);
+    if (!brand) continue;
+    brand.previousBestPosts = previousBestPosts;
+    brand.highPerformingTopics = highPerformingTopics;
+    const memoryEntry = (brand.brandKnowledgeBase || []).find((entry) => entry.source === 'analytics_memory');
     if (memoryEntry) {
-      memoryEntry.content = memoryContent;
       memoryEntry.title = 'Analytics performance memory';
-      await brand.save();
-    } else if (brand) {
-      brand.brandKnowledgeBase.push({
-        title: 'Analytics performance memory',
-        content: memoryContent,
-        source: 'analytics_memory'
-      });
-      await brand.save();
+      memoryEntry.content = memoryContent;
+    } else {
+      brand.brandKnowledgeBase.push({ title: 'Analytics performance memory', content: memoryContent, source: 'analytics_memory' });
     }
+    await brand.save();
     updated += 1;
   }
-
   return { updated };
 }
 
-module.exports = { engagementScore, updateBrandPerformanceMemoryForOwner };
+// Compatibility helper for maintenance scripts. Interactive/team flows should pass
+// explicit brand IDs or rely on analytics synchronization rather than owner-scoped reads.
+async function updateBrandPerformanceMemoryForOwner(ownerId) {
+  const brandIds = await Brand.find({ owner: ownerId }).distinct('_id');
+  return updateBrandPerformanceMemory({ brandIds });
+}
+
+module.exports = { engagementScore, updateBrandPerformanceMemory, updateBrandPerformanceMemoryForOwner };

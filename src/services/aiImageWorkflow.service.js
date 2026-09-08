@@ -48,7 +48,7 @@ function imageSizeForWorkflow(body = {}) {
 
 function providerFromBody(body = {}) {
   const provider = String(body.imageProvider || body.provider || '').trim().toLowerCase();
-  return ['openai', 'replicate', 'gemini', 'local'].includes(provider) ? provider : undefined;
+  return ['openai', 'replicate', 'gemini'].includes(provider) ? provider : undefined;
 }
 
 function postTypeForImageWorkflow(workflow) {
@@ -132,7 +132,7 @@ function imageTagsForWorkflow(workflow, body = {}) {
 }
 
 function imageCreditsForResults(results = []) {
-  return Math.max(1, results.reduce((total, result) => total + (result.provider === 'local_fallback' ? 1 : 3), 0));
+  return Math.max(1, results.reduce((total) => total + 3, 0));
 }
 
 module.exports = {

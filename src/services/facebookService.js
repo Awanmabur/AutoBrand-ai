@@ -9,7 +9,8 @@ const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const { decryptToken, encryptToken } = require('./tokenCryptoService');
 const { gridFsIdFromUrl, readGridFsBuffer } = require('./gridFsMediaStorage.service');
 
-const graphVersion = env.facebookGraphVersion.startsWith('v') ? env.facebookGraphVersion : `v${env.facebookGraphVersion}`;
+const configuredGraphVersion = String(env.facebookGraphVersion || 'v25.0');
+const graphVersion = configuredGraphVersion.startsWith('v') ? configuredGraphVersion : `v${configuredGraphVersion}`;
 const graphBaseUrl = `https://graph.facebook.com/${graphVersion}`;
 
 function isFacebookConfigured() {
@@ -545,15 +546,7 @@ async function exchangeCodeForPageAccounts({ code, state }) {
   }
 
   if (!isFacebookConfigured()) {
-    return [{
-      ...parsed,
-      platform: 'facebook',
-      accountName: 'Facebook Page (development)',
-      accountId: 'facebook_dev_page',
-      accessTokenEncrypted: encryptToken(`dev:${code}`),
-      permissions: ['pages_manage_posts', 'pages_read_engagement'],
-      status: 'mock'
-    }];
+    throw new FacebookProviderError('Facebook OAuth is not configured. Add the app credentials and callback settings before connecting a Page.');
   }
 
   const userTokenResponse = await graphRequest('/oauth/access_token', {
@@ -816,11 +809,53 @@ async function publishVideoPost({ post, account, pageToken, video }) {
   });
 }
 
-async function publishFacebookPost({ post, account }) {
-  if (account.status === 'mock') {
-    return { id: `mock_facebook_${post._id}` };
-  }
 
+function facebookInsightValue(data = [], name) {
+  const metric = (data || []).find((item) => String(item.name || '') === name);
+  return metric?.values?.[0]?.value ?? metric?.value;
+}
+
+async function fetchFacebookPostMetrics({ account, platformPostId }) {
+  const pageToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : '';
+  if (!pageToken) throw new FacebookProviderError('Facebook Page token is missing. Reconnect this Facebook account.');
+  const postId = String(platformPostId || '').trim();
+  if (!postId) throw new FacebookProviderError('Facebook post ID is missing for analytics sync.');
+  const result = { providerPostId: postId, availableMetrics: [] };
+  const engagement = await graphRequest(`/${encodeURIComponent(postId)}`, {
+    params: {
+      access_token: pageToken,
+      fields: 'shares,comments.limit(0).summary(true),reactions.limit(0).summary(true)'
+    }
+  }).catch(() => ({}));
+  const likes = engagement.reactions?.summary?.total_count;
+  const comments = engagement.comments?.summary?.total_count;
+  const shares = engagement.shares?.count;
+  if (likes !== undefined) { result.likes = Number(likes || 0); result.availableMetrics.push('likes'); }
+  if (comments !== undefined) { result.comments = Number(comments || 0); result.availableMetrics.push('comments'); }
+  if (shares !== undefined) { result.shares = Number(shares || 0); result.availableMetrics.push('shares'); }
+
+  const insights = await graphRequest(`/${encodeURIComponent(postId)}/insights`, {
+    params: { access_token: pageToken, metric: 'post_impressions,post_impressions_unique,post_clicks' }
+  }).catch((error) => {
+    if (result.availableMetrics.length) return { data: [] };
+    throw error;
+  });
+  const impressions = facebookInsightValue(insights.data, 'post_impressions');
+  const reach = facebookInsightValue(insights.data, 'post_impressions_unique');
+  const clicks = facebookInsightValue(insights.data, 'post_clicks');
+  if (impressions !== undefined) { result.impressions = Number(impressions || 0); result.availableMetrics.push('impressions'); }
+  if (reach !== undefined) { result.reach = Number(reach || 0); result.availableMetrics.push('reach'); }
+  if (clicks !== undefined) { result.clicks = Number(clicks || 0); result.availableMetrics.push('clicks'); }
+  if (!result.availableMetrics.length) {
+    const error = new FacebookProviderError('Facebook has not returned post insights yet.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  return result;
+}
+
+async function publishFacebookPost({ post, account }) {
   const pageToken = decryptToken(account.accessTokenEncrypted);
   if (!pageToken) {
     throw new FacebookProviderError('Facebook Page token is missing. Reconnect this Facebook account.');
@@ -865,5 +900,6 @@ module.exports = {
   exchangeCodeForPageAccount,
   connectFacebookPageToken,
   publishFacebookPost,
+  fetchFacebookPostMetrics,
   verifyMetaPublishingAccount
 };

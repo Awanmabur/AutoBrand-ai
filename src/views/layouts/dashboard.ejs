@@ -54,7 +54,7 @@
           label: 'Admin',
           links: [
             { href: '/dashboard/team', icon: 'users', label: 'Team & Roles', badge: 'RBAC', active: active(['/dashboard/team', '/dashboard/actions/team']) },
-            { href: '/dashboard/billing', icon: 'card', label: 'Billing & Usage', badge: 'Plan', active: active(['/dashboard/billing']) },
+            { href: '/dashboard/billing', icon: 'card', label: 'Plan & Billing', badge: 'Plan', active: active(['/dashboard/billing']) },
             ...(canSeePlans ? [{ href: '/dashboard/plans', icon: 'card', label: 'Plan Management', badge: 'Plans', active: active(['/dashboard/plans', '/dashboard/actions/admin/plans']) }] : []),
             { href: '/dashboard/settings', icon: 'settings', label: 'Settings & Security', badge: 'Config', active: active(['/dashboard/settings', '/dashboard/actions/settings']) },
             ...(canSeeAdminTools ? [{ href: '/dashboard/admin', icon: 'shield', label: 'Admin', badge: 'Root', active: active(['/dashboard/admin', '/dashboard/actions/admin']) }] : [])

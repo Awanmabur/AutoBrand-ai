@@ -1,4 +1,4 @@
-const { buildSubtitles, buildThumbnailPrompt, buildVideoScript, mockVideoResult } = require('./videoWorkflow.service');
+const { buildSubtitles, buildThumbnailPrompt, buildVideoScript } = require('./videoWorkflow.service');
 
 function buildAvatarScript({ avatar = {}, brand = {}, prompt = '' } = {}) {
   if (prompt) return prompt;
@@ -34,27 +34,16 @@ function enrichAvatarVideoJob(job, { avatar = {}, brand = {} } = {}) {
       profileName: avatar.name || '',
       consentVersion: avatar.consentVersion,
       allowedUse: avatar.allowedUse,
-      mockProvider: true,
-      disclosure: 'Demo avatar render. Replace with approved provider output for production publishing.',
+      disclosure: 'AI-generated avatar media. Publish only after the stored consent and disclosure requirements are satisfied.',
       updatedAt: new Date()
     }
   };
   return job;
 }
 
-function mockAvatarVideoResult({ job = {}, avatar = {}, brand = {} } = {}) {
-  const result = mockVideoResult({ job, brand });
-  return {
-    ...result,
-    provider: 'mock_avatar_provider',
-    providerJobId: `mock_avatar_${avatar._id?.toString?.() || job._id?.toString?.() || Date.now()}`,
-    message: 'Mock avatar video render created because no real avatar provider is configured.'
-  };
-}
 
 module.exports = {
   buildAvatarScenePlan,
   buildAvatarScript,
-  enrichAvatarVideoJob,
-  mockAvatarVideoResult
+  enrichAvatarVideoJob
 };

@@ -2,11 +2,13 @@ const SocialAccount = require('../../models/SocialAccount');
 const { encryptToken } = require('../tokenCryptoService');
 
 async function upsertConnectedAccount({ user, brand, platform, accountId, accountName, accessToken, refreshToken, expiresAt, scopes = [], metadata = {} }) {
+  const brandId = brand?._id || brand;
+  const workspaceOwner = brand?.owner?._id || brand?.owner || user?._id || user;
   const update = {
-    owner: user?._id || user,
-    brand: brand?._id || brand,
-    platform,
-    accountId,
+    owner: workspaceOwner,
+    brand: brandId,
+    platform: String(platform || '').trim().toLowerCase(),
+    accountId: String(accountId || '').trim(),
     accountName,
     status: 'connected',
     permissions: scopes,
@@ -17,7 +19,7 @@ async function upsertConnectedAccount({ user, brand, platform, accountId, accoun
   if (accessToken) update.accessTokenEncrypted = encryptToken(accessToken);
   if (refreshToken) update.refreshTokenEncrypted = encryptToken(refreshToken);
   return SocialAccount.findOneAndUpdate(
-    { owner: update.owner, platform, accountId },
+    { brand: update.brand, platform: update.platform, accountId: update.accountId },
     update,
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );

@@ -2,11 +2,12 @@ const Brand = require('../models/Brand');
 const Campaign = require('../models/Campaign');
 const Post = require('../models/Post');
 const { buildCampaignPlan, splitPlatforms } = require('../services/campaignPlannerService');
-const { SCHEDULED_POST_STATUSES, assertCanSchedulePost, assertPlanPageAccess } = require('../services/usageLimitService');
+const { SCHEDULED_POST_STATUSES, assertCanGenerateImage, assertCanCreateVideo, assertCanSchedulePost, assertPlanPageAccess } = require('../services/usageLimitService');
 const { dispatchScheduledPost } = require('../services/postDispatchService');
 const { buildPostGenerationPlan, enqueuePostGeneration } = require('../services/postGeneration.service');
 const { zonedDateForDayOffset } = require('../utils/timeZone');
 const { resolvePublishingTargets, stringId } = require('../services/social/socialDestination.service');
+const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
 
 function postTypeForIdea(idea = {}) {
   if (idea.type) return idea.type;
@@ -66,7 +67,7 @@ function generationBodyForCampaignPost(post, idea = {}) {
   const type = post.type || postTypeForIdea(idea);
   const mediaPreset = mediaPresetForPostType(type);
   return {
-    creationMode: 'manual',
+    creationMode: 'ai',
     action: 'schedule',
     title: post.title || '',
     description: post.description || '',
@@ -179,13 +180,12 @@ async function index(req, res) {
 
 async function store(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertPlanPageAccess(req.user, 'campaigns', 'campaign planning');
+    await assertPlanPageAccess(req.user, 'campaigns', 'campaign planning', brand._id);
 
     const requestedPlatforms = splitPlatforms(req.body.platforms);
     const targets = await resolvePublishingTargets({
-      ownerId: req.user._id,
       brandId: brand._id,
       requestedPlatforms,
       requestedAccountIds: req.body.targetAccounts || [],
@@ -224,11 +224,12 @@ async function store(req, res, next) {
 
 async function createDrafts(req, res, next) {
   try {
-    const campaign = await Campaign.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand').populate('targetAccounts');
+    const campaign = await Campaign.findById(req.params.id).populate('brand').populate('targetAccounts');
     if (!campaign) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertPlanPageAccess(req.user, 'campaigns', 'campaign planning');
+    await assertBrandAccess(req.user, campaign.brand._id, 'content.create', { status: 'active' });
+    await assertPlanPageAccess(req.user, 'campaigns', 'campaign planning', campaign.brand._id);
 
-    const existing = await Post.find({ campaign: campaign._id, createdBy: req.user._id }).select('title platform platformMetadata').lean();
+    const existing = await Post.find({ campaign: campaign._id }).select('title platform platformMetadata').lean();
     const existingKeys = new Set(existing.map((post) => ideaKey({
       day: post.platformMetadata?.campaignPlanDay,
       platform: post.platform,
@@ -247,12 +248,12 @@ async function createDrafts(req, res, next) {
 
 async function scheduleCampaign(req, res, next) {
   try {
-    const campaign = await Campaign.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand').populate('targetAccounts');
+    const campaign = await Campaign.findById(req.params.id).populate('brand').populate('targetAccounts');
     if (!campaign) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
-    await assertPlanPageAccess(req.user, 'campaigns', 'campaign planning');
+    await assertBrandAccess(req.user, campaign.brand._id, 'schedule.manage', { status: 'active' });
+    await assertPlanPageAccess(req.user, 'campaigns', 'campaign planning', campaign.brand._id);
 
     const targets = await resolvePublishingTargets({
-      ownerId: req.user._id,
       brandId: campaign.brand._id,
       requestedPlatforms: campaign.platforms,
       requestedAccountIds: (campaign.targetAccounts || []).map(stringId),
@@ -264,12 +265,27 @@ async function scheduleCampaign(req, res, next) {
     await campaign.populate('targetAccounts');
 
     const ideas = campaignIdeas(campaign).filter((idea) => targets.platforms.includes(idea.platform || targets.platforms[0]));
-    const existingPosts = await Post.find({ campaign: campaign._id, createdBy: req.user._id })
+    const existingPosts = await Post.find({ campaign: campaign._id })
       .populate('media')
       .sort({ createdAt: 1 });
     const alreadyScheduled = existingPosts.filter((post) => SCHEDULED_POST_STATUSES.includes(post.status)).length;
     const requestedScheduled = Math.max(0, ideas.length - alreadyScheduled);
-    if (requestedScheduled) await assertCanSchedulePost(req.user, requestedScheduled);
+    if (requestedScheduled) await assertCanSchedulePost(req.user, requestedScheduled, campaign.brand._id);
+    const existingByIndex = existingPosts;
+    let requiredImages = 0;
+    let requiredVideos = 0;
+    ideas.forEach((idea, index) => {
+      const existing = existingByIndex[index];
+      const type = postTypeForIdea(idea);
+      const hasImage = Array.isArray(existing?.media) && existing.media.some((item) => item?.fileType === 'image');
+      const hasVideo = Array.isArray(existing?.media) && existing.media.some((item) => item?.fileType === 'video');
+      if (['image', 'story'].includes(type) && !hasImage) requiredImages += 1;
+      if (type === 'carousel' && !hasImage) requiredImages += 3;
+      if (['video', 'reel'].includes(type) && !hasVideo) requiredVideos += 1;
+    });
+    if (requiredImages) await assertCanGenerateImage(req.user, requiredImages, campaign.brand._id);
+    if (requiredVideos) await assertCanCreateVideo(req.user, campaign.brand._id, requiredVideos);
+
     const updates = [];
 
     for (const [index, idea] of ideas.entries()) {
@@ -323,8 +339,9 @@ async function scheduleCampaign(req, res, next) {
 
 async function updateStatus(req, res, next) {
   try {
-    const campaign = await Campaign.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    await assertBrandAccess(req.user, campaign.brand, 'content.edit', { status: 'active' });
 
     campaign.status = req.body.status;
     await campaign.save();

@@ -58,7 +58,8 @@ function createConnectivityBackoff({
   minMs = 5000,
   maxMs = 120000,
   logIntervalMs = 60000,
-  logger = console.warn
+  logger = console.warn,
+  clock = () => Date.now()
 }) {
   let failures = 0;
   let nextAttemptAt = 0;
@@ -70,16 +71,16 @@ function createConnectivityBackoff({
   }
 
   return {
-    canAttempt(now = Date.now()) {
+    canAttempt(now = clock()) {
       return now >= nextAttemptAt;
     },
-    remainingMs(now = Date.now()) {
+    remainingMs(now = clock()) {
       return Math.max(0, nextAttemptAt - now);
     },
     recordFailure(error, { forceLog = false } = {}) {
       failures += 1;
       const delayMs = delayForFailure();
-      const now = Date.now();
+      const now = clock();
       nextAttemptAt = now + delayMs;
       const message = error?.message || String(error || 'MongoDB is unavailable.');
       const shouldLog = forceLog || message !== lastMessage || now - lastLogAt >= logIntervalMs;
@@ -103,7 +104,8 @@ function createConnectivityBackoff({
       return recovered;
     },
     snapshot() {
-      return { failures, nextAttemptAt, remainingMs: Math.max(0, nextAttemptAt - Date.now()) };
+      const now = clock();
+      return { failures, nextAttemptAt, remainingMs: Math.max(0, nextAttemptAt - now) };
     }
   };
 }

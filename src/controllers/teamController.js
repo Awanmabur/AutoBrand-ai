@@ -40,7 +40,7 @@ async function invite(req, res, next) {
       throw error;
     }
     const brand = req.brandAccess;
-    await assertCanInviteTeam(req.user);
+    await assertCanInviteTeam(req.user, brand._id);
     const email = validateEmail(req.body.email);
     if (email === normalizeEmail(req.user.email)) throw new Error('You already own or belong to this workspace.');
 

@@ -127,7 +127,8 @@ async function resolvePublishingTargets({
   requestedPlatforms = [],
   requestedAccountIds = [],
   requireReady = true,
-  allowPlatformDefaults = true
+  allowPlatformDefaults = true,
+  allowEmpty = false
 }) {
   const platforms = normalizePlatforms(requestedPlatforms);
   const selectedIds = [...new Set((Array.isArray(requestedAccountIds) ? requestedAccountIds : requestedAccountIds ? [requestedAccountIds] : [])
@@ -135,10 +136,10 @@ async function resolvePublishingTargets({
     .filter(Boolean))];
 
   const query = {
-    owner: ownerId,
     brand: brandId,
     status: 'connected'
   };
+  if (ownerId) query.owner = ownerId;
   if (selectedIds.length) query._id = { $in: selectedIds };
   if (platforms.length) query.platform = { $in: platforms };
 
@@ -174,6 +175,14 @@ async function resolvePublishingTargets({
   }
 
   const readyPlatforms = [...new Set(ready.map((account) => account.platform))];
+  if (allowEmpty && !selectedIds.length && !ready.length) {
+    return {
+      accounts: [],
+      accountIds: [],
+      platforms: platforms.length ? platforms : ['facebook'],
+      byPlatform: {}
+    };
+  }
   const missingPlatforms = platforms.filter((platform) => !readyPlatforms.includes(platform));
   if (missingPlatforms.length) {
     throw publishingTargetError(

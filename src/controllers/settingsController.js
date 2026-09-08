@@ -7,8 +7,10 @@ const { isEmailConfigured, sendVerificationEmail } = require('../services/emailS
 const { facebookConnectionChecklist } = require('../services/facebookService');
 const { checkProviders } = require('../services/providerHealthService');
 const { revokeAllSessions, issueAuthTokens, setAuthCookies } = require('../services/authService');
+const { isGoogleConfigured, createGoogleState, buildGoogleAuthUrl } = require('../services/googleAuthService');
 const {
   applyDeleteAccountRequest,
+  cancelDeleteAccountRequest,
   applyPendingEmailChange,
   applyProfileUpdate,
   createEmailVerificationToken,
@@ -214,17 +216,81 @@ async function deleteAccountRequest(req, res, next) {
       throw new Error('Confirm the request by typing DELETE or your account email.');
     }
 
-    applyDeleteAccountRequest(user, req.body.reason);
+    applyDeleteAccountRequest(user, req.body.reason, Date.now(), env.accountDeletionGraceDays);
     await user.save();
     await Notification.create({
       user: user._id,
       type: 'account_deletion_requested',
       title: 'Account deletion requested',
-      message: 'Your account deletion request has been recorded. An admin can review and complete it.'
+      message: `Your account is scheduled for deletion on ${user.accountDeletionScheduledFor.toISOString().slice(0, 10)}. You can cancel before processing begins.`
     });
-    await auditAccountAction(req, 'account.deletion_requested', { reason: user.accountDeletionReason || '' });
+    await auditAccountAction(req, 'account.deletion_requested', { reason: user.accountDeletionReason || '', scheduledFor: user.accountDeletionScheduledFor });
 
-    return redirectNotice(res, 'Account deletion request saved.');
+    return redirectNotice(res, `Account deletion scheduled for ${user.accountDeletionScheduledFor.toISOString().slice(0, 10)}. You can cancel it before that date.`);
+  } catch (error) {
+    if (!error.status) return redirectError(res, error.message);
+    return next(error);
+  }
+}
+
+
+async function cancelDeleteAccount(req, res, next) {
+  try {
+    const user = await loadAccountUser(req);
+    cancelDeleteAccountRequest(user);
+    await user.save();
+    await Notification.create({
+      user: user._id,
+      type: 'account_deletion_cancelled',
+      title: 'Account deletion cancelled',
+      message: 'Your account deletion request was cancelled and your account will remain active.'
+    });
+    await auditAccountAction(req, 'account.deletion_cancelled');
+    return redirectNotice(res, 'Account deletion cancelled.');
+  } catch (error) {
+    if (!error.status) return redirectError(res, error.message);
+    return next(error);
+  }
+}
+
+async function linkGoogle(req, res, next) {
+  try {
+    if (!isGoogleConfigured()) return redirectError(res, 'Google OAuth is not configured for this deployment.');
+    const user = await loadAccountUser(req);
+    if (user.googleId) return redirectNotice(res, 'Google is already linked to this account.');
+    if (!user.passwordHash) return redirectError(res, 'Set a password first so Google linking can require a fresh sign-in check.');
+    await verifyCurrentPasswordIfNeeded(user, req.body.password);
+
+    const state = createGoogleState();
+    const cookieOptions = {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 10 * 60 * 1000
+    };
+    res.cookie('googleOAuthState', state, cookieOptions);
+    res.cookie('googleOAuthPurpose', 'link', cookieOptions);
+    await auditAccountAction(req, 'account.google_link_started');
+    return res.redirect(303, buildGoogleAuthUrl(state));
+  } catch (error) {
+    if (!error.status) return redirectError(res, error.message);
+    return next(error);
+  }
+}
+
+async function unlinkGoogle(req, res, next) {
+  try {
+    const user = await loadAccountUser(req);
+    if (!user.googleId) return redirectNotice(res, 'Google is not linked to this account.');
+    if (!user.passwordHash) return redirectError(res, 'Set a password before unlinking Google so you cannot lock yourself out.');
+    await verifyCurrentPasswordIfNeeded(user, req.body.password);
+    user.googleId = undefined;
+    await user.save();
+    await revokeAllSessions(user._id, 'google_unlinked');
+    const tokens = await issueAuthTokens(user, req);
+    setAuthCookies(res, tokens);
+    await auditAccountAction(req, 'account.google_unlinked');
+    return redirectNotice(res, 'Google sign-in was unlinked. Other sessions were signed out.');
   } catch (error) {
     if (!error.status) return redirectError(res, error.message);
     return next(error);
@@ -238,5 +304,8 @@ module.exports = {
   password,
   email,
   resendVerification,
-  deleteAccountRequest
+  deleteAccountRequest,
+  cancelDeleteAccount,
+  linkGoogle,
+  unlinkGoogle
 };

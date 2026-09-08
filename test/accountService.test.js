@@ -58,3 +58,23 @@ test('delete account request stores reviewable account state without deleting th
   assert.equal(user.accountDeletionRequestedAt.getTime(), now);
   assert.equal(user.accountDeletionReason, 'Please remove my workspace data after export.');
 });
+
+test('account deletion request has a grace deadline and can be cancelled before processing', () => {
+  const { applyDeleteAccountRequest, cancelDeleteAccountRequest } = require('../src/services/account/account.service');
+  const user = {};
+  const now = Date.UTC(2030, 0, 1);
+  applyDeleteAccountRequest(user, 'privacy', now, 30);
+  assert.equal(user.accountDeletionStatus, 'requested');
+  assert.equal(user.accountDeletionScheduledFor.toISOString(), '2030-01-31T00:00:00.000Z');
+  cancelDeleteAccountRequest(user, now + 1000);
+  assert.equal(user.accountDeletionStatus, 'cancelled');
+  assert.equal(user.accountDeletionScheduledFor, undefined);
+});
+
+test('account deletion processor pseudonymizes identities deterministically', () => {
+  const { deletedIdentity } = require('../src/services/account/accountDeletionProcessor.service');
+  const first = deletedIdentity('507f1f77bcf86cd799439011');
+  const second = deletedIdentity('507f1f77bcf86cd799439011');
+  assert.deepEqual(first, second);
+  assert.match(first.email, /^deleted-[a-f0-9]{24}@deleted\.autobrand\.invalid$/);
+});

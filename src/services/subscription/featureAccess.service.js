@@ -44,7 +44,6 @@ const PAGE_ALIASES = {
   'growthstudio': 'campaigns',
   'growth_studio': 'campaigns',
   'growth-studio': 'campaigns',
-  whatsapp: 'social',
   'google-business': 'social',
   pinterest: 'social',
   x: 'social',
@@ -94,6 +93,8 @@ const DEFAULT_PLAN_FEATURES = {
   brandBrainLevel: 'basic',
   smartComposerLevel: 'basic',
   analyticsLevel: 'basic',
+  manualPublisherAccess: true,
+  bulkImportAccess: false,
   calendarAccess: true,
   campaignAccess: false,
   growthStudioAccess: false,
@@ -129,13 +130,13 @@ const PAGE_REQUIREMENTS = {
   users: { limit: 'maxTeamMembers', min: 1, upgrade: 'Invite teammates' },
   team: { limit: 'maxTeamMembers', min: 1, upgrade: 'Invite teammates' },
   'brand-brain': { limit: 'maxBrands', min: 1, upgrade: 'Create more brands' },
-  'quick-create': { feature: 'smartComposerLevel', level: 'basic', limit: 'maxAiTextGenerations', min: 1, upgrade: 'Create AI content' },
-  'content-generator': { feature: 'smartComposerLevel', level: 'basic', limit: 'maxAiTextGenerations', min: 1, upgrade: 'Generate content' },
+  'quick-create': { anyOf: [{ feature: 'smartComposerLevel', level: 'basic' }, { feature: 'manualPublisherAccess' }], upgrade: 'Create and publish content' },
+  'content-generator': { feature: 'smartComposerLevel', level: 'basic', upgrade: 'Create content' },
   'content-library': { always: true },
   calendar: { feature: 'calendarAccess', upgrade: 'Use calendar scheduling' },
   media: { limit: 'maxStorageMb', min: 1, upgrade: 'Use the media library' },
   campaigns: { feature: 'campaignAccess', upgrade: 'Run campaigns' },
-  'video-system': { limit: 'maxAiVideoGenerations', min: 1, upgrade: 'Generate AI videos' },
+  'video-system': { anyOf: [{ limit: 'maxAiVideoGenerations', min: 1 }, { feature: 'templateAccess' }], upgrade: 'Generate AI videos or render local templates' },
   'avatar-video': { limit: 'maxAvatarVideos', min: 1, upgrade: 'Generate avatar videos' },
   approvals: { anyFeature: ['approvalWorkflowAccess', 'handoffModeAccess', 'clientApprovalPortalAccess'], upgrade: 'Use approvals and handoff review' },
   analytics: { feature: 'analyticsLevel', level: 'basic', upgrade: 'View analytics' },
@@ -209,6 +210,14 @@ function planAllowsPage({ page, plan, user }) {
   if (requirement.always || requirement.roleOnly) return { allowed: true };
 
   const failedReasons = [];
+  if (Array.isArray(requirement.anyOf)) {
+    const anyAllowed = requirement.anyOf.some((option) => {
+      if (option.feature) return featureAllows(features, option.feature, option.level);
+      if (option.limit) return numericLimitAllows(plan, user, option.limit, option.min || 1);
+      return false;
+    });
+    if (!anyAllowed) failedReasons.push(requirement.upgrade || 'Upgrade your plan for this feature');
+  }
   if (requirement.feature && !featureAllows(features, requirement.feature, requirement.level)) {
     failedReasons.push(requirement.upgrade || `Enable ${requirement.feature}`);
   }
@@ -245,9 +254,9 @@ function roleCapabilities(role, roleAllowedPages = pagesForRole(role)) {
   };
 }
 
-function buildFeatureAccess({ user = {}, plan = null } = {}) {
+function buildFeatureAccess({ user = {}, plan = null, roleAllowedPages: roleAllowedPagesOverride = null } = {}) {
   const role = normalizeRole(user.role);
-  const roleAllowedPages = pagesForRole(role);
+  const roleAllowedPages = roleAllowedPagesOverride ? uniquePages(roleAllowedPagesOverride) : pagesForRole(role);
   const lockedPages = [];
   const unlockedPages = [];
   const pageLocks = {};

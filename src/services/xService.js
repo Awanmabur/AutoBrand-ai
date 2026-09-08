@@ -356,6 +356,36 @@ async function publishXPost({ post, account, downloadRemote = downloadRemoteBuff
   return { id, platformPostUrl: data.data?.id ? `https://x.com/i/web/status/${data.data.id}` : '' };
 }
 
+
+async function fetchXPostMetrics({ account, platformPostId }) {
+  const accessToken = await accessTokenFor(account);
+  const postId = String(platformPostId || '').trim();
+  if (!postId) throw new XProviderError('X post ID is missing for analytics sync.');
+  const data = await xJson(`/tweets/${encodeURIComponent(postId)}?tweet.fields=public_metrics,non_public_metrics,organic_metrics`, { accessToken });
+  const post = data.data;
+  if (!post) {
+    const error = new XProviderError('X did not return the published post for analytics.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  const publicMetrics = post.public_metrics || {};
+  const organicMetrics = post.organic_metrics || {};
+  const nonPublicMetrics = post.non_public_metrics || {};
+  const impressionsRaw = organicMetrics.impression_count ?? nonPublicMetrics.impression_count ?? publicMetrics.impression_count;
+  const availableMetrics = ['likes', 'comments', 'shares', 'saves'];
+  const result = {
+    providerPostId: String(post.id || postId),
+    likes: Number(publicMetrics.like_count || 0),
+    comments: Number(publicMetrics.reply_count || 0),
+    shares: Number(publicMetrics.repost_count || 0) + Number(publicMetrics.quote_count || 0),
+    saves: Number(publicMetrics.bookmark_count || 0),
+    availableMetrics
+  };
+  if (impressionsRaw !== undefined) { result.impressions = Number(impressionsRaw || 0); availableMetrics.push('impressions'); }
+  return result;
+}
+
 async function syncXAccount({ account }) {
   const accessToken = await accessTokenFor(account);
   const profile = await xJson('/users/me?user.fields=profile_image_url,username,name', { accessToken });
@@ -379,6 +409,7 @@ module.exports = {
   getXSetupIssue,
   isXConfigured,
   publishXPost,
+  fetchXPostMetrics,
   syncXAccount,
   XProviderError,
   __private: { signState, verifyState, postText, localMediaPath, mediaBinary, uploadPostMedia }

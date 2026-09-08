@@ -99,13 +99,15 @@ test('generated-media recovery and per-platform publishing are wired end to end'
 
 test('generated media uses durable GridFS storage and a public range-enabled route', () => {
   const generationProvider = source('src/services/ai/legacyProvider.service.js');
+  const persistence = source('src/services/generatedMediaPersistence.service.js');
   const storage = source('src/services/gridFsMediaStorage.service.js');
   const app = source('src/app.js');
   const facebook = source('src/services/facebookService.js');
   const availability = source('src/services/mediaAvailability.service.js');
 
-  assert.match(generationProvider, /saveBufferToGridFs/);
-  assert.match(generationProvider, /GENERATED_MEDIA_STORAGE/);
+  assert.match(generationProvider, /persistGeneratedBuffer/);
+  assert.match(persistence, /saveBufferToGridFs/);
+  assert.match(persistence, /GENERATED_MEDIA_STORAGE=local is not allowed in production/);
   assert.match(storage, /GridFSBucket/);
   assert.match(storage, /Accept-Ranges/);
   assert.match(storage, /Content-Range/);

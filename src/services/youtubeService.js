@@ -287,6 +287,27 @@ async function publishYouTubeVideo({ post, account, downloadRemote = downloadRem
   return { id: result.id || `youtube_${post._id}`, raw: result };
 }
 
+
+async function fetchYouTubePostMetrics({ account, platformPostId }) {
+  const accessToken = await accessTokenFor(account);
+  const videoId = String(platformPostId || '').trim();
+  if (!videoId) throw new YouTubeProviderError('YouTube video ID is missing for analytics sync.');
+  const data = await youtubeJson(`/videos?part=statistics&id=${encodeURIComponent(videoId)}`, { accessToken });
+  const stats = data.items?.[0]?.statistics;
+  if (!stats) {
+    const error = new YouTubeProviderError('YouTube did not return statistics for this video yet.');
+    error.code = 'ANALYTICS_NOT_READY';
+    error.retryable = true;
+    throw error;
+  }
+  const availableMetrics = ['views'];
+  const result = { providerPostId: videoId, views: Number(stats.viewCount || 0) };
+  if (stats.likeCount !== undefined) { result.likes = Number(stats.likeCount || 0); availableMetrics.push('likes'); }
+  if (stats.commentCount !== undefined) { result.comments = Number(stats.commentCount || 0); availableMetrics.push('comments'); }
+  result.availableMetrics = availableMetrics;
+  return result;
+}
+
 async function syncYouTubeChannel({ account }) {
   const accessToken = await accessTokenFor(account);
   return getMyChannel(accessToken);
@@ -299,5 +320,6 @@ module.exports = {
   getYouTubeSetupIssue,
   isYouTubeConfigured,
   publishYouTubeVideo,
+  fetchYouTubePostMetrics,
   syncYouTubeChannel
 };

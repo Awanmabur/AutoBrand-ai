@@ -1,8 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const { spawn } = require('child_process');
-const { isCloudinaryConfigured } = require('../config/cloudinary');
-const { uploadBuffer } = require('./cloudinaryService');
+const { persistGeneratedFile } = require('./generatedMediaPersistence.service');
 let sharp = null;
 let ffmpegPath;
 
@@ -16,26 +15,8 @@ try { sharp = require('sharp'); } catch (error) { sharp = null; }
 // keeping both would just leave a duplicate that silently rots on the next
 // restart anyway. Local disk is only actually kept as storage when
 // Cloudinary isn't configured or the upload fails.
-async function persistRenderedFile(absolutePath, { folder, resourceType }) {
-  if (!isCloudinaryConfigured()) return { fileUrl: '', publicId: '' };
-  try {
-    const buffer = await fs.readFile(absolutePath);
-    const uploaded = await uploadBuffer({ buffer, folder, resourceType });
-    await fs.unlink(absolutePath).catch(() => {});
-    return { fileUrl: uploaded.secure_url, publicId: uploaded.public_id };
-  } catch (error) {
-    console.error(`Cloudinary upload failed, falling back to local disk (will not survive a restart): ${error.message}`);
-    return { fileUrl: '', publicId: '' };
-  }
-}
-
-function localPublicFilePath(fileUrl) {
-  if (!fileUrl || /^https?:\/\//i.test(fileUrl)) return '';
-  const cleaned = String(fileUrl).split('?')[0].replace(/^\/+/, '');
-  const publicRoot = path.join(__dirname, '..', '..', 'public');
-  const absolute = path.normalize(path.join(publicRoot, cleaned.replace(/^public[\\/]/, '')));
-  if (!absolute.startsWith(publicRoot)) return '';
-  return absolute;
+async function persistRenderedFile(absolutePath, { folder, resourceType, mimeType = 'video/mp4' }) {
+  return persistGeneratedFile({ absolutePath, folder, resourceType, mimeType });
 }
 
 function safeFilePart(value) {
@@ -116,46 +97,6 @@ function runFfmpeg(args) {
   });
 }
 
-async function createSlideshowVideo({ brand, sourceMedia, userId, durationSeconds = 8, aspectRatio = '9:16' }) {
-  const imagePath = localPublicFilePath(sourceMedia?.fileUrl);
-  if (!imagePath) {
-    throw new Error('Local video fallback needs a generated or uploaded local image first.');
-  }
-
-  await fs.mkdir(GENERATED_UPLOAD_DIR, { recursive: true });
-  const filename = `${Date.now()}-${safeFilePart(brand?.name)}-brand-video.mp4`;
-  const absoluteOutput = path.join(GENERATED_UPLOAD_DIR, filename);
-  const width = String(aspectRatio).includes('1:1') ? 1080 : 1080;
-  const height = String(aspectRatio).includes('1:1') ? 1080 : 1920;
-  const filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`;
-
-  await runFfmpeg([
-    '-y',
-    '-loop', '1',
-    '-i', imagePath,
-    '-t', String(Math.max(4, Math.min(30, Number(durationSeconds || 8)))),
-    '-vf', filter,
-    '-r', '30',
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart',
-    absoluteOutput
-  ]);
-
-  const stat = await fs.stat(absoluteOutput);
-  const persisted = await persistRenderedFile(absoluteOutput, { folder: 'local-generated-video', resourceType: 'video' });
-  return {
-    fileName: filename,
-    fileUrl: persisted.fileUrl || `/uploads/ai/${filename}`,
-    publicId: persisted.publicId || `local-video:${filename}`,
-    fileType: 'video',
-    mimeType: 'video/mp4',
-    size: stat.size,
-    folder: 'local-generated-video',
-    metadata: { userId, aspectRatio, durationSeconds }
-  };
-}
-
 async function createTemplateVideo({ brand, inputData = {}, userId, renderId, durationSeconds = 15, aspectRatio = '9:16' }) {
   if (!sharp) throw new Error('sharp is required for local template video rendering. Run npm install, then try again.');
 
@@ -217,11 +158,11 @@ async function createTemplateVideo({ brand, inputData = {}, userId, renderId, du
 
   const stat = await fs.stat(absoluteOutput);
   const fileName = path.basename(absoluteOutput);
-  const persisted = await persistRenderedFile(absoluteOutput, { folder: 'local-template-video', resourceType: 'video' });
+  const persisted = await persistRenderedFile(absoluteOutput, { folder: 'local-template-video', resourceType: 'video', mimeType: 'video/mp4' });
   return {
     fileName,
-    fileUrl: persisted.fileUrl || `/uploads/ai/${fileName}`,
-    publicId: persisted.publicId || `local-template-video:${fileName}`,
+    fileUrl: persisted.fileUrl,
+    publicId: persisted.publicId,
     fileType: 'video',
     mimeType: 'video/mp4',
     size: stat.size,
@@ -230,4 +171,4 @@ async function createTemplateVideo({ brand, inputData = {}, userId, renderId, du
   };
 }
 
-module.exports = { createSlideshowVideo, createTemplateVideo };
+module.exports = { createTemplateVideo };

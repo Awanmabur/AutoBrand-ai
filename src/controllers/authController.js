@@ -24,7 +24,8 @@ const {
   GoogleOAuthNetworkError
 } = require('../services/googleAuthService');
 const { getPublicPricingCards } = require('../services/pricing.service');
-const { attachSelectedPlanAfterSignup, resolveSignupPlan } = require('../services/signupPlan.service');
+const { decoratePlanForDisplay } = require('../services/planDisplay.service');
+const { attachSelectedPlanAfterSignup, resolveSignupPlan, signupNextUrlForPlan } = require('../services/signupPlan.service');
 const { validatePassword } = require('../services/account/account.service');
 const env = require('../config/env');
 const { isEmailConfigured, sendPasswordResetEmail, sendVerificationEmail } = require('../services/emailService');
@@ -77,11 +78,13 @@ async function showRegister(req, res, next) {
     const pricingPlans = await getPublicPricingCards();
     const selectedPlanSlug = req.query.plan || pricingPlans[0]?.slug || 'free-trial';
     const selectedPlan = pricingPlans.find((plan) => plan.slug === selectedPlanSlug) || pricingPlans[0];
-    const nextPath = safeRedirectPath(req.query.next, selectedPlan?.checkoutUrl || '/dashboard');
+    const expectedNextPath = signupNextUrlForPlan(selectedPlan);
+    const nextPath = safeRedirectPath(req.query.next, expectedNextPath);
+    const onboardingNextPath = selectedPlan?.isTrial ? expectedNextPath : (nextPath.startsWith(`/dashboard/billing/checkout/${selectedPlan?.slug}`) ? nextPath : expectedNextPath);
     res.render('auth/register', {
       title: 'Create account',
       layout: 'layouts/auth',
-      form: { plan: selectedPlan?.slug, next: nextPath },
+      form: { plan: selectedPlan?.slug, next: onboardingNextPath },
       error: null,
       pricingPlans,
       selectedPlan
@@ -95,8 +98,11 @@ async function register(req, res, next) {
   try {
     const { name, email, password } = req.body;
     const selectedPlan = await resolveSignupPlan(req.body.plan || 'free-trial');
+    const selectedPlanDisplay = decoratePlanForDisplay(selectedPlan);
     const existingUser = await User.findOne({ email: normalizeEmail(email) });
-    const nextPath = safeRedirectPath(req.body.next, selectedPlan.checkoutUrl || '/dashboard');
+    const expectedNextPath = signupNextUrlForPlan(selectedPlan);
+    const requestedNextPath = safeRedirectPath(req.body.next, expectedNextPath);
+    const nextPath = selectedPlanDisplay.isTrial ? expectedNextPath : (requestedNextPath.startsWith(`/dashboard/billing/checkout/${selectedPlan.slug}`) ? requestedNextPath : expectedNextPath);
 
     if (existingUser) {
       return res.status(422).render('auth/register', {
@@ -104,7 +110,7 @@ async function register(req, res, next) {
         layout: 'layouts/auth',
         form: { ...req.body, next: nextPath },
         pricingPlans: await getPublicPricingCards(),
-        selectedPlan,
+        selectedPlan: selectedPlanDisplay,
         error: 'That email is already registered. Log in instead to continue checkout.'
       });
     }
@@ -117,19 +123,21 @@ async function register(req, res, next) {
         layout: 'layouts/auth',
         form: { ...req.body, next: nextPath },
         pricingPlans: await getPublicPricingCards(),
-        selectedPlan,
+        selectedPlan: selectedPlanDisplay,
         error: validationError.message
       });
     }
 
-    const isFreeOrTrial = selectedPlan.billingInterval === 'trial' || Number(selectedPlan.price || 0) <= 0;
     const verificationRequired = Boolean(env.emailVerificationRequired);
     const user = new User({
       name,
       email: normalizeEmail(email),
       status: 'active',
       isVerified: !verificationRequired,
-      plan: isFreeOrTrial ? selectedPlan.slug : 'free-trial',
+      // Store the selected slug for both free and paid onboarding. getCurrentPlan() never
+      // trusts a paid User.plan without an active verified Subscription, so paid signups
+      // remain billing-only until Pesapal verification rather than inheriting a free trial.
+      plan: selectedPlan.slug,
       selectedPlanSlug: selectedPlan.slug
     });
 
@@ -149,13 +157,16 @@ async function register(req, res, next) {
     const tokens = await issueAuthTokens(user, req);
     setAuthCookies(res, tokens);
 
-    const redirectUrl = appendQuery(nextPath || planAction.nextUrl || '/dashboard', { onboarding: 1 });
+    // The selected plan owns onboarding navigation. A trial goes straight to the workspace;
+    // a paid plan goes to its exact review/Pesapal step. A browser-supplied next value cannot
+    // send a newly activated trial back into checkout or skip paid-plan review.
+    const redirectUrl = planAction.nextUrl || '/dashboard';
     return res.redirect(redirectUrl);
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(422).render('auth/register', {
         title: 'Create account', layout: 'layouts/auth', form: req.body,
-        pricingPlans: await getPublicPricingCards(), selectedPlan: await resolveSignupPlan(req.body.plan || 'free-trial'),
+        pricingPlans: await getPublicPricingCards(), selectedPlan: decoratePlanForDisplay(await resolveSignupPlan(req.body.plan || 'free-trial')),
         error: 'That email is already registered. Log in instead.'
       });
     }
@@ -257,10 +268,12 @@ async function googleCallback(req, res, next) {
 
     const expectedState = req.cookies.googleOAuthState;
     const selectedPlanSlug = req.cookies.signupSelectedPlan;
+    const oauthPurpose = String(req.cookies.googleOAuthPurpose || 'login');
     const signupNextPath = safeRedirectPath(req.cookies.signupNextPath, '');
     res.clearCookie('googleOAuthState');
     res.clearCookie('signupSelectedPlan');
     res.clearCookie('signupNextPath');
+    res.clearCookie('googleOAuthPurpose');
 
     if (!req.query.state || req.query.state !== expectedState) {
       return res.status(403).render('dashboard/pages/error', { message: 'Invalid Google OAuth state.' });
@@ -280,24 +293,77 @@ async function googleCallback(req, res, next) {
       });
     }
 
-    let user = await User.findOne({ $or: [{ googleId: profile.googleId }, { email: profile.email.toLowerCase() }] });
+    const normalizedGoogleEmail = profile.email.toLowerCase();
 
+    if (oauthPurpose === 'link') {
+      if (!req.user?._id) {
+        return res.status(401).render('auth/check-email', {
+          title: 'Google link expired',
+          layout: 'layouts/auth',
+          message: 'Your authenticated session expired before Google linking completed. Sign in and start linking again.',
+          actionUrl: '/auth/login'
+        });
+      }
+      if (!profile.isVerified) {
+        return res.status(422).render('auth/check-email', {
+          title: 'Google account not verified',
+          layout: 'layouts/auth',
+          message: 'Google must report a verified email before this identity can be linked.',
+          actionUrl: '/dashboard/settings'
+        });
+      }
+
+      const [account, conflictingIdentity] = await Promise.all([
+        User.findById(req.user._id),
+        User.findOne({ googleId: profile.googleId, _id: { $ne: req.user._id } }).select('_id')
+      ]);
+      if (!account || account.status !== 'active') return res.redirect('/auth/login');
+      if (conflictingIdentity) {
+        return res.status(409).render('auth/check-email', {
+          title: 'Google account already linked',
+          layout: 'layouts/auth',
+          message: 'That Google identity is already linked to another AutoBrand account.',
+          actionUrl: '/dashboard/settings'
+        });
+      }
+
+      account.googleId = profile.googleId;
+      if (!account.avatar && profile.avatar) account.avatar = profile.avatar;
+      if (normalizeEmail(account.email) === normalizedGoogleEmail) account.isVerified = account.isVerified || Boolean(profile.isVerified);
+      await account.save();
+      await auditAuth(req, 'auth.google_linked', account, { googleEmailMatchesAccount: normalizeEmail(account.email) === normalizedGoogleEmail });
+      return res.redirect('/dashboard/settings?notice=Google%20sign-in%20linked%20securely.');
+    }
+
+    // Google identities are matched by immutable provider subject, never by email alone.
+    // Auto-linking an existing password account by matching email creates an account-takeover path.
+    let user = await User.findOne({ googleId: profile.googleId });
     const isNewUser = !user;
+    const selectedSignupPlan = isNewUser && selectedPlanSlug ? await resolveSignupPlan(selectedPlanSlug) : null;
     if (!user) {
+      const emailOwner = await User.findOne({ email: normalizedGoogleEmail });
+      if (emailOwner) {
+        return res.status(409).render('auth/check-email', {
+          title: 'Sign in to your existing account',
+          layout: 'layouts/auth',
+          message: 'An account already exists with this email. Sign in with its existing method. Google is not linked automatically for security.',
+          actionUrl: '/auth/login'
+        });
+      }
       user = await User.create({
         name: profile.name,
-        email: profile.email.toLowerCase(),
+        email: normalizedGoogleEmail,
         googleId: profile.googleId,
         avatar: profile.avatar,
-        isVerified: profile.isVerified,
+        isVerified: Boolean(profile.isVerified),
         status: 'active',
-        plan: 'free-trial',
-        selectedPlanSlug: selectedPlanSlug || ''
+        plan: selectedSignupPlan?.slug || 'free-trial',
+        selectedPlanSlug: selectedSignupPlan?.slug || ''
       });
     } else {
-      user.googleId = user.googleId || profile.googleId;
+      // Keep the application email stable; Google email changes never silently rewrite account identity.
       user.avatar = profile.avatar || user.avatar;
-      user.isVerified = user.isVerified || profile.isVerified;
+      user.isVerified = user.isVerified || Boolean(profile.isVerified);
       user.status = user.status === 'pending' ? 'active' : user.status;
       await user.save();
     }
@@ -312,7 +378,7 @@ async function googleCallback(req, res, next) {
     let redirectUrl = signupNextPath || '/dashboard';
     if (selectedPlanSlug && isNewUser) {
       const planAction = await attachSelectedPlanAfterSignup(user, selectedPlanSlug);
-      redirectUrl = signupNextPath || planAction.nextUrl || redirectUrl;
+      redirectUrl = planAction.nextUrl || redirectUrl;
     } else if (selectedPlanSlug && signupNextPath) {
       redirectUrl = signupNextPath;
     }

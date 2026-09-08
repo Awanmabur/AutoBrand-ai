@@ -18,7 +18,9 @@ function isConfigured() {
 }
 
 function appBaseUrl() {
-  return (env.publicAppUrl || env.appUrl || `http://localhost:${env.port || 3200}`).replace(/\/+$/, '');
+  // Billing callbacks must return to the application origin. PUBLIC_APP_URL may
+  // intentionally be a separate media/CDN origin and must never receive Pesapal callbacks.
+  return String(env.appUrl).replace(/\/+$/, '');
 }
 
 function callbackUrl() {
@@ -279,7 +281,8 @@ function normalizePaymentStatus(status) {
   const text = String(status || '').toUpperCase();
   if (['COMPLETED', 'COMPLETE', 'PAID', '1'].includes(text)) return 'paid';
   if (['FAILED', 'INVALID', 'CANCELLED', 'CANCELED', '2', '0'].includes(text)) return 'failed';
-  if (['REVERSED', 'REFUNDED', '3'].includes(text)) return 'refunded';
+  if (['REVERSED', '3'].includes(text)) return 'reversed';
+  if (['REFUNDED'].includes(text)) return 'refunded';
   return 'pending';
 }
 

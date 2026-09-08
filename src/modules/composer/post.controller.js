@@ -13,9 +13,12 @@ const {
   assertCanCreateAutoPosts,
   assertCanCreateVideo,
   assertCanCreateHandoffPosts,
+  assertCanCreateManualPost,
   assertCanGenerateImage,
   assertCanGenerateText,
-  assertCanSchedulePost
+  assertCanSchedulePost,
+  assertCanUseStorage,
+  assertPlanFeature
 } = require('../../services/usageLimitService');
 const { buildPlatformPreview } = require('../../services/platformPreviewService');
 const { generatePostIdea, generateImageAsset, buildCreativePackage, buildScheduleSlots } = require('../../services/aiContentService');
@@ -28,8 +31,12 @@ const { resolveComposerMediaIntent, mediaIntentAllowsType } = require('../../ser
 const { buildPostGenerationPlan, enqueuePostGeneration } = require('../../services/postGeneration.service');
 const { DEFAULT_TIME_ZONE, zonedLocalTimeToUtc } = require('../../utils/timeZone');
 const env = require('../../config/env');
+const mongoose = require('mongoose');
 const { canDecryptToken } = require('../../services/tokenCryptoService');
 const { buildComposerDestinationCatalog, resolvePublishingTargets } = require('../../services/social/socialDestination.service');
+const { accessibleBrandIds, assertBrandAccess } = require('../../services/authorization/brandAccess.service');
+const { inspectRemoteResource } = require('../../services/remoteFetch.service');
+const { parseManualImportCsv, splitMulti } = require('../../services/manualPublisher/import.service');
 
 const postTypes = ['text', 'image', 'carousel', 'video', 'reel', 'story', 'link', 'article', 'campaign'];
 const contentTypes = ['promo', 'educational', 'testimonial', 'offer', 'product', 'announcement', 'engagement', 'behind_the_scenes', 'proof', 'faq', 'launch'];
@@ -96,9 +103,8 @@ function scheduleDateFromBody(value, { allowDefault = true } = {}) {
   return scheduledAt;
 }
 
-async function activeGenerationJobForPost(post, userId) {
+async function activeGenerationJobForPost(post) {
   return AiJob.findOne({
-    user: userId,
     'metadata.postId': String(post._id),
     taskType: { $in: ['post_content_generation', 'post_video_generation'] },
     status: { $in: ['queued', 'running'] }
@@ -115,6 +121,17 @@ function generationActionBlocker(post) {
     return generation.error || post.errorMessage || 'AI generation failed. Regenerate the post or change it to a complete manual/text post before publishing.';
   }
   return '';
+}
+
+
+async function findAccessiblePost(req, postId, permission = 'content.view', populate = []) {
+  let query = Post.findById(postId);
+  for (const path of populate) query = query.populate(path);
+  const post = await query;
+  if (!post) return null;
+  const requireActive = ['content.create', 'content.edit', 'content.publish', 'schedule.manage', 'approvals.manage'].includes(permission);
+  await assertBrandAccess(req.user, post.brand?._id || post.brand, permission, requireActive ? { status: 'active' } : { status: { $in: ['active', 'archived'] } });
+  return post;
 }
 
 async function deferActionUntilGeneration({ post, job, action, scheduledAt }) {
@@ -247,7 +264,16 @@ function applyBrandBrainDefaults(body, brand) {
   next.tone = next.tone || brand.tone || '';
   const mediaMix = Array.isArray(brand.autoPosting?.mediaMix) && brand.autoPosting.mediaMix.length ? brand.autoPosting.mediaMix : ['auto', 'image', 'slides', 'video'];
   const wantsMedia = brand.autoPosting?.requireMedia !== false;
-  if (wantsMedia && !selectedMediaFromBody(next).length && !next.externalMediaUrl) {
+  if (next.creationMode === 'manual') {
+    next.__skipAiGeneration = true;
+    next.generateImage = 'off';
+    next.imageMode = 'manual_upload';
+    next.videoMode = 'manual_upload';
+    next.mediaHandoff = 'manual_upload';
+    next.aiProvider = '';
+    next.aiModel = '';
+  }
+  if (next.creationMode !== 'manual' && wantsMedia && !selectedMediaFromBody(next).length && !next.externalMediaUrl) {
     const chosen = mediaMix.find((item) => ['video', 'slides', 'image'].includes(String(item).toLowerCase())) || 'image';
     if (!next.type) next.type = chosen === 'video' ? 'video' : 'image';
     next.generateImage = 'on';
@@ -331,14 +357,14 @@ function buildCreativePlan(body, generated = null) {
   };
 }
 
-async function loadPostComposerData(userId, selectedBrandId = '') {
-  const brands = await Brand.find({ owner: userId, status: 'active' }).sort({ name: 1 });
-  const brandIds = brands.map((brand) => brand._id);
+async function loadPostComposerData(user, selectedBrandId = '') {
+  const brandIds = await accessibleBrandIds(user, 'content.view');
+  const brands = await Brand.find({ _id: { $in: brandIds }, status: 'active' }).sort({ name: 1 });
   const activeBrandId = selectedBrandId || brands[0]?._id?.toString() || '';
 
   const [media, socialAccounts] = await Promise.all([
-    Media.find({ uploadedBy: userId, brand: { $in: brandIds } }).populate('brand').sort({ createdAt: -1 }).limit(120),
-    SocialAccount.find({ owner: userId, brand: { $in: brandIds }, status: { $in: publishableAccountStatuses() } })
+    Media.find({ brand: { $in: brandIds }, status: { $ne: 'archived' } }).populate('brand').sort({ createdAt: -1 }).limit(120),
+    SocialAccount.find({ brand: { $in: brandIds }, status: { $in: publishableAccountStatuses() } })
       .populate('brand')
       .sort({ platform: 1, accountName: 1 })
   ]);
@@ -416,14 +442,14 @@ function publishingTargetError(message) {
   return error;
 }
 
-async function resolveComposerTargets({ body, userId, brand, platforms: platformList }) {
+async function resolveComposerTargets({ body, userId, brand, platforms: platformList, allowEmpty = false }) {
   return resolvePublishingTargets({
-    ownerId: userId,
     brandId: brand._id,
     requestedPlatforms: toArray(platformList),
     requestedAccountIds: selectedAccountsFromBody(body),
     requireReady: true,
-    allowPlatformDefaults: true
+    allowPlatformDefaults: true,
+    allowEmpty
   });
 }
 
@@ -544,13 +570,13 @@ function firstGenerationError(errors) {
 }
 
 
-async function filterMediaIdsForIntent(mediaIds = [], userId, intent = {}) {
+async function filterMediaIdsForIntent(mediaIds = [], brandId, intent = {}) {
   const ids = [...new Set((mediaIds || []).map((id) => String(id)).filter(Boolean))];
   const allowed = Array.isArray(intent.allowedMediaTypes) ? intent.allowedMediaTypes : [];
   if (!ids.length) return [];
   if (!allowed.length) return [];
 
-  const mediaRows = await Media.find({ _id: { $in: ids }, uploadedBy: userId }).select('_id fileType').lean();
+  const mediaRows = await Media.find({ _id: { $in: ids }, brand: brandId, status: { $ne: 'archived' } }).select('_id fileType').lean();
   const allowedIds = new Set(mediaRows
     .filter((item) => mediaIntentAllowsType(intent, item.fileType))
     .map((item) => String(item._id)));
@@ -564,23 +590,46 @@ async function createExternalMedia({ req, brand, mediaIntent = null }) {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  for (const url of urls) {
-    const mimeType = req.body.externalMediaMimeType || '';
-    const detectedType = mediaKind(mimeType, url);
-    const requestedFileType = req.body.externalMediaType || detectedType;
+  for (const rawUrl of urls) {
+    if (env.nodeEnv === 'production' && !rawUrl.toLowerCase().startsWith('https://')) {
+      const error = new Error('Production media URLs must use HTTPS.');
+      error.status = 400;
+      throw error;
+    }
+
+    // Never trust a browser-supplied MIME type or size. Resolve the host through
+    // the SSRF-safe fetcher and verify the real response before persisting it.
+    const verified = await inspectRemoteResource(rawUrl, {
+      allowedMimePrefixes: ['image/', 'video/', 'audio/', 'application/pdf'],
+      maxBytes: env.maxUploadBytes
+    });
+    const mimeType = verified.mimeType || 'application/octet-stream';
+    const detectedType = mediaKind(mimeType, verified.finalUrl || rawUrl);
+    const requestedFileType = String(req.body.externalMediaType || detectedType).toLowerCase();
     const allowedMediaTypes = mediaIntent && Array.isArray(mediaIntent.allowedMediaTypes) ? mediaIntent.allowedMediaTypes : null;
     if (allowedMediaTypes && !allowedMediaTypes.length) continue;
-    if (allowedMediaTypes && detectedType !== 'other' && !allowedMediaTypes.includes(detectedType)) continue;
-    if (allowedMediaTypes && requestedFileType !== 'other' && !allowedMediaTypes.includes(requestedFileType)) continue;
+    if (allowedMediaTypes && !allowedMediaTypes.includes(detectedType)) {
+      const error = new Error(`The selected post format does not accept ${detectedType} media.`);
+      error.status = 400;
+      throw error;
+    }
+    if (allowedMediaTypes && requestedFileType !== 'other' && !allowedMediaTypes.includes(requestedFileType)) {
+      const error = new Error(`The selected post format does not accept ${requestedFileType} media.`);
+      error.status = 400;
+      throw error;
+    }
+
+    await assertCanUseStorage(req.user, Number(verified.size || 0), brand._id);
+    const safeUrl = verified.finalUrl || rawUrl;
     const media = await Media.create({
       brand: brand._id,
       uploadedBy: req.user._id,
-      fileName: req.body.externalMediaName || url.split('/').pop() || url,
-      fileUrl: url,
-      publicId: url,
-      fileType: requestedFileType,
-      mimeType: mimeType || 'application/octet-stream',
-      size: 0,
+      fileName: req.body.externalMediaName || new URL(safeUrl).pathname.split('/').pop() || 'remote-media',
+      fileUrl: safeUrl,
+      publicId: safeUrl,
+      fileType: detectedType === 'other' ? requestedFileType : detectedType,
+      mimeType,
+      size: Number(verified.size || 0),
       folder: 'post-composer',
       tags: splitHashtags(req.body.externalMediaTags || '').map((tag) => tag.replace('#', '')),
       consentRequired: req.body.externalMediaConsent === 'on',
@@ -621,7 +670,7 @@ async function newPost(req, res, next) {
 
 async function createPost(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id, status: 'active' });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
     if (!brand) {
       return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Choose a valid brand.');
     }
@@ -633,43 +682,66 @@ async function createPost(req, res, next) {
     if (req.body.action === 'regenerate') {
       req.body.creationMode = 'ai';
       req.body.caption = '';
+      req.body.__skipAiGeneration = false;
     }
 
     const action = req.body.action || 'save';
+    const isManualCreation = String(req.body.creationMode || '').toLowerCase() === 'manual';
+    if (isManualCreation) await assertCanCreateManualPost(req.user, 1, brand._id);
+    if (action === 'publish') await assertBrandAccess(req.user, brand._id, 'content.publish', { status: 'active' });
+    if (action === 'schedule') await assertBrandAccess(req.user, brand._id, 'schedule.manage', { status: 'active' });
+    if (action === 'publish') await assertCanSchedulePost(req.user, 1, brand._id);
     let requestedScheduledAt = null;
     if (action === 'schedule') {
       requestedScheduledAt = scheduleDateFromBody(req.body.scheduledAt);
       if (!requestedScheduledAt) {
         return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Choose a valid schedule date.');
       }
-      await assertCanSchedulePost(req.user);
+      await assertCanSchedulePost(req.user, 1, brand._id);
     }
 
     const mediaIntent = req.body.__mediaIntent || resolveComposerMediaIntent(req.body).__mediaIntent;
     const externalMediaIds = await createExternalMedia({ req, brand, mediaIntent });
     let selectedMediaIds = selectedMediaFromBody(req.body).concat(externalMediaIds);
-    selectedMediaIds = await filterMediaIdsForIntent(selectedMediaIds, req.user._id, mediaIntent);
+    selectedMediaIds = await filterMediaIdsForIntent(selectedMediaIds, brand._id, mediaIntent);
     const sourceMedia = selectedMediaIds.length
-      ? await Media.findOne({ _id: selectedMediaIds[0], uploadedBy: req.user._id })
+      ? await Media.findOne({ _id: selectedMediaIds[0], brand: brand._id, status: { $ne: 'archived' } })
       : null;
 
     const initialSelectedMediaRows = selectedMediaIds.length
-      ? await Media.find({ _id: { $in: selectedMediaIds }, uploadedBy: req.user._id, status: { $ne: 'archived' } })
+      ? await Media.find({ _id: { $in: selectedMediaIds }, brand: brand._id, status: { $ne: 'archived' } })
       : [];
+
+    if (isManualCreation) {
+      const type = String(mediaIntent.type || req.body.type || 'text').toLowerCase();
+      const imageCount = initialSelectedMediaRows.filter((item) => item.fileType === 'image').length;
+      const videoCount = initialSelectedMediaRows.filter((item) => item.fileType === 'video').length;
+      if (type === 'carousel' && imageCount < 2) {
+        return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Manual carousel posts require at least two uploaded or selected images.');
+      }
+      if (['video', 'reel'].includes(type) && videoCount < 1) {
+        return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Manual video posts require an uploaded or selected video.');
+      }
+      if (['image', 'story'].includes(type) && imageCount < 1) {
+        return redirectWithDashboardMessage(res, '/dashboard/quick-create', 'Manual image posts require an uploaded or selected image.');
+      }
+    }
+
     const generationPlan = buildPostGenerationPlan(req.body, initialSelectedMediaRows, brand);
 
     if (generationPlan.needsGeneration) {
-      if (generationPlan.needsText) await assertCanGenerateText(req.user);
-      if (generationPlan.imagesToGenerate > 0) await assertCanGenerateImage(req.user, generationPlan.imagesToGenerate);
-      if (generationPlan.needsVideo) await assertCanCreateVideo(req.user);
-      if (req.body.workflowMode === 'handoff') await assertCanCreateHandoffPosts(req.user);
-      if (req.body.workflowMode === 'auto' || req.body.autoPublishEnabled === 'on') await assertCanCreateAutoPosts(req.user);
+      if (generationPlan.needsText) await assertCanGenerateText(req.user, brand._id);
+      if (generationPlan.imagesToGenerate > 0) await assertCanGenerateImage(req.user, generationPlan.imagesToGenerate, brand._id);
+      if (generationPlan.needsVideo) await assertCanCreateVideo(req.user, brand._id);
+      if (req.body.workflowMode === 'handoff') await assertCanCreateHandoffPosts(req.user, 1, brand._id);
+      if (req.body.workflowMode === 'auto' || req.body.autoPublishEnabled === 'on') await assertCanCreateAutoPosts(req.user, 1, brand._id);
 
       const targets = await resolveComposerTargets({
         body: req.body,
         userId: req.user._id,
         brand,
-        platforms: toArray(req.body.platforms || req.body.platform)
+        platforms: toArray(req.body.platforms || req.body.platform),
+        allowEmpty: action === 'save'
       });
       const selectedPlatforms = targets.platforms;
       const primaryPlatform = selectedPlatforms[0];
@@ -679,8 +751,7 @@ async function createPost(req, res, next) {
         : generationPlan.isImage
           ? generationPlan.existingImageIds
           : [];
-      const placeholderCaption = String(req.body.caption || '').trim()
-        || `AI generation is preparing this ${generationPlan.isVideo ? 'video' : generationPlan.isImage ? 'visual post' : 'post'} for ${brand.name}.`;
+      const queuedCaption = String(req.body.caption || '').trim();
       const queuedGeneration = {
         status: 'queued',
         stage: 'queued',
@@ -705,7 +776,7 @@ async function createPost(req, res, next) {
         handoffNotes: req.body.handoffNotes || '',
         title: req.body.title || `${brand.name} post`,
         description: req.body.description || '',
-        caption: placeholderCaption,
+        caption: queuedCaption,
         hashtags: splitHashtags(req.body.hashtags || brand.preferredHashtags?.join(' ') || ''),
         firstComment: req.body.firstComment || '',
         altText: req.body.altText || '',
@@ -721,6 +792,7 @@ async function createPost(req, res, next) {
         link: req.body.link || '',
         targetAccounts,
         status: 'draft',
+        contentSource: 'ai',
         platformMetadata: {
           ...buildCreativePlan({ ...req.body, __brand: brand, __sourceMedia: sourceMedia }, null),
           selectedPlatforms,
@@ -800,7 +872,7 @@ async function createPost(req, res, next) {
 
     let generated = null;
     if (!req.body.__skipAiGeneration && (req.body.creationMode !== 'manual' || wantsGeneratedImage(req.body) || req.body.type === 'video')) {
-      await assertCanGenerateText(req.user);
+      await assertCanGenerateText(req.user, brand._id);
       generated = await generatePostIdea({
         brand,
         platform: req.body.platform || 'facebook',
@@ -830,7 +902,7 @@ async function createPost(req, res, next) {
     selectedMediaIds.push(...generatedMediaIds);
 
     const selectedMediaRows = selectedMediaIds.length
-      ? await Media.find({ _id: { $in: selectedMediaIds }, uploadedBy: req.user._id })
+      ? await Media.find({ _id: { $in: selectedMediaIds }, brand: brand._id, status: { $ne: 'archived' } })
       : [];
     const requestedType = String(req.body.type || '').toLowerCase();
     const selectedVideoIds = selectedMediaRows
@@ -855,7 +927,8 @@ async function createPost(req, res, next) {
       body: req.body,
       userId: req.user._id,
       brand,
-      platforms: toArray(req.body.platforms || req.body.platform)
+      platforms: toArray(req.body.platforms || req.body.platform),
+      allowEmpty: action === 'save'
     });
     const selectedPlatforms = targets.platforms;
     const primaryPlatform = selectedPlatforms[0];
@@ -884,7 +957,7 @@ async function createPost(req, res, next) {
     };
     const platformVariations = await createPlatformVariations({ baseContent, brand, platforms: selectedPlatforms, accounts: targetAccounts });
     const selectedMediaDocs = selectedMediaIds.length
-      ? await Media.find({ _id: { $in: selectedMediaIds }, uploadedBy: req.user._id }).lean()
+      ? await Media.find({ _id: { $in: selectedMediaIds }, brand: brand._id, status: { $ne: 'archived' } }).lean()
       : [];
     const composerWarnings = await validateComposerSubmission({
       ...baseContent,
@@ -895,8 +968,8 @@ async function createPost(req, res, next) {
     });
     const validationWarnings = [...new Set(platformVariations.flatMap((item) => item.validationWarnings || []).concat(composerWarnings))];
     const average = (field) => Math.round((platformVariations.reduce((total, item) => total + Number(item[field] || 0), 0) / Math.max(platformVariations.length, 1)) || 0);
-    if (req.body.workflowMode === 'handoff') await assertCanCreateHandoffPosts(req.user);
-    if (req.body.workflowMode === 'auto' || req.body.autoPublishEnabled === 'on') await assertCanCreateAutoPosts(req.user);
+    if (req.body.workflowMode === 'handoff') await assertCanCreateHandoffPosts(req.user, 1, brand._id);
+    if (req.body.workflowMode === 'auto' || req.body.autoPublishEnabled === 'on') await assertCanCreateAutoPosts(req.user, 1, brand._id);
 
     const post = await Post.create({
       brand: brand._id,
@@ -934,6 +1007,7 @@ async function createPost(req, res, next) {
       link: req.body.link || '',
       targetAccounts,
       status: 'draft',
+      contentSource: generated ? 'ai' : 'manual',
       platformMetadata: {
         ...buildCreativePlan({ ...req.body, __brand: brand, __sourceMedia: videoSourceMedia || sourceMedia }, generated),
         selectedPlatforms,
@@ -952,6 +1026,7 @@ async function createPost(req, res, next) {
       const generationCredits = creditsForGeneration(generationControls);
       await spendCredits({
         user: req.user,
+        brandId: brand._id,
         amount: generationCredits,
         reason: `Composer ${generationControls.outputType} generation`,
         referenceType: 'Post',
@@ -1018,12 +1093,158 @@ async function createPost(req, res, next) {
   }
 }
 
+
+
+async function importManualPosts(req, res, next) {
+  try {
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'content.create', { status: 'active' });
+    await assertPlanFeature(req.user, 'bulkImportAccess', 'bulk manual import', brand._id);
+    const rows = parseManualImportCsv(req.body.csvData);
+    await assertCanCreateManualPost(req.user, rows.length, brand._id);
+
+    const normalized = rows.map((row) => {
+      const mediaIds = splitMulti(row.media_ids || row.media || '');
+      if (mediaIds.some((value) => !mongoose.isValidObjectId(value))) {
+        throw new Error(`CSV row ${row.__row} contains an invalid media ID.`);
+      }
+      const targetAccountIds = splitMulti(row.target_account_ids || row.target_accounts || '');
+      if (targetAccountIds.some((value) => !mongoose.isValidObjectId(value))) {
+        throw new Error(`CSV row ${row.__row} contains an invalid target account ID.`);
+      }
+      const scheduledAt = row.scheduled_at ? scheduleDateFromBody(row.scheduled_at, { allowDefault: false }) : null;
+      if (row.scheduled_at && !scheduledAt) throw new Error(`CSV row ${row.__row} has an invalid scheduled_at value.`);
+      const type = String(row.type || (mediaIds.length > 1 ? 'carousel' : mediaIds.length ? 'image' : 'text')).toLowerCase();
+      if (!postTypes.includes(type) || type === 'campaign') throw new Error(`CSV row ${row.__row} has an unsupported type.`);
+      return {
+        ...row,
+        type,
+        mediaIds,
+        targetAccountIds,
+        scheduledAt,
+        platforms: splitMulti(row.platforms || row.platform || '')
+      };
+    });
+
+    const scheduledCount = normalized.filter((row) => row.scheduledAt).length;
+    if (scheduledCount) {
+      await assertBrandAccess(req.user, brand._id, 'schedule.manage', { status: 'active' });
+      await assertCanSchedulePost(req.user, scheduledCount, brand._id);
+    }
+
+    const mediaIds = [...new Set(normalized.flatMap((row) => row.mediaIds))];
+    const mediaRows = mediaIds.length
+      ? await Media.find({ _id: { $in: mediaIds }, brand: brand._id, status: { $ne: 'archived' } }).lean()
+      : [];
+    const mediaById = new Map(mediaRows.map((media) => [String(media._id), media]));
+    if (mediaRows.length !== mediaIds.length) throw new Error('One or more imported media IDs are unavailable in this brand. Upload media first and use its library ID.');
+
+    const docs = [];
+    for (const row of normalized) {
+      const rowMedia = row.mediaIds.map((id) => mediaById.get(id)).filter(Boolean);
+      const imageCount = rowMedia.filter((item) => item.fileType === 'image').length;
+      const videoCount = rowMedia.filter((item) => item.fileType === 'video').length;
+      if (row.type === 'carousel' && imageCount < 2) throw new Error(`CSV row ${row.__row}: carousel requires at least two image media IDs.`);
+      if (['video', 'reel'].includes(row.type) && videoCount < 1) throw new Error(`CSV row ${row.__row}: ${row.type} requires a video media ID.`);
+      if (['image', 'story'].includes(row.type) && imageCount < 1) throw new Error(`CSV row ${row.__row}: ${row.type} requires an image media ID.`);
+
+      const targets = await resolveComposerTargets({
+        body: { targetAccounts: row.targetAccountIds },
+        userId: req.user._id,
+        brand,
+        platforms: row.platforms,
+        allowEmpty: !row.scheduledAt
+      });
+      const selectedPlatforms = targets.platforms.length ? targets.platforms : row.platforms.length ? row.platforms : ['facebook'];
+      const baseContent = {
+        title: row.title || `${brand.name} imported post`,
+        description: row.description || '',
+        caption: row.caption,
+        hashtags: splitHashtags(row.hashtags || ''),
+        firstComment: row.first_comment || '',
+        altText: row.alt_text || '',
+        videoTitle: row.video_title || row.title || '',
+        videoDescription: row.video_description || row.description || '',
+        shortVideoHook: row.short_video_hook || '',
+        ctaStyle: row.cta || brand.ctaStyle || brand.preferredCta || '',
+        type: row.type,
+        link: row.link || ''
+      };
+      const variations = await createPlatformVariations({ baseContent, brand, platforms: selectedPlatforms, accounts: targets.accounts || [] });
+      const warnings = await validateComposerSubmission({ ...baseContent, platforms: selectedPlatforms, media: rowMedia, link: row.link || '' });
+      const average = (field) => Math.round(variations.reduce((sum, item) => sum + Number(item[field] || 0), 0) / Math.max(variations.length, 1));
+      const approvalRequired = req.body.approvalRequired === 'on' || brand.approvalRequiredByDefault === true;
+      docs.push({
+        brand: brand._id,
+        platform: selectedPlatforms[0],
+        platforms: selectedPlatforms,
+        type: row.type,
+        contentGoal: normalizeContentGoal(row.content_goal || row.goal),
+        workflowMode: 'manual',
+        autoPublishEnabled: false,
+        approvalRequired,
+        publishAfterApproval: Boolean(approvalRequired && row.scheduledAt),
+        title: baseContent.title,
+        description: baseContent.description,
+        caption: baseContent.caption,
+        hashtags: baseContent.hashtags,
+        firstComment: baseContent.firstComment,
+        altText: baseContent.altText,
+        videoTitle: baseContent.videoTitle,
+        videoDescription: baseContent.videoDescription,
+        shortVideoHook: baseContent.shortVideoHook,
+        ctaStyle: baseContent.ctaStyle,
+        media: row.mediaIds,
+        targetAccounts: targets.accountIds,
+        link: baseContent.link,
+        platformVariations: variations,
+        validationWarnings: [...new Set(variations.flatMap((item) => item.validationWarnings || []).concat(warnings))],
+        contentScore: average('contentScore'),
+        brandFitScore: average('brandFitScore'),
+        riskScore: average('riskScore'),
+        status: row.scheduledAt ? (approvalRequired ? 'pending_approval' : 'scheduled') : 'draft',
+        scheduledAt: row.scheduledAt || undefined,
+        scheduleVersion: row.scheduledAt ? 1 : 0,
+        contentSource: 'import',
+        aiProvider: '',
+        aiModel: '',
+        platformMetadata: {
+          creationMode: 'manual',
+          import: { source: 'csv', row: row.__row, importedAt: new Date(), noAi: true },
+          selectedPlatforms
+        },
+        createdBy: req.user._id
+      });
+    }
+
+    const created = await Post.insertMany(docs, { ordered: true });
+    for (const post of created.filter((item) => item.status === 'scheduled')) {
+      await tryEnqueue(post, req.user._id);
+    }
+    await Notification.create({
+      user: req.user._id,
+      type: 'manual_import_completed',
+      title: 'Manual content import completed',
+      message: `${created.length} AI-free post${created.length === 1 ? '' : 's'} imported for ${brand.name}.`,
+      actionUrl: '/dashboard/content-library'
+    }).catch(() => {});
+    return res.redirect(`/dashboard/content-library?notice=${encodeURIComponent(`${created.length} manual posts imported without AI.`)}`);
+  } catch (error) {
+    if (error.code === 'PUBLISHING_TARGETS_UNAVAILABLE') return redirectWithDashboardMessage(res, '/dashboard/quick-create', error.message);
+    if (!error.status) return redirectWithDashboardMessage(res, '/dashboard/quick-create', error.message);
+    return next(error);
+  }
+}
+
 async function drafts(req, res, next) {
   try {
-    const filters = { createdBy: req.user._id };
+    const brandIds = await accessibleBrandIds(req.user, 'content.view');
+    const filters = { brand: { $in: brandIds } };
     if (req.query.status) filters.status = req.query.status;
     if (req.query.platform) filters.platform = req.query.platform;
-    if (req.query.brand) filters.brand = req.query.brand;
+    if (req.query.brand) {
+      const requestedBrand = await assertBrandAccess(req.user, req.query.brand, 'content.view', { status: 'active' });
+      filters.brand = requestedBrand._id;
+    }
 
     const [posts, brands] = await Promise.all([
       Post.find(filters)
@@ -1031,7 +1252,7 @@ async function drafts(req, res, next) {
         .populate('targetAccounts')
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(200),
-      Brand.find({ owner: req.user._id, status: 'active' }).sort({ name: 1 })
+      Brand.find({ _id: { $in: brandIds }, status: 'active' }).sort({ name: 1 })
     ]);
 
     const stats = posts.reduce(
@@ -1051,7 +1272,7 @@ async function drafts(req, res, next) {
 
 async function edit(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id }).populate('brand').populate('media').populate('targetAccounts');
+    const post = await findAccessiblePost(req, req.params.id, 'content.edit', ['brand', 'media', 'targetAccounts']);
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     return res.redirect(303, `/dashboard/content-library?edit=${encodeURIComponent(String(post._id))}`);
@@ -1062,7 +1283,7 @@ async function edit(req, res, next) {
 
 async function update(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const post = await findAccessiblePost(req, req.params.id, 'content.edit');
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'title')) post.title = req.body.title;
@@ -1104,6 +1325,8 @@ async function update(req, res, next) {
     }
 
     if (requestedStatus === 'scheduled') {
+      await assertBrandAccess(req.user, post.brand, 'schedule.manage', { status: 'active' });
+      await assertCanSchedulePost(req.user, SCHEDULED_POST_STATUSES.includes(post.status) ? 0 : 1, post.brand);
       await assertPostHasLiveTargets(post, req.user._id);
       const scheduledAt = post.scheduledAt || nextDefaultScheduleDate();
       if (await hasPublishingApproval(post)) preparePostForSchedule(post, scheduledAt);
@@ -1125,7 +1348,7 @@ async function update(req, res, next) {
       editedAt: new Date()
     };
     const validationMedia = post.media?.length
-      ? await Media.find({ _id: { $in: post.media }, uploadedBy: req.user._id }).lean()
+      ? await Media.find({ _id: { $in: post.media }, brand: post.brand, status: { $ne: 'archived' } }).lean()
       : [];
     post.validationWarnings = await validateComposerSubmission({
       type: post.type,
@@ -1141,7 +1364,7 @@ async function update(req, res, next) {
     });
     await post.save();
     if (post.status === 'scheduled' && post.scheduledAt) {
-      const generationJob = await activeGenerationJobForPost(post, req.user._id);
+      const generationJob = await activeGenerationJobForPost(post);
       if (generationJob) {
         await deferActionUntilGeneration({
           post,
@@ -1171,7 +1394,7 @@ async function update(req, res, next) {
 
 async function schedule(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const post = await findAccessiblePost(req, req.params.id, 'schedule.manage');
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const scheduledAt = scheduleDateFromBody(req.body.scheduledAt);
@@ -1179,9 +1402,9 @@ async function schedule(req, res, next) {
       return redirectWithDashboardMessage(res, '/dashboard/calendar', 'Choose a valid schedule date.');
     }
 
-    await assertCanSchedulePost(req.user, SCHEDULED_POST_STATUSES.includes(post.status) ? 0 : 1);
+    await assertCanSchedulePost(req.user, SCHEDULED_POST_STATUSES.includes(post.status) ? 0 : 1, post.brand);
     await assertPostHasLiveTargets(post, req.user._id);
-    const generationJob = await activeGenerationJobForPost(post, req.user._id);
+    const generationJob = await activeGenerationJobForPost(post);
     if (generationJob) {
       await deferActionUntilGeneration({ post, job: generationJob, action: 'schedule', scheduledAt });
       return res.redirect('/dashboard/calendar?notice=generation_then_schedule');
@@ -1230,9 +1453,12 @@ async function bulkReschedule(req, res, next) {
     }
 
     const spacingMinutes = Math.max(0, Math.min(1440, Number(req.body.spacingMinutes || 30)));
-    const posts = await Post.find({ _id: { $in: postIds }, createdBy: req.user._id }).sort({ scheduledAt: 1, createdAt: 1 });
-    const newlyScheduled = posts.filter((post) => !SCHEDULED_POST_STATUSES.includes(post.status)).length;
-    if (newlyScheduled) await assertCanSchedulePost(req.user, newlyScheduled);
+    const scheduleBrandIds = await accessibleBrandIds(req.user, 'schedule.manage');
+    const posts = await Post.find({ _id: { $in: postIds }, brand: { $in: scheduleBrandIds } }).sort({ scheduledAt: 1, createdAt: 1 });
+    if (posts.length !== postIds.length) return redirectWithDashboardMessage(res, '/dashboard/calendar', 'One or more selected posts are unavailable or you do not have scheduling permission.');
+    const newlyScheduledByBrand = new Map();
+    posts.filter((post) => !SCHEDULED_POST_STATUSES.includes(post.status)).forEach((post) => { const key = String(post.brand); newlyScheduledByBrand.set(key, (newlyScheduledByBrand.get(key) || 0) + 1); });
+    for (const [brandId, count] of newlyScheduledByBrand.entries()) await assertCanSchedulePost(req.user, count, brandId);
     let updated = 0;
 
     for (let index = 0; index < posts.length; index += 1) {
@@ -1251,7 +1477,7 @@ async function bulkReschedule(req, res, next) {
       };
       await post.save();
       if (post.status === 'scheduled') {
-        const generationJob = await activeGenerationJobForPost(post, req.user._id);
+        const generationJob = await activeGenerationJobForPost(post);
         if (generationJob) {
           await deferActionUntilGeneration({ post, job: generationJob, action: 'schedule', scheduledAt });
         } else {
@@ -1279,11 +1505,12 @@ async function bulkReschedule(req, res, next) {
 
 async function retry(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id, status: 'failed' });
+    const post = await findAccessiblePost(req, req.params.id, 'schedule.manage');
+    if (post && post.status !== 'failed') return redirectWithDashboardMessage(res, '/dashboard/content-library', 'Only failed posts can be retried.');
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     const scheduledAt = scheduleDateFromBody(req.body.scheduledAt, { allowDefault: false }) || new Date(Date.now() + 5 * 60 * 1000);
-    await assertCanSchedulePost(req.user);
+    await assertCanSchedulePost(req.user, 1, post.brand);
     await assertPostHasLiveTargets(post, req.user._id);
     preparePostForSchedule(post, scheduledAt);
     post.retryCount = Number(post.retryCount || 0) + 1;
@@ -1319,9 +1546,11 @@ async function retry(req, res, next) {
 
 async function duplicate(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const post = await findAccessiblePost(req, req.params.id, 'content.view');
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
+    await assertBrandAccess(req.user, post.brand, 'content.create', { status: 'active' });
+    await assertCanCreateManualPost(req.user, 1, post.brand);
     const copy = await Post.create({
       brand: post.brand,
       campaign: post.campaign,
@@ -1336,6 +1565,7 @@ async function duplicate(req, res, next) {
       targetAccounts: post.targetAccounts,
       platformMetadata: post.platformMetadata,
       status: 'draft',
+      contentSource: 'manual',
       createdBy: req.user._id
     });
 
@@ -1347,12 +1577,13 @@ async function duplicate(req, res, next) {
 
 async function publishNow(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const post = await findAccessiblePost(req, req.params.id, 'content.publish');
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
+    await assertCanSchedulePost(req.user, SCHEDULED_POST_STATUSES.includes(post.status) ? 0 : 1, post.brand);
     await assertPostHasLiveTargets(post, req.user._id);
     const publishAt = new Date();
-    const generationJob = await activeGenerationJobForPost(post, req.user._id);
+    const generationJob = await activeGenerationJobForPost(post);
     if (generationJob) {
       await deferActionUntilGeneration({ post, job: generationJob, action: 'publish', scheduledAt: publishAt });
       return res.redirect('/dashboard/calendar?notice=generation_then_publish');
@@ -1379,7 +1610,7 @@ async function publishNow(req, res, next) {
 
 async function cancel(req, res, next) {
   try {
-    const post = await Post.findOne({ _id: req.params.id, createdBy: req.user._id });
+    const post = await findAccessiblePost(req, req.params.id, 'schedule.manage');
     if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     post.status = 'cancelled';
@@ -1399,7 +1630,6 @@ async function cancel(req, res, next) {
     await post.save();
     await AiJob.updateMany(
       {
-        user: req.user._id,
         'metadata.postId': String(post._id),
         taskType: { $in: ['post_content_generation', 'post_video_generation'] },
         status: { $in: ['queued', 'running'] }
@@ -1414,16 +1644,17 @@ async function cancel(req, res, next) {
 
 async function destroy(req, res, next) {
   try {
+    const post = await findAccessiblePost(req, req.params.id, 'content.edit');
+    if (!post) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
     await AiJob.updateMany(
       {
-        user: req.user._id,
         'metadata.postId': String(req.params.id),
         taskType: { $in: ['post_content_generation', 'post_video_generation'] },
         status: { $in: ['queued', 'running'] }
       },
       { $set: { status: 'cancelled', completedAt: new Date(), error: '' } }
     );
-    await Post.deleteOne({ _id: req.params.id, createdBy: req.user._id });
+    await Post.deleteOne({ _id: post._id });
     return res.redirect('/dashboard/content-library');
   } catch (error) {
     return next(error);
@@ -1440,7 +1671,7 @@ async function handoff(req, res, next) {
 
 async function createHandoff(req, res, next) {
   try {
-    const brand = await Brand.findOne({ _id: req.body.brand, owner: req.user._id, status: 'active' });
+    const brand = await assertBrandAccess(req.user, req.body.brand, 'approvals.manage', { status: 'active' });
     if (!brand) {
       return redirectWithDashboardMessage(res, '/dashboard/approvals', 'Choose a valid brand.');
     }
@@ -1463,8 +1694,8 @@ async function createHandoff(req, res, next) {
         ? Number(req.body.postsPerMonth || 30)
         : Number(req.body.postsPerWeek || 7);
     const requestedCount = Number.isFinite(count) ? Math.max(1, Math.min(90, count)) : 1;
-    await assertCanSchedulePost(req.user, requestedCount);
-    await assertCanCreateHandoffPosts(req.user, requestedCount);
+    await assertCanSchedulePost(req.user, requestedCount, brand._id);
+    await assertCanCreateHandoffPosts(req.user, requestedCount, brand._id);
 
     const result = await createScheduledPostsFromBatch({
       userId: req.user._id,
@@ -1504,4 +1735,4 @@ async function createHandoff(req, res, next) {
   }
 }
 
-module.exports = { newPost, createPost, handoff, createHandoff, drafts, edit, update, schedule, bulkReschedule, retry, duplicate, publishNow, cancel, destroy };
+module.exports = { newPost, createPost, importManualPosts, handoff, createHandoff, drafts, edit, update, schedule, bulkReschedule, retry, duplicate, publishNow, cancel, destroy };
