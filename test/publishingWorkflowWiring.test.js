@@ -139,3 +139,12 @@ test('Meta OAuth verifies Instagram publishing grants and retires unverified leg
   assert.match(migration, /legacy Instagram connections require reconnect/);
   assert.match(server, /markLegacyInstagramAccountsForReconnect/);
 });
+
+test('background publisher reuses destination readiness and refuses stale connected credentials', () => {
+  const publishing = source('src/services/publishingService.js');
+  const diagnostic = source('scripts/diagnosePublishing.js');
+  assert.match(publishing, /destinationReadiness\(account, \{ verifyEncryption: true \}\)\.ready/);
+  assert.match(diagnostic, /readyToPublish: accountReadiness\.ready/);
+  assert.match(diagnostic, /contentReady:/);
+  assert.match(diagnostic, /accountReady:/);
+});

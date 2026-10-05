@@ -1,11 +1,25 @@
-# AutoBrand AI v1.6.3 — Consolidated Production Release
+# AutoBrand AI v1.6.4 — Publishing Readiness Consistency
+
+## v1.6.4 — Account readiness hardening
+
+- Background publishing now reuses the same destination-readiness rules as the composer, MCP and channel workspaces. A saved account whose token is expired, whose status requires reconnect, whose required permissions are missing, or whose encrypted credential cannot be read is blocked before any provider publish call.
+- `diagnose:publishing` now separates content/media readiness from social-account readiness and reports an effective readiness result. This removes misleading cases where valid media/copy appeared `ready: true` while the selected provider account was expired or reconnect-required.
+- Diagnostic account output now includes `effectiveStatus`, `readyToPublish` and `readinessBlockers`.
+- Historical missing local-disk media remains preserved as history; active publish attempts continue to fail safely until the media is regenerated or uploaded to durable storage.
+- Added regression coverage for stale `connected` rows with expired tokens and for background-publisher destination checks.
+
+Verification: 308 tests, 307 pass, 0 fail, 1 expected Sharp-native skip on the verification dependency set; static security and release scans pass.
+
+---
+
+# AutoBrand AI v1.6.4 — Consolidated Production Release
 
 - Consolidates the v1.6.2 production tree, Render dashboard `videoTemplates` 500 fix, and Facebook media test-isolation fix.
 - Replaces Nodemon with Node 24 native `--watch` development mode.
 - Pins the production dependency floor verified clean by the live npm audit: Express 4.22.3, EJS 6.0.1, Morgan 1.12.1, Nodemailer 10.0.14, Sharp 0.35.5, body-parser 1.20.8, and qs 6.16.0 override.
 - Keeps the production build audit as a release blocker.
 
-# v1.6.3 — Dashboard Runtime Hotfix & Verification Hardening
+# v1.6.4 — Dashboard Runtime Hotfix & Verification Hardening
 
 - Fixed the production dashboard-wide `ReferenceError: videoTemplates is not defined` by serializing video-template options in the shared dashboard controller and reading them defensively in the EJS shell.
 - Added a regression test covering the shared-dashboard video-template contract.

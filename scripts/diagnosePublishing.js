@@ -2,11 +2,13 @@ const mongoose = require('mongoose');
 const connectDb = require('../src/config/db');
 const env = require('../src/config/env');
 const Post = require('../src/models/Post');
+const SocialAccount = require('../src/models/SocialAccount');
 const { validateEnvironment } = require('../src/config/validateEnv');
 const { isCloudinaryConfigured } = require('../src/config/cloudinary');
 const { buildPublishingReadiness } = require('../src/services/publishingReadiness.service');
 const { partitionAvailableMedia } = require('../src/services/mediaAvailability.service');
 const { verifyMetaPublishingAccount } = require('../src/services/facebookService');
+const { destinationReadiness } = require('../src/services/social/socialDestination.service');
 
 function argument(name) {
   const prefix = `--${name}=`;
@@ -34,8 +36,41 @@ async function diagnosePost(post, { live = false } = {}) {
   const platforms = [...new Set(post.platforms?.length ? post.platforms : [post.platform])];
   const availability = await partitionAvailableMedia(post.media || []);
   const readiness = [];
+  const selectedAccounts = Array.isArray(post.targetAccounts) ? post.targetAccounts.filter(Boolean) : [];
   for (const platform of platforms) {
-    readiness.push({ platform, ...(await buildPublishingReadiness(postForPlatform(post, platform))) });
+    const contentReadiness = await buildPublishingReadiness(postForPlatform(post, platform));
+    let platformAccounts = selectedAccounts.filter((account) => account.platform === platform);
+    if (!platformAccounts.length && post.brand?._id) {
+      platformAccounts = await SocialAccount.find({
+        brand: post.brand._id,
+        owner: post.brand.owner,
+        platform
+      }).sort({ accountName: 1 });
+    }
+    const accountChecks = platformAccounts.map((account) => {
+      const check = destinationReadiness(account, { verifyEncryption: true });
+      return {
+        id: String(account._id),
+        accountName: account.accountName || '',
+        status: account.status || '',
+        healthStatus: check.health?.healthStatus || account.healthStatus || 'unknown',
+        ready: check.ready,
+        blockers: check.blockers || []
+      };
+    });
+    const hasReadyAccount = accountChecks.some((account) => account.ready);
+    const accountBlockers = accountChecks.length
+      ? [...new Set(accountChecks.flatMap((account) => account.blockers.map((blocker) => `${account.accountName || platform}: ${blocker}`)))]
+      : [`No saved ${platform} destination is available for this brand.`];
+    readiness.push({
+      platform,
+      ...contentReadiness,
+      contentReady: contentReadiness.ready,
+      accountReady: hasReadyAccount,
+      ready: contentReadiness.ready && hasReadyAccount,
+      accountBlockers: hasReadyAccount ? [] : accountBlockers,
+      accounts: accountChecks
+    });
   }
 
   const liveMetaChecks = [];
@@ -87,28 +122,37 @@ async function diagnosePost(post, { live = false } = {}) {
         reason: item.reason
       }))
     },
-    targetAccounts: (post.targetAccounts || []).map((account) => ({
-      id: String(account._id),
-      platform: account.platform,
-      accountName: account.accountName,
-      providerAccountId: account.accountId || '',
-      status: account.status,
-      healthStatus: account.healthStatus,
-      tokenStored: Boolean(account.accessTokenEncrypted),
-      tokenExpiresAt: account.tokenExpiresAt || null,
-      tokenExpired: Boolean(account.tokenExpiresAt && new Date(account.tokenExpiresAt).getTime() <= Date.now()),
-      permissions: account.permissions || [],
-      permissionGrantVerifiedAt: account.providerMeta?.permissionGrantVerifiedAt || null,
-      missingPermissions: account.providerMeta?.missingPermissions || [],
-      reconnectRequiredAt: account.reconnectRequiredAt || null,
-      lastPublishError: account.lastPublishError || ''
-    })),
+    targetAccounts: (post.targetAccounts || []).map((account) => {
+      const accountReadiness = destinationReadiness(account, { verifyEncryption: true });
+      return {
+        id: String(account._id),
+        platform: account.platform,
+        accountName: account.accountName,
+        providerAccountId: account.accountId || '',
+        status: account.status,
+        healthStatus: accountReadiness.health?.healthStatus || account.healthStatus,
+        effectiveStatus: accountReadiness.health?.status || account.status,
+        readyToPublish: accountReadiness.ready,
+        readinessBlockers: accountReadiness.blockers || [],
+        tokenStored: Boolean(account.accessTokenEncrypted),
+        tokenExpiresAt: account.tokenExpiresAt || null,
+        tokenExpired: Boolean(account.tokenExpiresAt && new Date(account.tokenExpiresAt).getTime() <= Date.now()),
+        permissions: account.permissions || [],
+        permissionGrantVerifiedAt: account.providerMeta?.permissionGrantVerifiedAt || null,
+        missingPermissions: accountReadiness.health?.missingPermissions || account.providerMeta?.missingPermissions || [],
+        reconnectRequiredAt: account.reconnectRequiredAt || null,
+        lastPublishError: account.lastPublishError || ''
+      };
+    }),
     readiness: readiness.map((item) => ({
       platform: item.platform,
       ready: item.ready,
-      blockers: item.blockers,
+      contentReady: item.contentReady,
+      accountReady: item.accountReady,
+      blockers: [...new Set([...(item.blockers || []), ...(item.accountBlockers || [])])],
       warnings: item.warnings,
-      mediaAvailability: item.mediaAvailability
+      mediaAvailability: item.mediaAvailability,
+      accounts: item.accounts
     })),
     publishResults: post.publishResults || [],
     liveMetaChecks

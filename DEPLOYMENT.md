@@ -1,10 +1,14 @@
 
-## v1.6.3 first install / lockfile refresh
+## v1.6.4 social publishing readiness
 
-This source archive intentionally does not ship the stale pre-v1.6.3 `package-lock.json`. On a networked development machine run `npm install --include=optional` once, verify both full and production audits, then commit the generated lockfile. After that, production/Render should use `npm ci --include=optional && npm audit --omit=dev` for deterministic installs.
+After deployment run `npm run diagnose:publishing -- --live --limit=20`. Any destination with `readyToPublish: false`, `effectiveStatus: expired|needs_reconnect|missing_permission`, or provider live-check failure must be reconnected through AutoBrand before scheduled publishing resumes. Historical `/uploads/ai/...` files that no longer exist are old ephemeral-disk artifacts; regenerate/re-upload only content you intend to republish.
+
+## v1.6.4 first install / lockfile refresh
+
+This source archive intentionally does not ship the stale pre-v1.6.4 `package-lock.json`. On a networked development machine run `npm install --include=optional` once, verify both full and production audits, then commit the generated lockfile. After that, production/Render should use `npm ci --include=optional && npm audit --omit=dev` for deterministic installs.
 
 
-> **v1.6.3 dependency refresh:** this release pins the patched direct dependency floors discovered by the live October 2026 npm advisory check (`express 4.22.3`, `ejs 6.0.1`, `morgan 1.12.1`, `nodemailer 10.0.14`, `sharp 0.35.5`, `body-parser 1.20.8`, with `qs 6.16.0` override). Run `npm install --include=optional` once after extraction so npm reconciles the lockfile on a networked host, then run `npm audit --omit=dev`. Commit the refreshed lockfile before switching CI back to `npm ci`.
+> **v1.6.4 dependency refresh:** this release pins the patched direct dependency floors discovered by the live October 2026 npm advisory check (`express 4.22.3`, `ejs 6.0.1`, `morgan 1.12.1`, `nodemailer 10.0.14`, `sharp 0.35.5`, `body-parser 1.20.8`, with `qs 6.16.0` override). Run `npm install --include=optional` once after extraction so npm reconciles the lockfile on a networked host, then run `npm audit --omit=dev`. Commit the refreshed lockfile before switching CI back to `npm ci`.
 
 # AutoBrand AI Deployment Guide
 

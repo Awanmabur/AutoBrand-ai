@@ -94,6 +94,9 @@ test('an Instagram media blocker does not prevent a ready Facebook Page from pub
     './notification.service': {
       notifyAccountDisconnected: async () => {},
       notifyUser: async () => {}
+    },
+    './social/socialDestination.service': {
+      destinationReadiness: () => ({ ready: true, blockers: [], health: { status: 'connected' } })
     }
   }, async ({ publishPost }) => {
     await assert.rejects(

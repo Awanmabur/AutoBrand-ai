@@ -1,30 +1,39 @@
-AutoBrand AI v1.6.3 Final Production — Consolidated Release
+AutoBrand AI v1.6.4 Final Production — Complete Release
 
 This is the full project, not a patch.
 
 Included:
-- v1.6.0 production/security/SEO/AI-discovery hardening.
+- All v1.6.0 production/security/SEO/AI-discovery hardening.
 - v1.6.1 production-test isolation fixes.
 - v1.6.2 Render dashboard videoTemplates 500 fix.
-- Facebook media test-isolation fix for PUBLIC_APP_URL environments.
-- Node 24 native development watch mode; Nodemon removed.
-- Secure dependency declarations: Express 4.22.3, EJS 6.0.1, Morgan 1.12.1, Nodemailer 10.0.14, Sharp 0.35.5, body-parser 1.20.8, qs 6.16.0 override.
+- v1.6.3 secure dependency refresh, Node 24 native watch mode, and Facebook media test-isolation fix.
+- v1.6.4 unified social-account readiness across background publishing and diagnostics.
+- Expired, reconnect-required, missing-permission, undecryptable, mock, and unsupported destinations are blocked before provider publishing.
+- Publishing diagnostics now distinguish content/media readiness from account readiness and expose effective readiness.
+- Historical missing local-disk media remains preserved as history and is never treated as available reusable media.
 
 Verification performed on consolidated source:
 - JavaScript syntax: PASS (277 files).
 - Static security scan: PASS (276 files).
 - Release secret/mock/archive scan: PASS.
-- Tests: 306 total; 305 passed; 0 failed; 1 skipped because the reused local verification dependency tree lacked the matching Sharp native binary.
+- Tests: 308 total; 307 passed; 0 failed; 1 skipped because the reusable verification dependency tree lacked the matching Sharp native binary.
+
+Secure dependency declarations:
+- Express 4.22.3
+- EJS 6.0.1
+- Morgan 1.12.1
+- Nodemailer 10.0.14
+- Sharp 0.35.5
+- body-parser 1.20.8
+- qs 6.16.0 override
 
 Dependency-lock policy:
-- package-lock.json is intentionally NOT shipped because the available build environment cannot reach the npm registry to regenerate it after the security dependency updates.
-- On a networked development machine run npm install --include=optional once, verify npm audit and tests, then commit the newly generated package-lock.json.
-- After the refreshed lockfile is committed, Render should use: npm ci --include=optional && npm audit --omit=dev
+- package-lock.json is intentionally not shipped because this environment cannot regenerate a trusted current lockfile from the live npm registry.
+- On the first networked install run npm install --include=optional, verify npm audit and npm audit --omit=dev, then commit the generated package-lock.json.
+- Render/CI should then use npm ci --include=optional && npm audit --omit=dev.
 
-Release exclusions:
-- No .env
-- No private/encryption keys
-- No node_modules
-- No runtime uploads
-- No nested archives
-- No stale package-lock.json
+Operational follow-up after deployment:
+- Run npm run diagnose:publishing -- --live --limit=20.
+- Reconnect any provider account with readyToPublish=false, effectiveStatus=expired/needs_reconnect/missing_permission, or a failed live provider check.
+- Regenerate or re-upload only old local media you intend to republish.
+- Enable privileged MFA before granting production administrative access.

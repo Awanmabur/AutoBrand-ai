@@ -1,4 +1,6 @@
-# AutoBrand AI v1.6.3 — First Install and Deployment
+# AutoBrand AI v1.6.4 — First Install and Deployment
+
+> **Publishing readiness note:** v1.6.4 blocks expired/reconnect-required social credentials before scheduled provider calls. After deployment reconnect any account reported by `npm run diagnose:publishing -- --live --limit=20`.
 
 This is the complete consolidated project. The stale lockfile is deliberately excluded so it cannot reinstall known-vulnerable packages.
 

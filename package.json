@@ -1,6 +1,6 @@
 {
   "name": "autobrand-ai-social-saas",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "private": true,
   "description": "AI social media management SaaS platform",
   "main": "server.js",

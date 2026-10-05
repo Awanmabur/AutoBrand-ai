@@ -18,6 +18,7 @@ const { buildPublishingReadiness, publicUrlFromPublishResult } = require('./publ
 const { notifyAccountDisconnected, notifyUser } = require('./notification.service');
 const { isTokenDecryptionError } = require('./tokenCryptoService');
 const { ensureAnalyticsSyncJobsForPost } = require('./analytics/analyticsSync.service');
+const { destinationReadiness } = require('./social/socialDestination.service');
 
 async function bestEffort(label, task) {
   try {
@@ -56,17 +57,15 @@ async function settleWithConcurrency(items, limit, task) {
 
 async function accountsForPlatform(post, platform) {
   const selectedIds = (post.targetAccounts || []).map((id) => id?._id || id).filter(Boolean);
-  const allowedStatuses = ['connected'];
   const filter = {
     brand: post.brand._id,
     owner: post.brand.owner,
-    platform,
-    status: { $in: allowedStatuses }
+    platform
   };
 
   if (selectedIds.length) filter._id = { $in: selectedIds };
   const accounts = await SocialAccount.find(filter).sort({ accountName: 1 });
-  return accounts.filter((account) => platform !== 'instagram' || Boolean(account.providerMeta?.permissionGrantVerifiedAt));
+  return accounts.filter((account) => destinationReadiness(account, { verifyEncryption: true }).ready);
 }
 
 function postViewForPlatform(post, platform) {

@@ -37,3 +37,16 @@ test('historical mock social accounts are always reconnect-required and never pu
   assert.equal(health.status, 'needs_reconnect');
   assert.match(health.label, /Reconnect/i);
 });
+
+test('social account health treats an expired token as expired even when the stored status is connected', () => {
+  const health = evaluateSocialAccountHealth({
+    platform: 'facebook',
+    status: 'connected',
+    accessTokenEncrypted: 'token',
+    tokenExpiresAt: new Date('2030-01-01T11:59:00Z'),
+    permissions: ['pages_manage_posts', 'pages_read_engagement']
+  }, new Date('2030-01-01T12:00:00Z'));
+
+  assert.equal(health.status, 'expired');
+  assert.equal(health.healthStatus, 'warning');
+});
