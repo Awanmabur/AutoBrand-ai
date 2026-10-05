@@ -7,7 +7,7 @@ const { assertPlanFeature } = require('../../services/usageLimitService');
 
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25','2025-06-18','2025-03-26'];
-const serverInfo = { name: 'AutoBrand AI', version: '1.6.2' };
+const serverInfo = { name: 'AutoBrand AI', version: '1.6.3' };
 const instructions = 'Use AutoBrand AI as the source of truth for brand permissions, connected social accounts, durable media, drafts, scheduling, publishing and analytics. Read brands/accounts before writes. Upload ChatGPT files with upload_media before using their media IDs. Publishing and scheduling affect real external social accounts.';
 
 function jsonRpc(id, result, { modern = false, cacheable = false } = {}) {

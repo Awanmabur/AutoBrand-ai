@@ -1,3 +1,8 @@
+
+## v1.6.3 first install / lockfile refresh
+
+This source archive intentionally does not ship the stale pre-v1.6.3 `package-lock.json`. On a networked development machine run `npm install --include=optional` once, verify both full and production audits, then commit the generated lockfile. After that, production/Render should use `npm ci --include=optional && npm audit --omit=dev` for deterministic installs.
+
 # AutoBrand AI Social SaaS
 
 AutoBrand AI is a social media management SaaS for building a brand brain, connecting social accounts, creating platform-ready content, scheduling posts, managing handoff/approval workflows, and routing AI work through plan-aware providers.
@@ -13,7 +18,7 @@ See [`docs/FINAL-PRODUCTION-AUDIT.md`](docs/FINAL-PRODUCTION-AUDIT.md), [`docs/S
 
 ## ChatGPT / MCP connector
 
-AutoBrand AI v1.6.2 includes a native, OAuth-protected remote MCP connector for ChatGPT and other compatible MCP clients. The connector is a thin adapter over AutoBrand's existing workspace RBAC, media storage, scheduling, provider publishing, retries, analytics and audit infrastructure. It does **not** maintain a second set of social-provider credentials or bypass normal brand permissions.
+AutoBrand AI v1.6.3 includes a native, OAuth-protected remote MCP connector for ChatGPT and other compatible MCP clients. The connector is a thin adapter over AutoBrand's existing workspace RBAC, media storage, scheduling, provider publishing, retries, analytics and audit infrastructure. It does **not** maintain a second set of social-provider credentials or bypass normal brand permissions.
 
 The connector supports brand/account discovery, durable media ingestion, draft creation/editing, immediate publishing, scheduled publishing/cancellation, post status and analytics. Generated or uploaded creative files are ingested into AutoBrand first and referenced by durable AutoBrand media IDs, avoiding temporary third-party preview URLs.
 

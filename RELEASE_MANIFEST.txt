@@ -1,34 +1,30 @@
-AutoBrand AI v1.6.2 — Final Production Hotfix
-Release date: 2026-10-05
+AutoBrand AI v1.6.3 Final Production — Consolidated Release
 
-Merged production fixes:
-- Dashboard-wide Render 500 fixed: shared experience.ejs no longer references an undeclared videoTemplates local.
-- Dashboard controller now serializes video template records into dashboardData.options.videoTemplates.
-- Regression coverage added for the exact production failure.
-- v1.6.1 production-test isolation fixes included for Pesapal, email runtime, callback origins, and Windows security scanning.
-- Patched dependency floors declared from the live October 2026 npm advisory findings: express 4.22.3, ejs 6.0.1, morgan 1.12.1, nodemailer 10.0.14, sharp 0.35.5, body-parser 1.20.8, qs 6.16.0 override.
+This is the full project, not a patch.
 
-Verification performed on the merged source tree:
-- Automated tests: 306 total / 305 passed / 0 failed / 1 expected Sharp-native skip
-- JavaScript syntax: 277 files checked / PASS
-- Static security gate: 276 JavaScript files inspected / PASS
-- Production source preflight: PASS
-- Release secret/mock/archive scan: PASS
+Included:
+- v1.6.0 production/security/SEO/AI-discovery hardening.
+- v1.6.1 production-test isolation fixes.
+- v1.6.2 Render dashboard videoTemplates 500 fix.
+- Facebook media test-isolation fix for PUBLIC_APP_URL environments.
+- Node 24 native development watch mode; Nodemon removed.
+- Secure dependency declarations: Express 4.22.3, EJS 6.0.1, Morgan 1.12.1, Nodemailer 10.0.14, Sharp 0.35.5, body-parser 1.20.8, qs 6.16.0 override.
 
-Dependency note:
-- This environment cannot resolve registry.npmjs.org, so the updated dependency floor could not be freshly installed and audited here.
-- On a networked deployment host, run `npm install --include=optional` once to reconcile package-lock.json with the pinned dependency floors, then `npm audit --omit=dev`.
-- After committing that refreshed lockfile, subsequent deterministic deployments should use `npm ci --include=optional`.
+Verification performed on consolidated source:
+- JavaScript syntax: PASS (277 files).
+- Static security scan: PASS (276 files).
+- Release secret/mock/archive scan: PASS.
+- Tests: 306 total; 305 passed; 0 failed; 1 skipped because the reused local verification dependency tree lacked the matching Sharp native binary.
 
-Expected production runtime:
-- Node.js 24.x
-- MongoDB production database with backup before migration
-- Redis optional; MongoDB fallback remains available where designed
-- HTTPS APP_URL / PUBLIC_APP_URL
-- Production Pesapal credentials and IPN readiness
-- Production provider OAuth credentials for enabled social networks
-- Production Google Drive OAuth if enabled
-- Production MCP OAuth if ChatGPT/Codex connection is enabled
-- Working SMTP before enabling privileged MFA
+Dependency-lock policy:
+- package-lock.json is intentionally NOT shipped because the available build environment cannot reach the npm registry to regenerate it after the security dependency updates.
+- On a networked development machine run npm install --include=optional once, verify npm audit and tests, then commit the newly generated package-lock.json.
+- After the refreshed lockfile is committed, Render should use: npm ci --include=optional && npm audit --omit=dev
 
-The source-level dashboard failure observed on Render is fixed in this release. Runtime provider credentials, database migration, live npm advisory status, SMTP/MFA, and external social-provider approvals remain deployment-environment responsibilities.
+Release exclusions:
+- No .env
+- No private/encryption keys
+- No node_modules
+- No runtime uploads
+- No nested archives
+- No stale package-lock.json

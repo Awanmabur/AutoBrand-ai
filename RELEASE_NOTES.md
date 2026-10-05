@@ -1,4 +1,11 @@
-# v1.6.2 — Dashboard Runtime Hotfix & Verification Hardening
+# AutoBrand AI v1.6.3 — Consolidated Production Release
+
+- Consolidates the v1.6.2 production tree, Render dashboard `videoTemplates` 500 fix, and Facebook media test-isolation fix.
+- Replaces Nodemon with Node 24 native `--watch` development mode.
+- Pins the production dependency floor verified clean by the live npm audit: Express 4.22.3, EJS 6.0.1, Morgan 1.12.1, Nodemailer 10.0.14, Sharp 0.35.5, body-parser 1.20.8, and qs 6.16.0 override.
+- Keeps the production build audit as a release blocker.
+
+# v1.6.3 — Dashboard Runtime Hotfix & Verification Hardening
 
 - Fixed the production dashboard-wide `ReferenceError: videoTemplates is not defined` by serializing video-template options in the shared dashboard controller and reading them defensively in the EJS shell.
 - Added a regression test covering the shared-dashboard video-template contract.

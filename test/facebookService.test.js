@@ -337,6 +337,7 @@ test('publishFacebookPost uploads local carousel images to Cloudinary before pos
   const originalCloudName = env.cloudinaryCloudName;
   const originalApiKey = env.cloudinaryApiKey;
   const originalApiSecret = env.cloudinaryApiSecret;
+  const originalPublicAppUrl = env.publicAppUrl;
   const localDir = path.join(__dirname, '..', 'public', 'uploads', 'ai');
   const localFile = path.join(localDir, 'carousel-local-test.png');
   const calls = [];
@@ -345,6 +346,7 @@ test('publishFacebookPost uploads local carousel images to Cloudinary before pos
   await fs.mkdir(localDir, { recursive: true });
   await fs.writeFile(localFile, Buffer.from('not-a-real-image'));
 
+  env.publicAppUrl = '';
   env.cloudinaryCloudName = 'cloud';
   env.cloudinaryApiKey = 'key';
   env.cloudinaryApiSecret = 'secret';
@@ -391,6 +393,7 @@ test('publishFacebookPost uploads local carousel images to Cloudinary before pos
     env.cloudinaryCloudName = originalCloudName;
     env.cloudinaryApiKey = originalApiKey;
     env.cloudinaryApiSecret = originalApiSecret;
+    env.publicAppUrl = originalPublicAppUrl;
     await fs.unlink(localFile).catch(() => {});
   }
 });
@@ -474,10 +477,12 @@ test('publishFacebookPost uploads local video files with an mp4 filename', async
   const originalCloudName = env.cloudinaryCloudName;
   const originalApiKey = env.cloudinaryApiKey;
   const originalApiSecret = env.cloudinaryApiSecret;
+  const originalPublicAppUrl = env.publicAppUrl;
   const localDir = path.join(__dirname, '..', 'public', 'uploads', 'ai');
   const localFile = path.join(localDir, 'fb-video-upload-test.mp4');
   let uploadedFile;
 
+  env.publicAppUrl = '';
   env.cloudinaryCloudName = '';
   env.cloudinaryApiKey = '';
   env.cloudinaryApiSecret = '';
@@ -522,6 +527,7 @@ test('publishFacebookPost uploads local video files with an mp4 filename', async
     env.cloudinaryCloudName = originalCloudName;
     env.cloudinaryApiKey = originalApiKey;
     env.cloudinaryApiSecret = originalApiSecret;
+    env.publicAppUrl = originalPublicAppUrl;
     await fs.unlink(localFile).catch(() => {});
   }
 });
@@ -532,6 +538,7 @@ test('publishFacebookPost uploads local video to Cloudinary before Facebook publ
   const originalCloudName = env.cloudinaryCloudName;
   const originalApiKey = env.cloudinaryApiKey;
   const originalApiSecret = env.cloudinaryApiSecret;
+  const originalPublicAppUrl = env.publicAppUrl;
   const localDir = path.join(__dirname, '..', 'public', 'uploads', 'ai');
   const localFile = path.join(localDir, 'fb-video-cloudinary-test.mp4');
   const uploads = [];
@@ -544,6 +551,7 @@ test('publishFacebookPost uploads local video to Cloudinary before Facebook publ
     0x69, 0x73, 0x6f, 0x6d, 0x6d, 0x70, 0x34, 0x31
   ]));
 
+  env.publicAppUrl = '';
   env.cloudinaryCloudName = 'cloud';
   env.cloudinaryApiKey = 'key';
   env.cloudinaryApiSecret = 'secret';
@@ -590,6 +598,7 @@ test('publishFacebookPost uploads local video to Cloudinary before Facebook publ
     env.cloudinaryCloudName = originalCloudName;
     env.cloudinaryApiKey = originalApiKey;
     env.cloudinaryApiSecret = originalApiSecret;
+    env.publicAppUrl = originalPublicAppUrl;
     await fs.unlink(localFile).catch(() => {});
   }
 });
