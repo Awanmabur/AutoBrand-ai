@@ -16,6 +16,8 @@ function readEnv(extra = {}) {
       NODE_ENV: 'development',
       TOKEN_ENCRYPTION_KEY: 'test-token-encryption-key-'.padEnd(48, 'x'),
       PORT: '3200',
+      APP_URL: '',
+      PUBLIC_APP_URL: '',
       ...extra
     },
     encoding: 'utf8'

@@ -1,36 +1,34 @@
-AutoBrand AI v1.6.0 — Final Production Candidate
-Release date: 2026-10-04
+AutoBrand AI v1.6.2 — Final Production Hotfix
+Release date: 2026-10-05
 
-Verification performed on the clean staged source tree:
-- Automated tests: 305 total / 304 passed / 0 failed / 1 expected skip
+Merged production fixes:
+- Dashboard-wide Render 500 fixed: shared experience.ejs no longer references an undeclared videoTemplates local.
+- Dashboard controller now serializes video template records into dashboardData.options.videoTemplates.
+- Regression coverage added for the exact production failure.
+- v1.6.1 production-test isolation fixes included for Pesapal, email runtime, callback origins, and Windows security scanning.
+- Patched dependency floors declared from the live October 2026 npm advisory findings: express 4.22.3, ejs 6.0.1, morgan 1.12.1, nodemailer 10.0.14, sharp 0.35.5, body-parser 1.20.8, qs 6.16.0 override.
+
+Verification performed on the merged source tree:
+- Automated tests: 306 total / 305 passed / 0 failed / 1 expected Sharp-native skip
 - JavaScript syntax: 277 files checked / PASS
 - Static security gate: 276 JavaScript files inspected / PASS
 - Production source preflight: PASS
 - Release secret/mock/archive scan: PASS
-- Cached/offline production dependency audit: 0 known vulnerabilities
-- Fresh online npm advisory audit: NOT COMPLETED in this environment because registry.npmjs.org DNS resolution returned EAI_AGAIN. Run npm audit --omit=dev on the production/CI network.
+
+Dependency note:
+- This environment cannot resolve registry.npmjs.org, so the updated dependency floor could not be freshly installed and audited here.
+- On a networked deployment host, run `npm install --include=optional` once to reconcile package-lock.json with the pinned dependency floors, then `npm audit --omit=dev`.
+- After committing that refreshed lockfile, subsequent deterministic deployments should use `npm ci --include=optional`.
 
 Expected production runtime:
 - Node.js 24.x
-- Fresh npm ci --include=optional (to install native Sharp and ffmpeg dependencies)
 - MongoDB production database with backup before migration
-- Redis optional/shared acceleration; Mongo-backed durability remains available where designed
-- HTTPS public APP_URL / PUBLIC_APP_URL
+- Redis optional; MongoDB fallback remains available where designed
+- HTTPS APP_URL / PUBLIC_APP_URL
 - Production Pesapal credentials and IPN readiness
-- Production provider OAuth credentials/approvals for each enabled social network
+- Production provider OAuth credentials for enabled social networks
 - Production Google Drive OAuth if enabled
-- Production MCP OAuth configuration if ChatGPT/Codex connection is enabled
-- Working SMTP for privileged MFA and account email flows
+- Production MCP OAuth if ChatGPT/Codex connection is enabled
+- Working SMTP before enabling privileged MFA
 
-v1.6 highlights:
-- signed GridFS media URLs + safe previous-key rotation window
-- migration of legacy unsigned media references
-- remote media ingestion into controlled storage
-- privileged administrator MFA challenge flow
-- expanded account-deletion privacy cleanup
-- Brain worker deployment declaration
-- canonical SEO, sitemap, JSON-LD, Open Graph/Twitter metadata
-- OpenAI/Apple search crawler access separated from training crawler preference
-- public/private noindex boundary and discovery documents
-
-Deployment cannot be proven by a source archive alone. Before real customer traffic, complete the production runtime preflight, provider end-to-end tests, CDN/WAF crawler tests, Mongo backup/restore drill, alerting checks, and launch-jurisdiction legal review described in the documentation.
+The source-level dashboard failure observed on Render is fixed in this release. Runtime provider credentials, database migration, live npm advisory status, SMTP/MFA, and external social-provider approvals remain deployment-environment responsibilities.

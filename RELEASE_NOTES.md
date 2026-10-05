@@ -1,3 +1,10 @@
+# v1.6.2 — Dashboard Runtime Hotfix & Verification Hardening
+
+- Fixed the production dashboard-wide `ReferenceError: videoTemplates is not defined` by serializing video-template options in the shared dashboard controller and reading them defensively in the EJS shell.
+- Added a regression test covering the shared-dashboard video-template contract.
+- Included v1.6.1 production-test isolation fixes for Pesapal, email runtime, callback origins, and Windows static-security path handling.
+- Keeps the v1.6.0 production hardening, SEO/AI discovery, privileged MFA, signed-media, billing and social-operating-system work intact.
+
 # v1.6.0 — Final Production Hardening, Discovery & Privileged MFA
 
 Date: 2026-10-04

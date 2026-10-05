@@ -29,6 +29,11 @@ function validate(overrides = {}) {
     PESAPAL_CONSUMER_KEY: 'consumer-key',
     PESAPAL_CONSUMER_SECRET: 'consumer-secret',
     PESAPAL_IPN_ID: 'ipn-id',
+    PESAPAL_AUTO_REGISTER_IPN: 'false',
+    PESAPAL_CALLBACK_URL: 'https://app.example.test/dashboard/billing/pesapal/callback',
+    PESAPAL_CANCELLATION_URL: 'https://app.example.test/dashboard/billing?cancelled=1',
+    PESAPAL_IPN_URL: 'https://app.example.test/dashboard/billing/pesapal/ipn',
+    PRIVILEGED_MFA_ENABLED: 'false',
     ...overrides
   };
   const result = spawnSync(process.execPath, ['-e', `

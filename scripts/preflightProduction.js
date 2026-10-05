@@ -50,7 +50,7 @@ if (runtimeMode) {
     return 'validated';
   });
 } else {
-  notices.push(`Source preflight only (current host ${process.version}). Runtime/native Sharp + FFmpeg and production secrets must be checked with NODE_ENV=production npm run preflight:runtime after a fresh npm ci on the deployment host.`);
+  notices.push(`Source preflight only (current host ${process.version}). Runtime/native Sharp + FFmpeg and production secrets must be checked with NODE_ENV=production npm run preflight:runtime after npm install --include=optional on the first v1.6.2 deployment (then npm ci --include=optional after committing the refreshed lockfile).`);
 }
 
 if (notices.length) {

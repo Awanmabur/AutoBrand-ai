@@ -13,7 +13,7 @@ See [`docs/FINAL-PRODUCTION-AUDIT.md`](docs/FINAL-PRODUCTION-AUDIT.md), [`docs/S
 
 ## ChatGPT / MCP connector
 
-AutoBrand AI v1.6.0 includes a native, OAuth-protected remote MCP connector for ChatGPT and other compatible MCP clients. The connector is a thin adapter over AutoBrand's existing workspace RBAC, media storage, scheduling, provider publishing, retries, analytics and audit infrastructure. It does **not** maintain a second set of social-provider credentials or bypass normal brand permissions.
+AutoBrand AI v1.6.2 includes a native, OAuth-protected remote MCP connector for ChatGPT and other compatible MCP clients. The connector is a thin adapter over AutoBrand's existing workspace RBAC, media storage, scheduling, provider publishing, retries, analytics and audit infrastructure. It does **not** maintain a second set of social-provider credentials or bypass normal brand permissions.
 
 The connector supports brand/account discovery, durable media ingestion, draft creation/editing, immediate publishing, scheduled publishing/cancellation, post status and analytics. Generated or uploaded creative files are ingested into AutoBrand first and referenced by durable AutoBrand media IDs, avoiding temporary third-party preview URLs.
 

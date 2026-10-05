@@ -2028,6 +2028,15 @@ function buildDashboardData({
         folder: asset.folder || '',
         tags: asset.tags || []
       })),
+      videoTemplates: videoTemplates.map((template) => ({
+        id: template._id?.toString?.() || template.id || '',
+        name: template.name || 'Video template',
+        category: template.category || '',
+        status: template.status || 'active',
+        aspectRatio: template.aspectRatio || '9:16',
+        durationSeconds: Number(template.durationSeconds || 0),
+        previewUrl: template.previewUrl || ''
+      })),
       teamMembers: teamMembers.map((member) => ({
         id: member._id.toString(),
         brandId: member.brand?._id?.toString() || '',

@@ -1,4 +1,4 @@
-# Final Production Audit — v1.6.0
+# Final Production Audit — v1.6.2
 
 ## Security controls
 

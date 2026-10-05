@@ -81,3 +81,13 @@ test('media library controls are styled and hidden dashboard errors are register
   assert.match(errorMiddleware, /renderDashboardExperienceError/);
   assert.match(errorMiddleware, /req\.user \|\| isDashboardRequest\(req\) \|\| removedRootRouteTarget\(req\.path\)/);
 });
+
+test('shared dashboard serializes video templates and never depends on an undeclared EJS local', () => {
+  const dashboard = read('src/views/dashboard/experience.ejs');
+  const dashboardController = read('src/modules/dashboard/dashboard.controller.js');
+
+  assert.match(dashboardController, /videoTemplates: videoTemplates\.map\(\(template\) => \(\{/);
+  assert.match(dashboard, /const videoTemplates = Array\.isArray\(options\.videoTemplates\) \? options\.videoTemplates : \[\]/);
+  assert.match(dashboard, /else if \(!videoTemplates\.length\)/);
+});
+

@@ -20,7 +20,7 @@ function walk(target) {
   });
 }
 
-const files = SOURCE_ROOTS.flatMap(walk).filter((file) => file.endsWith('.js') && !file.endsWith('scripts/securityCheck.js'));
+const files = SOURCE_ROOTS.flatMap(walk).filter((file) => file.endsWith('.js') && !file.replace(/\\/g, '/').endsWith('/scripts/securityCheck.js'));
 const relative = (file) => path.relative(ROOT, file).replace(/\\/g, '/');
 
 function fail(message) { failures.push(message); }
