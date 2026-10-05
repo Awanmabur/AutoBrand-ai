@@ -4,6 +4,7 @@ const User = require('../models/User');
 const UsageRecord = require('../models/UsageRecord');
 const { DEFAULT_PLAN_MATRIX } = require('./subscription/defaultPlans');
 const { buildPlanSeedOperation } = require('./subscription/planSeedOperation');
+const { planFromSnapshot, snapshotPlan } = require('./subscription/planSnapshot.service');
 
 function normalizeSlug(slug) {
   return String(slug || 'free-trial').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
@@ -61,22 +62,57 @@ function entitlementDateQuery(now = new Date()) {
   return {
     status: { $in: ['active', 'trialing'] },
     $and: [
+      { $or: [{ currentPeriodStart: { $lte: now } }, { currentPeriodStart: null }, { currentPeriodStart: { $exists: false } }] },
       { $or: [{ currentPeriodEnd: { $gt: now } }, { currentPeriodEnd: null }] },
       { $or: [{ trialEndsAt: { $gt: now } }, { trialEndsAt: null }, { status: 'active' }] }
     ]
   };
 }
 
+async function processDueScheduledPlanChanges(userId, now = new Date()) {
+  if (!userId) return { applied: 0 };
+  const due = await Subscription.find({
+    user: userId,
+    status: { $in: ['active', 'trialing'] },
+    currentPeriodEnd: { $lte: now },
+    'scheduledPlanChange.status': 'pending',
+    'scheduledPlanChange.effectiveAt': { $lte: now }
+  }).sort({ currentPeriodEnd: 1, createdAt: 1 });
+
+  let applied = 0;
+  for (const subscription of due) {
+    const target = subscription.scheduledPlanChange?.targetPlan;
+    subscription.status = 'expired';
+    subscription.endsAt = subscription.currentPeriodEnd || now;
+    subscription.scheduledPlanChange.status = 'applied';
+    await subscription.save();
+    if (target) {
+      await User.updateOne({ _id: userId }, { $set: { selectedPlanSlug: target } }, { runValidators: true });
+    }
+    applied += 1;
+  }
+  return { applied };
+}
+
 async function getCurrentSubscription(user) {
   if (!user?._id) return null;
+  await processDueScheduledPlanChanges(user._id);
   return Subscription.findOne({ user: user._id, ...entitlementDateQuery() }).populate('planRef').sort({ createdAt: -1 });
+}
+
+async function planForSubscription(subscription) {
+  if (!subscription) return null;
+  if (subscription.planSnapshot?.slug) return planFromSnapshot(subscription.planSnapshot, subscription.planRef?._id || subscription.planRef);
+  if (subscription.planRef) return subscription.planRef;
+  if (subscription.plan) return getPlanBySlug(subscription.plan, { includeInactive: true });
+  return null;
 }
 
 async function getCurrentPlan(user) {
   if (user?.role === 'super_admin') return defaultPlanBySlug('superadmin');
   const subscription = await getCurrentSubscription(user);
-  if (subscription?.planRef) return subscription.planRef;
-  if (subscription?.plan) return getPlanBySlug(subscription.plan, { includeInactive: true });
+  const contractedPlan = await planForSubscription(subscription);
+  if (contractedPlan) return contractedPlan;
 
   const fallbackSlug = normalizeSlug(user?.plan || 'free-trial');
   // Never trust a paid User.plan field without a valid active/trialing Subscription.
@@ -150,10 +186,123 @@ async function getUsagePeriod(user, now = new Date()) {
   return { start, end, source: 'calendar', subscriptionId: null, planSlug: '' };
 }
 
-async function activatePlanForUser(user, planSlug, { status, paymentProvider = 'free', metadata = {} } = {}) {
+
+function roundMoney(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function periodRemainingFraction(subscription, now = new Date()) {
+  const start = new Date(subscription?.currentPeriodStart || subscription?.startsAt || subscription?.createdAt || now);
+  const end = new Date(subscription?.currentPeriodEnd || subscription?.endsAt || now);
+  const total = end.getTime() - start.getTime();
+  if (!Number.isFinite(total) || total <= 0) return 0;
+  const remaining = Math.max(0, end.getTime() - now.getTime());
+  return Math.max(0, Math.min(1, remaining / total));
+}
+
+async function getPlanChangeQuote(user, targetPlanOrSlug, now = new Date()) {
+  const targetPlan = typeof targetPlanOrSlug === 'string'
+    ? await getPlanBySlug(targetPlanOrSlug)
+    : targetPlanOrSlug;
+  if (!targetPlan || targetPlan.isActive === false) {
+    const error = new Error('Selected plan is not available.');
+    error.status = 404;
+    throw error;
+  }
+
+  if (user?.role === 'super_admin') {
+    return { kind: 'superadmin', targetPlan, amountDue: 0, unusedCredit: 0, remainingFraction: 0, currentSubscription: null, currentPlan: defaultPlanBySlug('superadmin') };
+  }
+
+  const currentSubscription = await getCurrentSubscription(user);
+  const currentPlan = await planForSubscription(currentSubscription);
+  if (!currentSubscription || !currentPlan) {
+    return { kind: 'new', targetPlan, amountDue: roundMoney(targetPlan.price), unusedCredit: 0, remainingFraction: 0, currentSubscription: null, currentPlan: null };
+  }
+
+  if (String(currentPlan.slug) === String(targetPlan.slug)) {
+    return { kind: 'same', targetPlan, amountDue: 0, unusedCredit: 0, remainingFraction: periodRemainingFraction(currentSubscription, now), currentSubscription, currentPlan };
+  }
+
+  const currentPrice = Number(currentPlan.price || 0);
+  const targetPrice = Number(targetPlan.price || 0);
+  const sameCurrency = String(currentPlan.currency || 'USD').toUpperCase() === String(targetPlan.currency || 'USD').toUpperCase();
+  const remainingFraction = periodRemainingFraction(currentSubscription, now);
+
+  if (targetPrice <= currentPrice) {
+    return {
+      kind: targetPrice < currentPrice ? 'downgrade' : 'lateral',
+      targetPlan,
+      amountDue: 0,
+      unusedCredit: 0,
+      remainingFraction,
+      effectiveAt: currentSubscription.currentPeriodEnd,
+      currentSubscription,
+      currentPlan
+    };
+  }
+
+  const unusedCredit = sameCurrency ? roundMoney(currentPrice * remainingFraction) : 0;
+  return {
+    kind: 'upgrade',
+    targetPlan,
+    currentSubscription,
+    currentPlan,
+    remainingFraction,
+    unusedCredit,
+    fullPrice: roundMoney(targetPrice),
+    amountDue: roundMoney(Math.max(0, targetPrice - unusedCredit)),
+    currency: String(targetPlan.currency || 'USD').toUpperCase(),
+    calculatedAt: new Date(now)
+  };
+}
+
+async function schedulePlanChange(user, targetPlanOrSlug, { reason = 'user_requested' } = {}) {
+  const quote = await getPlanChangeQuote(user, targetPlanOrSlug);
+  if (!['downgrade', 'lateral'].includes(quote.kind)) {
+    const error = new Error('Only lower-price or equal-price plan switches can be scheduled for period end.');
+    error.status = 409;
+    throw error;
+  }
+  const targetSnapshot = snapshotPlan(quote.targetPlan);
+  const effectiveAt = new Date(quote.currentSubscription.currentPeriodEnd);
+  await Subscription.updateOne(
+    { _id: quote.currentSubscription._id, status: { $in: ['active', 'trialing'] } },
+    {
+      $set: {
+        scheduledPlanChange: {
+          targetPlan: quote.targetPlan.slug,
+          targetPlanRef: quote.targetPlan._id,
+          targetPlanSnapshot: targetSnapshot,
+          requestedAt: new Date(),
+          effectiveAt,
+          status: 'pending',
+          reason
+        },
+        cancelAtPeriodEnd: true
+      }
+    }
+  );
+  await User.updateOne({ _id: user._id }, { $set: { selectedPlanSlug: quote.targetPlan.slug } });
+  return { ...quote, effectiveAt, targetPlanSnapshot: targetSnapshot };
+}
+
+async function cancelScheduledPlanChange(user) {
+  const subscription = await getCurrentSubscription(user);
+  if (!subscription || subscription.scheduledPlanChange?.status !== 'pending') return { cancelled: false, subscription };
+  await Subscription.updateOne(
+    { _id: subscription._id },
+    { $set: { 'scheduledPlanChange.status': 'cancelled', cancelAtPeriodEnd: false } }
+  );
+  await User.updateOne({ _id: user._id }, { $set: { selectedPlanSlug: '' } });
+  return { cancelled: true, subscription };
+}
+
+async function activatePlanForUser(user, planSlug, { status, paymentProvider = 'free', metadata = {}, planSnapshot: suppliedPlanSnapshot } = {}) {
   const plan = await getPlanBySlug(planSlug);
   if (!plan || plan.isActive === false) throw new Error('Selected plan is not available.');
   const isTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) === 0;
+  const contractedSnapshot = suppliedPlanSnapshot?.slug ? suppliedPlanSnapshot : snapshotPlan(plan);
   if (isTrial && user.trialUsed && !metadata.allowExistingTrial) {
     const existing = await getCurrentSubscription(user);
     if (existing?.plan === plan.slug) return { plan, subscription: existing };
@@ -179,6 +328,9 @@ async function activatePlanForUser(user, planSlug, { status, paymentProvider = '
           user: user._id,
           plan: plan.slug,
           planRef: plan._id,
+          planSnapshot: contractedSnapshot,
+          aiTokensUsed: 0,
+          aiTokensReserved: 0,
           status: resolvedStatus,
           paymentProvider,
           provider: paymentProvider,
@@ -202,7 +354,7 @@ async function activatePlanForUser(user, planSlug, { status, paymentProvider = '
   );
 
   await User.updateOne({ _id: user._id }, { $set: { plan: plan.slug, trialUsed: Boolean(user.trialUsed || isTrial), selectedPlanSlug: '' } }, { runValidators: true });
-  return { plan: subscription.planRef || plan, subscription };
+  return { plan: await planForSubscription(subscription) || plan, subscription };
 }
 
 // Kept for API compatibility: a pending checkout is not an entitlement and never creates a Subscription.
@@ -216,8 +368,30 @@ async function createPendingSubscription(user, planSlug, { paymentProvider = 'pe
 async function revokeSubscriptionForPayment(payment, { reason = 'payment_reversed' } = {}) {
   if (!payment?._id) return null;
   const now = new Date();
-  const subscription = await Subscription.findOneAndUpdate({ user: payment.user, status: { $in: ['active', 'trialing'] }, 'metadata.paymentId': payment._id }, { $set: { status: 'cancelled', cancelledAt: now, endsAt: now, cancelAtPeriodEnd: false, 'metadata.revokedReason': reason, 'metadata.revokedAt': now.toISOString() } }, { new: true });
-  if (subscription) await User.updateOne({ _id: payment.user }, { $set: { selectedPlanSlug: '' } });
+  const subscription = await Subscription.findOneAndUpdate(
+    { user: payment.user, status: { $in: ['active', 'trialing'] }, 'metadata.paymentId': payment._id },
+    { $set: { status: 'cancelled', cancelledAt: now, endsAt: now, cancelAtPeriodEnd: false, 'metadata.revokedReason': reason, 'metadata.revokedAt': now.toISOString() } },
+    { new: true }
+  );
+
+  let restored = null;
+  const previousSubscriptionId = payment.billingChange?.previousSubscriptionId || payment.metadata?.previousSubscriptionId;
+  if (subscription && previousSubscriptionId && payment.billingChange?.kind === 'upgrade') {
+    const previous = await Subscription.findById(previousSubscriptionId);
+    const previousEnd = new Date(previous?.currentPeriodEnd || previous?.endsAt || 0);
+    if (previous && Number.isFinite(previousEnd.getTime()) && previousEnd > now) {
+      previous.status = previous.trialEndsAt && new Date(previous.trialEndsAt) > now ? 'trialing' : 'active';
+      previous.cancelledAt = undefined;
+      previous.endsAt = undefined;
+      previous.cancelAtPeriodEnd = previous.scheduledPlanChange?.status === 'pending';
+      previous.metadata = { ...(previous.metadata || {}), restoredAfterPaymentReversalAt: now.toISOString(), restoredBecause: reason };
+      await previous.save();
+      restored = previous;
+      await User.updateOne({ _id: payment.user }, { $set: { plan: previous.plan, selectedPlanSlug: previous.scheduledPlanChange?.status === 'pending' ? previous.scheduledPlanChange.targetPlan : '' } });
+    }
+  }
+
+  if (subscription && !restored) await User.updateOne({ _id: payment.user }, { $set: { selectedPlanSlug: '' } });
   return subscription;
 }
 
@@ -240,4 +414,4 @@ async function checkLimit(user, limitName, currentValue) {
   return { allowed, limit: numericLimit, used, percent, plan: plainPlan(plan), upgradePrompt: percent >= 80 };
 }
 
-module.exports = { DEFAULT_PLAN_MATRIX, BILLING_REQUIRED_PLAN, activatePlanForUser, addCalendarMonths, addCalendarYears, buildPlanSeedOperation, calculateSubscriptionDates, calendarMonthWindow, checkLimit, countUsage, createPendingSubscription, defaultPlanBySlug, entitlementDateQuery, getCurrentPlan, getCurrentSubscription, getPlanBySlug, getUsagePeriod, listPlans, listPublicPlans, normalizeSlug, plainPlan, revokeSubscriptionForPayment, seedDefaultPlans };
+module.exports = { DEFAULT_PLAN_MATRIX, BILLING_REQUIRED_PLAN, activatePlanForUser, addCalendarMonths, addCalendarYears, buildPlanSeedOperation, calculateSubscriptionDates, calendarMonthWindow, cancelScheduledPlanChange, checkLimit, countUsage, createPendingSubscription, defaultPlanBySlug, entitlementDateQuery, getCurrentPlan, getCurrentSubscription, getPlanBySlug, getPlanChangeQuote, getUsagePeriod, listPlans, listPublicPlans, normalizeSlug, periodRemainingFraction, plainPlan, planForSubscription, processDueScheduledPlanChanges, revokeSubscriptionForPayment, roundMoney, schedulePlanChange, seedDefaultPlans };

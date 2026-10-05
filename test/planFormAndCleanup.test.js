@@ -293,19 +293,19 @@ test('composer media picker shows reusable videos when video format is selected'
 });
 
 test('landing pricing keeps three plan cards per row on desktop', () => {
-  const landing = read('src/views/public/landing.ejs');
-  assert.match(landing, /\.pricing-grid \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(landing, /@media \(max-width: 980px\) \{[\s\S]*\.pricing-grid \{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(landing, /@media \(max-width: 700px\) \{[\s\S]*\.pricing-grid \{[\s\S]*grid-template-columns: 1fr/);
+  const css = read('public/css/landing.css');
+  assert.match(css, /\.pricing-grid \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 980px\) \{[\s\S]*\.pricing-grid \{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 700px\) \{[\s\S]*\.feature-grid,[\s\S]*\.pricing-grid \{[\s\S]*grid-template-columns: 1fr/);
 });
 
 test('landing core features show three cards per row and plan preview is responsive', () => {
-  const landing = read('src/views/public/landing.ejs');
-  assert.match(landing, /\.feature-grid \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(landing, /@media \(max-width: 700px\) \{[\s\S]*\.feature-grid,[\s\S]*\.pricing-grid \{[\s\S]*grid-template-columns: 1fr/);
-  assert.match(landing, /\.plan-detail-layout \{[\s\S]*grid-template-columns: minmax\(280px, 0\.72fr\) minmax\(0, 1fr\)/);
-  assert.match(landing, /@media \(max-width: 980px\) \{[\s\S]*\.plan-detail-layout \{[\s\S]*grid-template-columns: 1fr/);
-  assert.match(landing, /\.comparison-scroll \{[\s\S]*overflow-x: auto/);
+  const css = read('public/css/landing.css');
+  assert.match(css, /\.feature-grid \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 700px\) \{[\s\S]*\.feature-grid,[\s\S]*\.pricing-grid \{[\s\S]*grid-template-columns: 1fr/);
+  assert.match(css, /\.plan-detail-layout \{[\s\S]*grid-template-columns: minmax\(280px, 0\.72fr\) minmax\(0, 1fr\)/);
+  assert.match(css, /@media \(max-width: 980px\) \{[\s\S]*\.plan-detail-layout \{[\s\S]*grid-template-columns: 1fr/);
+  assert.match(css, /\.comparison-scroll \{[\s\S]*overflow-x: auto/);
 });
 
 test('public pricing and plan details use the same landing design with dynamic database plans', () => {

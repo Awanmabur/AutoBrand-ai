@@ -42,6 +42,7 @@ Never use `createdBy` as a tenancy filter. It answers “who did this?”, not �
 - Analytics: `Analytics`, `AnalyticsSyncJob`.
 - Billing: `SubscriptionPlan`, `Subscription`, `Payment`, `CreditLedger`, `UsageLog`.
 - Operations: API/audit logs, notifications, worker state, distributed rate-limit buckets, payment reconciliation state and deletion requests.
+- External asset storage: `CloudStorageConnection` plus Drive metadata on `Media`; AutoBrand never treats user-owned Google Drive as platform-owned storage.
 
 ## Actor vs owner vs subject
 
@@ -64,7 +65,7 @@ Synchronous HTTP requests perform validation, authorization, durable state trans
 2. A callback/IPN is a notification, not payment proof.
 3. Workspace permissions are checked server-side on every protected action.
 4. Team content is brand-scoped, never creator-scoped.
-5. Manual Publisher never calls generative AI.
+5. The Publish pipeline never silently invokes AutoBrand-billed generative AI; users may explicitly operate through their own connected ChatGPT/Codex account.
 6. Failed providers remain failed; no mock output becomes publishable production content.
 7. Missing analytics remains unavailable/awaiting sync; no fabricated metrics.
 8. Social credentials are encrypted at rest and belong to the workspace owner.
@@ -72,3 +73,34 @@ Synchronous HTTP requests perform validation, authorization, durable state trans
 10. Release archives contain no secrets, local uploads, logs, caches or `node_modules`.
 11. Production startup verifies all declared database indexes even though automatic index creation is disabled.
 12. Pesapal callback/IPN is accelerated by durable periodic reconciliation; missed notifications cannot be the sole cause of permanently stale payment state.
+## ChatGPT / MCP integration boundary
+
+The MCP connector is an additional authenticated client boundary, not a separate publishing subsystem:
+
+```text
+ChatGPT / MCP client
+      |
+OAuth 2.1 + PKCE + resource/audience binding
+      |
+AutoBrand MCP tool adapter (/mcp)
+      |
+Existing AutoBrand RBAC / entitlements / media / post services
+      |
+MongoDB + scheduler + workers + provider adapters
+      |
+Connected social platforms
+```
+
+MCP tools create and mutate the same Brand, Media and Post resources used by the dashboard. The adapter never talks around workspace authorization and does not own social-provider tokens. Delayed publishing continues through the existing durable scheduling/worker path, including current permission/provider readiness rechecks.
+
+
+
+## Customer operating loop
+
+The dashboard and integration boundaries are organized around:
+
+```text
+Create → Store → Approve → Schedule/Publish → Measure → Improve
+```
+
+ChatGPT/Codex may act at each permitted step through MCP. Google Drive is an optional storage destination. Each social network has a dedicated workspace for provider health and performance, while all provider publishing still converges on the same durable Post/worker pipeline.

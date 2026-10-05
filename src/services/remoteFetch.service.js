@@ -6,6 +6,47 @@ const env = require('../config/env');
 
 const MAX_REDIRECTS = 3;
 const ALLOWED_PORTS = new Set(['', '80', '443']);
+const BLOCKED_MIME_TYPES = new Set([
+  'image/svg+xml', 'text/html', 'text/xml', 'application/xml',
+  'application/xhtml+xml', 'application/javascript', 'text/javascript'
+]);
+
+function normalizedMime(value = '') {
+  return String(value || '').split(';')[0].trim().toLowerCase();
+}
+
+function isBlockedMime(value = '') {
+  return BLOCKED_MIME_TYPES.has(normalizedMime(value));
+}
+
+function mediaSignatureMatches(buffer, mimeType = '') {
+  const mime = normalizedMime(mimeType);
+  if (!buffer || !buffer.length) return true;
+  if (isBlockedMime(mime)) return false;
+  const b = buffer;
+  const ascii = (start, end) => b.subarray(start, end).toString('ascii');
+  if (mime === 'image/png') return b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+  if (mime === 'image/jpeg') return b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  if (mime === 'image/gif') return ['GIF87a','GIF89a'].includes(ascii(0, 6));
+  if (mime === 'image/webp') return ascii(0,4) === 'RIFF' && ascii(8,12) === 'WEBP';
+  if (mime === 'application/pdf') return ascii(0,5) === '%PDF-';
+  if (mime === 'audio/wav' || mime === 'audio/x-wav') return ascii(0,4) === 'RIFF' && ascii(8,12) === 'WAVE';
+  if (mime === 'audio/ogg' || mime === 'video/ogg') return ascii(0,4) === 'OggS';
+  if (mime === 'audio/mpeg') return ascii(0,3) === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0);
+  if (mime === 'video/webm' || mime === 'audio/webm') return b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
+  const brand = b.length >= 12 && ascii(4,8) === 'ftyp' ? ascii(8,12).toLowerCase() : '';
+  if (mime === 'video/mp4' || mime === 'video/quicktime' || mime === 'audio/mp4' || mime === 'video/x-m4v') return Boolean(brand);
+  if (mime === 'image/avif') return ['avif','avis'].includes(brand);
+  if (mime === 'image/heic' || mime === 'image/heif') return ['heic','heix','hevc','hevx','mif1','msf1'].includes(brand);
+  // For formats without a small, stable signature known here, rely on provider/media decoders.
+  return true;
+}
+
+function assertSafeMedia(buffer, mimeType = '') {
+  const mime = normalizedMime(mimeType);
+  if (isBlockedMime(mime)) throw new Error(`Remote media type ${mime} is not allowed.`);
+  if (!mediaSignatureMatches(buffer, mime)) throw new Error(`Remote media content does not match declared type ${mime || 'unknown'}.`);
+}
 
 function isPrivateIpv4(ip) {
   const parts = ip.split('.').map(Number);
@@ -97,12 +138,17 @@ function requestOnce(url, { method = 'GET', timeoutMs, maxBytes, allowedMimePref
       }
     }, (response) => {
       const statusCode = Number(response.statusCode || 0);
-      const contentType = String(response.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const contentType = normalizedMime(response.headers['content-type'] || '');
       const contentLength = Number(response.headers['content-length'] || 0);
 
       if (contentLength > maxBytes) {
         response.destroy();
         reject(new Error('Remote media exceeds the maximum allowed size.'));
+        return;
+      }
+      if (contentType && isBlockedMime(contentType)) {
+        response.destroy();
+        reject(new Error(`Remote media type ${contentType} is not allowed.`));
         return;
       }
       if (allowedMimePrefixes.length && contentType && !allowedMimePrefixes.some((prefix) => contentType.startsWith(prefix))) {
@@ -185,6 +231,7 @@ async function inspectRemoteResource(value, { allowedMimePrefixes = [], maxBytes
 
 async function downloadRemoteBuffer(value, options = {}) {
   const result = await remoteRequest(value, { ...options, method: 'GET' });
+  assertSafeMedia(result.buffer, result.contentType);
   return {
     buffer: result.buffer,
     mimeType: result.contentType || 'application/octet-stream',
@@ -198,5 +245,8 @@ module.exports = {
   inspectRemoteResource,
   isPublicIp,
   parseRemoteUrl,
-  resolvePublicAddresses
+  resolvePublicAddresses,
+  assertSafeMedia,
+  isBlockedMime,
+  mediaSignatureMatches
 };

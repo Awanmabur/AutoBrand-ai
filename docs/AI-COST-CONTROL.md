@@ -28,4 +28,4 @@ A provider failure must not manufacture successful output. Charge timing should 
 
 ## Observability
 
-Track AI usage by plan, workspace, actor, capability and provider. Manual Publisher usage should be separately measurable so gross margin can be compared with AI tiers.
+Track AI usage by plan, workspace, actor, capability and provider. Publish usage should be separately measurable so gross margin can be compared with AI tiers.

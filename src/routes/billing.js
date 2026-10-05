@@ -12,6 +12,7 @@ router.post('/pesapal/ipn', billingController.pesapalIpn);
 router.use(requireAuth);
 router.use(requireVerified);
 router.post('/plan', billingController.changePlan);
+router.post('/plan/scheduled/cancel', billingController.cancelScheduledChange);
 router.get('/checkout/:planSlug', billingController.checkoutPage);
 router.post('/checkout/:planSlug', billingController.checkout);
 router.post('/checkout', billingController.checkout);

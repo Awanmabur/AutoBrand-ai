@@ -30,7 +30,8 @@ async function run(input) {
         { role: 'system', content: systemPrompt(input) },
         { role: 'user', content: promptText(input) }
       ],
-      temperature: 0.7
+      temperature: 0.7,
+      max_tokens: Math.max(1, Math.floor(Number(input?.metadata?.maxOutputTokens || 2000)))
     }
   });
   return textResponse({ provider, model, input, text: raw?.choices?.[0]?.message?.content || '', raw });

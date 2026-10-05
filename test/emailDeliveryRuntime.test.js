@@ -19,6 +19,7 @@ function productionEnv(overrides = {}) {
     COOKIE_SECRET: 'c'.repeat(40),
     CSRF_SECRET: 'd'.repeat(40),
     WEBHOOK_SECRET: 'e'.repeat(40),
+    MEDIA_URL_SIGNING_SECRET: 'g'.repeat(40),
     TOKEN_ENCRYPTION_KEY: 'f'.repeat(40),
     BILLING_PROVIDER: 'pesapal',
     CHECKOUT_DEFAULT_PROVIDER: 'pesapal',

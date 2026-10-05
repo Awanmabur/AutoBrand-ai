@@ -25,6 +25,7 @@ async function withMockedModule(relativePath, mocks, callback) {
 test('Facebook Page publishing uploads an existing localhost image as multipart bytes', async () => {
   const relativeUrl = '/uploads/test-facebook-local.jpg';
   const absolutePath = path.join(root, 'public', 'uploads', 'test-facebook-local.jpg');
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, Buffer.from('local-facebook-image'));
   const requests = [];
 

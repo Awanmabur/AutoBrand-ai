@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= seo.title %></title>
+  <meta name="description" content="<%= seo.description %>" />
+  <meta name="robots" content="<%= seo.robots %>" />
+  <link rel="canonical" href="<%= seo.canonical %>" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/assets/autobrand-icon-192.png" />
+  <link rel="alternate" type="text/markdown" href="/llms.txt" title="AutoBrand AI for language models" />
+  <meta name="theme-color" content="#082c52" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="AutoBrand AI" />
+  <meta property="og:title" content="<%= seo.title %>" />
+  <meta property="og:description" content="<%= seo.description %>" />
+  <meta property="og:url" content="<%= seo.canonical %>" />
+  <meta property="og:image" content="<%= seo.image %>" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="<%= seo.title %>" />
+  <meta name="twitter:description" content="<%= seo.description %>" />
+  <meta name="twitter:image" content="<%= seo.image %>" />
+  <link rel="stylesheet" href="/css/public-site.css" />
+  <% for (const item of structuredData || []) { %><script type="application/ld+json" nonce="<%= cspNonce %>"><%- item %></script><% } %>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<nav class="site-nav" aria-label="Primary"><div class="site-shell"><a class="brand" href="/"><span class="brand-mark">AB</span><span>AutoBrand AI</span></a><div class="nav-links"><a href="/features">Features</a><a href="/integrations">Integrations</a><a href="/pricing">Pricing</a><a href="/resources">Resources</a><a href="/security">Security</a><a href="/auth/login">Login</a><a class="cta" href="/start/free-trial">Start free</a></div></div></nav>
+<main id="main">
+  <section class="hero"><div class="site-shell"><div class="eyebrow"><%= page.eyebrow %></div><h1><%= page.heading %></h1><p class="lead"><%= page.intro %></p><div class="actions"><a class="cta" href="/start/free-trial">Start free</a><a class="secondary" href="/pricing">Compare plans</a></div><% if (notice) { %><div class="notice" role="status"><%= notice %></div><% } %></div></section>
+  <section class="site-shell <%= pageKey === 'privacy' || pageKey === 'terms' ? 'legal' : '' %>"><div class="grid">
+    <% if (page.updated) { %><article class="card"><strong>Last updated: <%= page.updated %></strong><p>This public policy reflects the current AutoBrand product architecture. Local law can require additional notices or contract terms.</p></article><% } %>
+    <% for (const section of page.sections || []) { %><article class="card"><h2><%= section[0] %></h2><p><%= section[1] %></p></article><% } %>
+    <% if (pageKey === 'contact') { %>
+      <article class="card"><h2>Send a message</h2><form class="form-grid" method="post" action="/contact"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><label>Full name<input name="name" required maxlength="160" autocomplete="name" /></label><label>Email<input name="email" type="email" required maxlength="320" autocomplete="email" /></label><label>Team type<select name="teamType"><option value="Creator">Creator</option><option value="Business">Business</option><option value="Marketing team">Marketing team</option><option value="Agency">Agency</option><option value="Institution">Institution</option></select></label><label>Message<textarea name="message" required maxlength="5000"></textarea></label><button class="cta" type="submit">Send message</button></form></article>
+    <% } %>
+  </div></section>
+</main>
+<footer class="site-footer"><div class="site-shell"><strong>AutoBrand AI</strong><div class="footer-links"><a href="/about">About</a><a href="/help">Help</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a></div><p>© 2026 AutoBrand AI. Built by Classic Technologies.</p></div></footer>
+<script defer src="/js/public-shell.js"></script>
+</body></html>

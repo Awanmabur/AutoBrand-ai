@@ -7,6 +7,7 @@ const AuditLog = require('../models/AuditLog');
 const ApiLog = require('../models/ApiLog');
 const Payment = require('../models/Payment');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
+const PublicInquiry = require('../models/PublicInquiry');
 const { dispatchScheduledPost } = require('../services/postDispatchService');
 const { activatePlanForUser } = require('../services/subscription.service');
 
@@ -119,4 +120,31 @@ async function retryJob(req, res, next) {
   }
 }
 
-module.exports = { index, retryJob, retryPost, updateUserPlan, updateUserStatus };
+
+async function updatePublicInquiryStatus(req, res, next) {
+  try {
+    const status = String(req.body.status || '').trim().toLowerCase();
+    if (!['new', 'open', 'resolved'].includes(status)) {
+      const error = new Error('Invalid inquiry status.');
+      error.status = 400;
+      throw error;
+    }
+    const inquiry = await PublicInquiry.findById(req.params.id);
+    if (!inquiry) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
+    inquiry.status = status;
+    inquiry.resolvedAt = status === 'resolved' ? new Date() : null;
+    await inquiry.save();
+    await AuditLog.create({
+      user: req.user._id,
+      action: 'admin_public_inquiry_status_update',
+      entityType: 'PublicInquiry',
+      entityId: inquiry._id,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      metadata: { status }
+    });
+    return res.redirect('/dashboard/admin');
+  } catch (error) { return next(error); }
+}
+
+module.exports = { index, retryJob, retryPost, updatePublicInquiryStatus, updateUserPlan, updateUserStatus };

@@ -364,6 +364,7 @@ async function generatePost(req, res, next) {
     const controls = normalizeGenerationControls(req.body);
     const result = await generateContentBundle({
       ...req.body,
+      user: req.user,
       brand,
       sourceMedia
     });
@@ -414,7 +415,7 @@ async function generateHashtags(req, res, next) {
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
     await assertCanGenerateText(req.user, brand._id);
-    const result = await generateContentBundle({ ...req.body, brand, outputType: 'hashtags' });
+    const result = await generateContentBundle({ ...req.body, user: req.user, brand, outputType: 'hashtags' });
     const draft = await createGeneratedDraft({ req, brand, sourceMedia: null, bundle: result });
     const credits = creditsForGeneration(result.controls || { outputType: 'hashtags' });
     await spendCredits({ user: req.user, brandId: brand._id, amount: credits, reason: 'AI hashtag generation', referenceType: 'Post', referenceId: draft._id });
@@ -447,6 +448,7 @@ async function generateVideoScript(req, res, next) {
     await assertCanGenerateText(req.user, brand._id);
     const result = await generateContentBundle({
       ...req.body,
+      user: req.user,
       brand,
       sourceMedia,
       outputType: 'reel_script',
@@ -497,6 +499,7 @@ async function generateCampaign(req, res, next) {
       || (Number(req.body.durationDays || 7) >= 30 ? '30_day_content_calendar' : req.body.campaignType || '7_day_campaign');
     const result = await generateContentBundle({
       ...req.body,
+      user: req.user,
       outputType: requestedOutput,
       brand,
       platforms: targets.platforms

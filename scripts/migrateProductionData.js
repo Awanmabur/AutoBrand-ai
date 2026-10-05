@@ -10,6 +10,7 @@ const Analytics = require('../src/models/Analytics');
 const AiVideoJob = require('../src/models/AiVideoJob');
 const VideoRender = require('../src/models/VideoRender');
 const Media = require('../src/models/Media');
+const BrandAsset = require('../src/models/BrandAsset');
 const Subscription = require('../src/models/Subscription');
 const GrowthAsset = require('../src/models/GrowthAsset');
 const AvatarProfile = require('../src/models/AvatarProfile');
@@ -20,6 +21,8 @@ const Payment = require('../src/models/Payment');
 const AnalyticsSyncJob = require('../src/models/AnalyticsSyncJob');
 const { ensureDatabaseIndexes, findPaymentReferenceDuplicates } = require('../src/config/ensureIndexes');
 const { seedAnalyticsSyncJobs } = require('../src/services/analytics/analyticsSync.service');
+const { snapshotPlan } = require('../src/services/subscription/planSnapshot.service');
+const { gridFsIdFromUrl, gridFsPublicUrl, SIGNED_GRIDFS_URL_PATTERN } = require('../src/services/gridFsMediaStorage.service');
 
 const APPLY = process.argv.includes('--apply');
 const MOCK_URL = /(?:^|\.)mock\.autobrand\.local/i;
@@ -365,6 +368,174 @@ async function normalizeSubscriptionCredits() {
   return { checked: rows.length, normalized: ops.length };
 }
 
+async function backfillSubscriptionCommercialSnapshots() {
+  const rows = await Subscription.find({
+    $or: [
+      { planSnapshot: { $exists: false } },
+      { planSnapshot: null },
+      { 'planSnapshot.slug': { $exists: false } },
+      { aiTokensUsed: { $exists: false } },
+      { aiTokensReserved: { $exists: false } },
+      { aiTokenReservations: { $exists: false } }
+    ]
+  }).select('_id plan planRef planSnapshot aiTokensUsed aiTokensReserved aiTokenReservations metadata').lean();
+
+  const planIds = [...new Set(rows.map((row) => id(row.planRef)).filter(Boolean))];
+  const slugs = [...new Set(rows.map((row) => String(row.plan || '')).filter(Boolean))];
+  const plans = await SubscriptionPlan.find({ $or: [{ _id: { $in: planIds } }, { slug: { $in: slugs } }] }).lean();
+  const byId = new Map(plans.map((plan) => [id(plan._id), plan]));
+  const bySlug = new Map(plans.map((plan) => [String(plan.slug), plan]));
+  const ops = [];
+  let unresolved = 0;
+
+  for (const row of rows) {
+    const plan = byId.get(id(row.planRef)) || bySlug.get(String(row.plan || ''));
+    const set = {
+      aiTokensUsed: Math.max(0, Number(row.aiTokensUsed || 0)),
+      aiTokensReserved: 0,
+      aiTokenReservations: [],
+      'metadata.migration.tokenBudgetInitializedAt': new Date()
+    };
+    if (!row.planSnapshot?.slug) {
+      if (!plan) {
+        unresolved += 1;
+      } else {
+        set.planSnapshot = snapshotPlan(plan);
+        set['metadata.migration.planSnapshotCapturedAt'] = new Date();
+      }
+    }
+    ops.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
+  }
+
+  if (APPLY && ops.length) await Subscription.bulkWrite(ops, { ordered: false });
+  return { checked: rows.length, updated: ops.length, unresolved };
+}
+
+async function backfillPaymentPlanSnapshots() {
+  const rows = await Payment.find({
+    $or: [
+      { planSnapshot: { $exists: false } },
+      { planSnapshot: null },
+      { 'planSnapshot.slug': { $exists: false } }
+    ],
+    'metadata.plan': { $exists: true }
+  }).select('_id amount currency metadata planSnapshot billingChange').lean();
+
+  const slugs = [...new Set(rows.map((row) => String(row.metadata?.plan || '')).filter(Boolean))];
+  const plans = await SubscriptionPlan.find({ slug: { $in: slugs } }).lean();
+  const bySlug = new Map(plans.map((plan) => [String(plan.slug), plan]));
+  const ops = [];
+  let unresolved = 0;
+
+  for (const row of rows) {
+    const plan = bySlug.get(String(row.metadata?.plan || ''));
+    if (!plan) {
+      unresolved += 1;
+      continue;
+    }
+    const snapshot = snapshotPlan(plan);
+    // Preserve the amount actually charged for historical payment evidence while
+    // retaining the plan's then-current entitlement matrix as best-effort legacy data.
+    if (Number.isFinite(Number(row.metadata?.listPrice))) snapshot.price = Number(row.metadata.listPrice);
+    const billingChange = row.billingChange || {
+      kind: 'legacy',
+      previousSubscriptionId: undefined,
+      unusedCredit: 0,
+      remainingFraction: 0,
+      listPrice: Number(snapshot.price || row.amount || 0),
+      amountDue: Number(row.amount || 0),
+      calculatedAt: row.createdAt || new Date()
+    };
+    ops.push({ updateOne: { filter: { _id: row._id }, update: { $set: { planSnapshot: snapshot, billingChange } } } });
+  }
+
+  if (APPLY && ops.length) await Payment.bulkWrite(ops, { ordered: false });
+  return { checked: rows.length, updated: ops.length, unresolved };
+}
+
+
+
+
+function legacyGridFsSignedUrl(value, fallbackName = 'media') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  let pathname = raw;
+  try { if (/^https?:\/\//i.test(raw)) pathname = new URL(raw).pathname; } catch (_error) { return ''; }
+  if (SIGNED_GRIDFS_URL_PATTERN.test(pathname)) return '';
+  const fileId = gridFsIdFromUrl(pathname);
+  if (!fileId) return '';
+  const segments = pathname.split('/').filter(Boolean);
+  let filename = segments[segments.length - 1] || fallbackName;
+  if (/^[a-f\d]{24}$/i.test(filename)) filename = fallbackName;
+  try { filename = decodeURIComponent(filename); } catch (_error) {}
+  return gridFsPublicUrl(fileId, filename || fallbackName);
+}
+
+async function signLegacyGridFsMediaUrls() {
+  const report = { media: 0, mediaVariants: 0, brandAssets: 0, aiVideoJobs: 0, videoRenders: 0, total: 0 };
+  const mediaRows = await Media.find({ $or: [
+    { fileUrl: /\/uploads\/db\/[a-f\d]{24}/i },
+    { 'variants.url': /\/uploads\/db\/[a-f\d]{24}/i }
+  ] }).select('_id fileName fileUrl variants').lean();
+  const mediaOps = [];
+  for (const row of mediaRows) {
+    const set = {};
+    const signedFileUrl = legacyGridFsSignedUrl(row.fileUrl, row.fileName || 'media');
+    if (signedFileUrl) { set.fileUrl = signedFileUrl; report.media += 1; }
+    const variants = Array.isArray(row.variants) ? row.variants.map((variant) => {
+      const signed = legacyGridFsSignedUrl(variant?.url, row.fileName || variant?.label || 'media');
+      if (!signed) return variant;
+      report.mediaVariants += 1;
+      return { ...variant, url: signed };
+    }) : [];
+    if (report.mediaVariants && JSON.stringify(variants) !== JSON.stringify(row.variants || [])) set.variants = variants;
+    if (Object.keys(set).length) mediaOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } });
+  }
+  if (APPLY && mediaOps.length) await Media.bulkWrite(mediaOps, { ordered: false });
+
+  const assetRows = await BrandAsset.find({ url: /\/uploads\/db\/[a-f\d]{24}/i }).select('_id title url').lean();
+  const assetOps = [];
+  for (const row of assetRows) {
+    const signed = legacyGridFsSignedUrl(row.url, row.title || 'asset');
+    if (!signed) continue;
+    report.brandAssets += 1;
+    assetOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: { url: signed, 'metadata.migration.gridFsUrlSignedAt': new Date() } } } });
+  }
+  if (APPLY && assetOps.length) await BrandAsset.bulkWrite(assetOps, { ordered: false });
+
+  const videoRows = await AiVideoJob.find({ $or: [
+    { outputUrl: /\/uploads\/db\/[a-f\d]{24}/i },
+    { thumbnailUrl: /\/uploads\/db\/[a-f\d]{24}/i },
+    { 'scenePlan.outputUrl': /\/uploads\/db\/[a-f\d]{24}/i }
+  ] }).select('_id outputUrl thumbnailUrl scenePlan').lean();
+  const videoOps = [];
+  for (const row of videoRows) {
+    const set = {};
+    const outputUrl = legacyGridFsSignedUrl(row.outputUrl, 'video.mp4');
+    const thumbnailUrl = legacyGridFsSignedUrl(row.thumbnailUrl, 'thumbnail.jpg');
+    if (outputUrl) set.outputUrl = outputUrl;
+    if (thumbnailUrl) set.thumbnailUrl = thumbnailUrl;
+    const scenePlan = Array.isArray(row.scenePlan) ? row.scenePlan.map((scene) => {
+      const signed = legacyGridFsSignedUrl(scene?.outputUrl, `scene-${scene?.order ?? 'media'}`);
+      return signed ? { ...scene, outputUrl: signed } : scene;
+    }) : [];
+    if (JSON.stringify(scenePlan) !== JSON.stringify(row.scenePlan || [])) set.scenePlan = scenePlan;
+    if (Object.keys(set).length) { report.aiVideoJobs += 1; videoOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: set } } }); }
+  }
+  if (APPLY && videoOps.length) await AiVideoJob.bulkWrite(videoOps, { ordered: false });
+
+  const renderRows = await VideoRender.find({ outputUrl: /\/uploads\/db\/[a-f\d]{24}/i }).select('_id outputUrl').lean();
+  const renderOps = [];
+  for (const row of renderRows) {
+    const signed = legacyGridFsSignedUrl(row.outputUrl, 'video.mp4');
+    if (!signed) continue;
+    report.videoRenders += 1;
+    renderOps.push({ updateOne: { filter: { _id: row._id }, update: { $set: { outputUrl: signed } } } });
+  }
+  if (APPLY && renderOps.length) await VideoRender.bulkWrite(renderOps, { ordered: false });
+  report.total = report.media + report.mediaVariants + report.brandAssets + report.aiVideoJobs + report.videoRenders;
+  return report;
+}
 
 async function disableLegacyLocalAiRouting() {
   const plans = await SubscriptionPlan.find({
@@ -615,6 +786,9 @@ async function run() {
     socialAccounts: await normalizeSocialAccountTenancy(),
     workspaceOwnedAssets: await normalizeWorkspaceOwnedAssets(),
     subscriptionCredits: await normalizeSubscriptionCredits(),
+    subscriptionCommercialSnapshots: await backfillSubscriptionCommercialSnapshots(),
+    paymentPlanSnapshots: await backfillPaymentPlanSnapshots(),
+    signedGridFsUrls: await signLegacyGridFsMediaUrls(),
     aiRouting: await disableLegacyLocalAiRouting(),
     analytics: await purgeFabricatedAnalytics(),
     fakeVideoArtifacts: await invalidateMockMediaAndVideo(),

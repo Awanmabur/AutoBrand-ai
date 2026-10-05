@@ -3,6 +3,8 @@ const AiJob = require('../../models/AiJob');
 const { chooseProvider } = require('./aiTaskRouter');
 const { runWithFallback } = require('./aiFallback.service');
 const { recordAiUsage } = require('./aiUsage.service');
+const { promptText, systemPrompt } = require('./providers/httpClient');
+const { defaultMaxOutputTokens, estimateTokens, extractActualTokenUsage, releaseTokenReservation, reserveTokenBudget, settleTokenBudget } = require('./tokenBudget.service');
 
 const SUPPORTED_TASKS = [
   'text_generation',
@@ -38,6 +40,17 @@ async function runAiTask({ user, brand, taskType = 'text_generation', prompt, re
     throw error;
   }
   const route = await chooseProvider({ user, taskType, requestedProvider, requestedModel });
+  const maxOutputTokens = Math.max(1, Math.floor(Number(metadata.maxOutputTokens || defaultMaxOutputTokens(taskType))));
+  const tokenInput = `${systemPrompt({ taskType, brand })}
+${promptText({ prompt })}`;
+  const tokenReservation = queue ? null : await reserveTokenBudget({
+    user,
+    brandId: brand?._id,
+    inputText: tokenInput,
+    maxOutputTokens,
+    attemptMultiplier: route.fallbackProvider ? 2 : 1
+  });
+  let tokenBudgetSettled = false;
   const promptHash = hashPrompt({ taskType, prompt, brand: brand?._id || brand?.name });
   const job = await AiJob.create({
     user: user?._id,
@@ -59,15 +72,23 @@ async function runAiTask({ user, brand, taskType = 'text_generation', prompt, re
     const result = await runWithFallback({
       primary: { provider: route.provider, model: route.model },
       fallback: { provider: route.fallbackProvider, model: route.fallbackModel },
-      payload: { taskType, prompt, brand, providerConfig: route.providerConfig, metadata }
+      payload: { taskType, prompt, brand, providerConfig: route.providerConfig, metadata: { ...metadata, maxOutputTokens } }
     });
+    const actualTokenUsage = extractActualTokenUsage(result);
+    const estimatedActualTokens = estimateTokens(tokenInput) + estimateTokens(result?.output || result?.text || '');
+    await settleTokenBudget(tokenReservation, {
+      actualTokens: actualTokenUsage.totalTokens,
+      fallbackTokens: estimatedActualTokens
+    });
+    tokenBudgetSettled = true;
     job.status = 'completed';
     job.result = result;
     job.completedAt = new Date();
     await job.save();
-    await recordAiUsage({ user, brand, plan: route.plan, taskType, provider: result.provider || route.provider, model: result.model || route.model, prompt, result });
+    await recordAiUsage({ user, brand, plan: route.plan, taskType, provider: result.provider || route.provider, model: result.model || route.model, prompt, result, tokenUsage: actualTokenUsage.totalTokens ? actualTokenUsage : { totalTokens: estimatedActualTokens, inputTokens: estimateTokens(tokenInput), outputTokens: estimateTokens(result?.output || result?.text || ''), source: 'estimated' } });
     return { job, result, route };
   } catch (error) {
+    if (!tokenBudgetSettled) await releaseTokenReservation(tokenReservation).catch(() => {});
     job.status = 'failed';
     job.error = error.safeMessage || error.message || 'AI task failed.';
     job.completedAt = new Date();

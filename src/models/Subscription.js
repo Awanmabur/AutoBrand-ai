@@ -26,6 +26,24 @@ const subscriptionSchema = new mongoose.Schema(
     currentPeriodEnd: { type: Date },
     cancelAtPeriodEnd: { type: Boolean, default: false },
     creditsUsed: { type: Number, default: 0, min: 0 },
+    aiTokensUsed: { type: Number, default: 0, min: 0 },
+    aiTokensReserved: { type: Number, default: 0, min: 0 },
+    aiTokenReservations: [{
+      reservationId: { type: String, required: true },
+      tokens: { type: Number, required: true, min: 0 },
+      createdAt: { type: Date, default: Date.now },
+      expiresAt: { type: Date, required: true }
+    }],
+    planSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+    scheduledPlanChange: {
+      targetPlan: { type: String, trim: true, default: '' },
+      targetPlanRef: { type: mongoose.Schema.Types.ObjectId, ref: 'SubscriptionPlan' },
+      targetPlanSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+      requestedAt: { type: Date },
+      effectiveAt: { type: Date },
+      status: { type: String, enum: ['pending', 'applied', 'cancelled'], default: undefined },
+      reason: { type: String, trim: true, default: '' }
+    },
     activationKey: { type: String, trim: true },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} }
   },

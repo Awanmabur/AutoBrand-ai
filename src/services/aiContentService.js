@@ -326,7 +326,7 @@ async function generateVideoScenePlan(input) {
     'Keep it 4 to 6 scenes. Make prompts usable in video APIs. Do not claim the video is already rendered.'
   ].join('\n');
 
-  const result = await generateJsonText({ prompt, preferredProvider: input.provider || input.preferredProvider });
+  const result = await generateJsonText({ prompt, preferredProvider: input.provider || input.preferredProvider, user: input.user || input.actorUser, brand: input.brand, taskType: 'script_generation', maxOutputTokens: 2500 });
   if (!result.ok) {
     const error = new Error(result.message || 'AI video scene planning failed.');
     error.status = 502;

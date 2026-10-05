@@ -63,6 +63,17 @@ function verifyRefreshToken(token) {
   return verifyTypedToken(token, env.jwtRefreshSecret, 'refresh');
 }
 
+function verifyMcpAccessToken(token, { issuer, audience } = {}) {
+  const payload = jwt.verify(token, env.mcpOAuthTokenSecret, {
+    algorithms: ['HS256'],
+    issuer,
+    audience,
+    clockTolerance: 5
+  });
+  if (payload.type !== 'mcp_access') throw new jwt.JsonWebTokenError('Expected mcp_access token.');
+  return payload;
+}
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token || '')).digest('hex');
 }
@@ -72,5 +83,6 @@ module.exports = {
   signRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  verifyMcpAccessToken,
   hashToken
 };

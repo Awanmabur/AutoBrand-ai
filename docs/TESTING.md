@@ -21,7 +21,7 @@ Permanent tests cover or should continue to cover:
 - workspace worker tenancy/current permission checks;
 - Google email pre-registration cannot auto-link/take over an account;
 - shared workspace destination ownership;
-- Manual Publisher zero-AI limits and template renderer cost 0;
+- Publish zero-AI limits and template renderer cost 0;
 - analytics truthfulness/no fabricated metrics;
 - credential decryption failures require reconnect rather than infinite retries;
 - publishing partial success/recovery;

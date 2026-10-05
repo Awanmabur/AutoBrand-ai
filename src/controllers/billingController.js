@@ -2,8 +2,8 @@ const Payment = require('../models/Payment');
 const Subscription = require('../models/Subscription');
 const env = require('../config/env');
 const { getPublicPricingCards } = require('../services/pricing.service');
-const { formatMoney } = require('../services/planDisplay.service');
-const { activatePlanForUser, getCurrentPlan, getPlanBySlug } = require('../services/subscription.service');
+const { decoratePlanForDisplay, formatMoney } = require('../services/planDisplay.service');
+const { activatePlanForUser, cancelScheduledPlanChange, getCurrentPlan, getPlanBySlug, getPlanChangeQuote, schedulePlanChange } = require('../services/subscription.service');
 const { buildUsageDashboard } = require('../services/usage.service');
 const { notifyPayment, notifyUser } = require('../services/notification.service');
 const {
@@ -25,6 +25,8 @@ function paymentStatusMessage(query = {}) {
   if (query.failed) return 'Payment could not be confirmed. Try again or contact support with your reference.';
   if (query.pending) return 'Checkout is pending. Complete the Pesapal payment step to activate the selected access period.';
   if (query.onboarding) return 'Review the selected plan, then complete secure Pesapal payment to activate the paid access period.';
+  if (query.scheduled) return 'Plan change scheduled. Your current plan stays active until the end of this access period.';
+  if (query.schedule_cancelled) return 'Scheduled plan change cancelled. Your current plan remains unchanged.';
   return '';
 }
 
@@ -40,6 +42,24 @@ async function changePlan(req, res, next) {
       const error = new Error('Selected plan is not available.');
       error.status = 404;
       throw error;
+    }
+
+    const quote = await getPlanChangeQuote(req.user, plan);
+    if (quote.kind === 'same') {
+      return res.redirect(`/dashboard/billing?error=${encodeURIComponent(`${plan.name} is already active for this access period.`)}`);
+    }
+    if (['downgrade', 'lateral'].includes(quote.kind)) {
+      const scheduled = await schedulePlanChange(req.user, plan, { reason: quote.kind === 'downgrade' ? 'user_downgrade' : 'user_lateral_switch' });
+      await notifyUser({
+        user: req.user,
+        type: 'plan_change_scheduled',
+        title: 'Plan change scheduled',
+        message: `${plan.name} is selected for your next access period. Your current plan remains active through ${new Date(scheduled.effectiveAt).toLocaleDateString('en-US')}.`,
+        severity: 'info',
+        actionUrl: '/dashboard/billing',
+        metadata: { plan: plan.slug, effectiveAt: scheduled.effectiveAt, changeKind: quote.kind }
+      });
+      return res.redirect('/dashboard/billing?scheduled=1');
     }
 
     const isFreeOrTrial = plan.billingInterval === 'trial' || Number(plan.price || 0) <= 0;
@@ -77,10 +97,15 @@ async function checkoutPage(req, res, next) {
       error.status = 404;
       throw error;
     }
+    const rawPlan = await getPlanBySlug(req.params.planSlug);
+    const changeQuote = rawPlan ? await getPlanChangeQuote(req.user, rawPlan) : null;
     res.render('dashboard/pages/billing-checkout', {
       title: `Checkout - ${plan.name}`,
       layout: 'layouts/dashboard',
       plan,
+      changeQuote,
+      changeQuoteAmountLabel: changeQuote ? formatMoney(changeQuote.amountDue || plan.price || 0, plan.currency || 'USD', { decimals: true }) : '',
+      changeQuoteCreditLabel: changeQuote ? formatMoney(changeQuote.unusedCredit || 0, plan.currency || 'USD', { decimals: true }) : '',
       payment: null,
       paymentAmountLabel: '',
       selectedProvider: checkoutProviderFromRequest(req),
@@ -124,11 +149,16 @@ async function paymentPage(req, res, next) {
       throw error;
     }
     const plans = await getPublicPricingCards();
-    const plan = plans.find((item) => item.slug === payment.metadata?.plan);
+    const plan = payment.planSnapshot?.slug
+      ? decoratePlanForDisplay(payment.planSnapshot)
+      : plans.find((item) => item.slug === payment.metadata?.plan);
     res.render('dashboard/pages/billing-checkout', {
       title: 'Payment',
       layout: 'layouts/dashboard',
       plan,
+      changeQuote: null,
+      changeQuoteAmountLabel: '',
+      changeQuoteCreditLabel: '',
       payment,
       paymentAmountLabel: formatMoney(payment.amount, payment.currency || 'USD', { decimals: true }),
       selectedProvider: payment.provider || liveCheckoutProviderName(),
@@ -190,7 +220,17 @@ async function pesapalIpn(req, res) {
   }
 }
 
+async function cancelScheduledChange(req, res, next) {
+  try {
+    const result = await cancelScheduledPlanChange(req.user);
+    return res.redirect(result.cancelled ? '/dashboard/billing?schedule_cancelled=1' : '/dashboard/billing');
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
+  cancelScheduledChange,
   changePlan,
   checkout,
   checkoutPage,

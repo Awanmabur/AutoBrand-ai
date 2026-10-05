@@ -1,7 +1,11 @@
 const { Readable } = require('stream');
+const crypto = require('crypto');
+const env = require('../config/env');
 
 const DEFAULT_BUCKET = 'autobrand_generated_media';
-const GRIDFS_URL_PATTERN = /^\/uploads\/db\/([a-f\d]{24})(?:\/[^?#]*)?(?:[?#].*)?$/i;
+const LEGACY_GRIDFS_URL_PATTERN = /^\/uploads\/db\/([a-f\d]{24})(?:\/[^?#]*)?(?:[?#].*)?$/i;
+const SIGNED_GRIDFS_URL_PATTERN = /^\/uploads\/db\/([a-f\d]{24})\/t\/([A-Za-z0-9_-]{32,128})(?:\/[^?#]*)?(?:[?#].*)?$/i;
+const GRIDFS_URL_PATTERN = /^(?:\/uploads\/db\/([a-f\d]{24})\/t\/[A-Za-z0-9_-]{32,128}(?:\/[^?#]*)?|\/uploads\/db\/([a-f\d]{24})(?:\/[^?#]*)?)(?:[?#].*)?$/i;
 
 function mongooseRuntime() {
   // Keep this lazy so dependency-free syntax/unit gates can import media helpers.
@@ -33,7 +37,10 @@ function gridFsIdFromUrl(fileUrl) {
       return '';
     }
   }
-  return pathname.match(GRIDFS_URL_PATTERN)?.[1] || '';
+  const signed = pathname.match(SIGNED_GRIDFS_URL_PATTERN);
+  if (signed) return signed[1] || '';
+  const legacy = pathname.match(LEGACY_GRIDFS_URL_PATTERN);
+  return legacy?.[1] || '';
 }
 
 function objectId(value) {
@@ -42,8 +49,34 @@ function objectId(value) {
   return new mongoose.Types.ObjectId(String(value));
 }
 
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left || ''));
+  const b = Buffer.from(String(right || ''));
+  return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function tokenForSecret(id, secret) {
+  const key = String(secret || '');
+  if (!key) return '';
+  return crypto.createHmac('sha256', key).update(String(id)).digest('base64url');
+}
+
+function gridFsTokenForId(id) {
+  return tokenForSecret(id, env.mediaUrlSigningSecret);
+}
+
+function verifyGridFsToken(id, token) {
+  const secrets = [env.mediaUrlSigningSecret, ...(env.mediaUrlSigningSecretsPrevious || [])].filter(Boolean);
+  return secrets.some((secret) => {
+    const expected = tokenForSecret(id, secret);
+    return Boolean(expected && safeEqual(expected, token));
+  });
+}
+
 function gridFsPublicUrl(id, filename = 'media') {
   const safeName = encodeURIComponent(String(filename || 'media').replace(/[\\/]+/g, '-'));
+  const token = gridFsTokenForId(id);
+  if (token) return `/uploads/db/${String(id)}/t/${token}/${safeName}`;
   return `/uploads/db/${String(id)}/${safeName}`;
 }
 
@@ -160,6 +193,10 @@ async function streamGridFsMedia(req, res, next) {
   try {
     const id = objectId(req.params.id);
     if (!id) return res.status(404).end();
+    const suppliedToken = String(req.params.token || '');
+    const signedRequest = Boolean(suppliedToken);
+    if (signedRequest && !verifyGridFsToken(id, suppliedToken)) return res.status(404).end();
+    if (!signedRequest && env.nodeEnv === 'production' && !env.allowLegacyPublicGridFsUrls) return res.status(404).end();
     const record = await gridFsFileRecord(id);
     if (!record) return res.status(404).end();
 
@@ -200,10 +237,14 @@ async function streamGridFsMedia(req, res, next) {
 
 module.exports = {
   GRIDFS_URL_PATTERN,
+  LEGACY_GRIDFS_URL_PATTERN,
+  SIGNED_GRIDFS_URL_PATTERN,
   deleteGridFsFile,
   gridFsFileExists,
   gridFsIdFromUrl,
   gridFsPublicUrl,
+  gridFsTokenForId,
+  verifyGridFsToken,
   readGridFsBuffer,
   saveBufferToGridFs,
   streamGridFsMedia

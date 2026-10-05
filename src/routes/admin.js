@@ -19,5 +19,6 @@ router.post('/users/:id/status', requireRole('super_admin'), adminController.upd
 router.post('/users/:id/plan', requireRole('super_admin'), adminController.updateUserPlan);
 router.post('/posts/:id/retry', requireRole('super_admin'), adminController.retryPost);
 router.post('/jobs/:id/retry', requireRole('super_admin'), adminController.retryJob);
+router.post('/public-inquiries/:id/status', requireRole('super_admin'), adminController.updatePublicInquiryStatus);
 
 module.exports = router;

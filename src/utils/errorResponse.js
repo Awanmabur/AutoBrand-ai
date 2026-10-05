@@ -1,3 +1,4 @@
+const env = require('../config/env');
 function safeErrorMessage(error, status, nodeEnv = process.env.NODE_ENV) {
   if (nodeEnv !== 'production') return error?.message || defaultMessage(status);
   if (error?.expose || status < 500) return error.message || defaultMessage(status);
@@ -52,7 +53,7 @@ function buildErrorViewModel({ error, status, req }) {
     primaryActionLabel,
     secondaryActionHref,
     secondaryActionLabel,
-    supportHref: 'mailto:support@example.com',
+    supportHref: env.supportEmail ? `mailto:${env.supportEmail}` : '/contact',
     details: process.env.NODE_ENV === 'production' ? undefined : error?.stack
   };
 }

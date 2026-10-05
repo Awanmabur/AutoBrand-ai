@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { verifyAccessToken } = require('../services/tokenService');
+const { accessCookieName, legacyAccessCookieName } = require('../services/authService');
 
 function bearerToken(req) {
   const header = String(req.get('authorization') || '');
@@ -9,7 +10,7 @@ function bearerToken(req) {
 
 async function attachUser(req, res, next) {
   try {
-    const token = req.cookies?.accessToken || bearerToken(req);
+    const token = req.cookies?.[accessCookieName] || req.cookies?.[legacyAccessCookieName] || bearerToken(req);
     if (!token) return next();
 
     const payload = verifyAccessToken(token);

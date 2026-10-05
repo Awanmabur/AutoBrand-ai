@@ -98,7 +98,7 @@ test('public and dashboard money copy does not promise automatic recurring charg
 
 test('the onboarding and billing source-of-truth document is part of production docs', () => {
   const doc = read('docs/ONBOARDING-AND-BILLING.md');
-  assert.match(doc, /Manual Publisher/);
+  assert.match(doc, /Publish/);
   assert.match(doc, /AI Starter/);
   assert.match(doc, /US\$10/);
   assert.match(doc, /Pesapal/);

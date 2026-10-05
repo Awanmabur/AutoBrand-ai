@@ -30,7 +30,9 @@ function isValidToken(signedToken) {
 
 function isWebhookExempt(req) {
   return /^\/dashboard\/actions\/webhooks\/[^/]+$/.test(req.path)
-    || req.path === '/dashboard/billing/pesapal/ipn';
+    || req.path === '/dashboard/billing/pesapal/ipn'
+    || req.path === '/mcp'
+    || /^\/mcp\/oauth\/(?:register|token|revoke)$/.test(req.path);
 }
 
 function urlOrigin(value) {

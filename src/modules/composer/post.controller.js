@@ -874,6 +874,7 @@ async function createPost(req, res, next) {
     if (!req.body.__skipAiGeneration && (req.body.creationMode !== 'manual' || wantsGeneratedImage(req.body) || req.body.type === 'video')) {
       await assertCanGenerateText(req.user, brand._id);
       generated = await generatePostIdea({
+        user: req.user,
         brand,
         platform: req.body.platform || 'facebook',
         platforms: toArray(req.body.platforms || req.body.platform),
@@ -1699,6 +1700,7 @@ async function createHandoff(req, res, next) {
 
     const result = await createScheduledPostsFromBatch({
       userId: req.user._id,
+      actorUser: req.user,
       brand,
       targetAccounts,
       enqueue: (post) => tryEnqueue(post, req.user._id),
@@ -1707,6 +1709,7 @@ async function createHandoff(req, res, next) {
         frequencyUnit,
         count: requestedCount,
         workflowMode: 'handoff',
+        status: 'pending_approval',
         startDate: req.body.startDate,
         preferredSlots: splitLines(req.body.preferredSlots || '').length ? splitLines(req.body.preferredSlots) : toArray(req.body.preferredSlots),
         contentMix,
@@ -1723,8 +1726,8 @@ async function createHandoff(req, res, next) {
     await notifySafely({
       user: req.user._id,
       type: 'handoff_created',
-      title: 'OpenAI auto campaign scheduled',
-      message: `${result.createdPosts.length} post(s) were generated and scheduled for ${brand.name}.`,
+      title: 'AI handoff ready for review',
+      message: `${result.createdPosts.length} post(s) were generated for ${brand.name} and are waiting for approval.`,
       entityType: 'Brand',
       entityId: brand._id
     });

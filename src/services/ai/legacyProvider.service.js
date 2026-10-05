@@ -5,6 +5,8 @@ let OpenAI;
 let sharp = null;
 try { sharp = require('sharp'); } catch (error) { sharp = null; }
 const env = require('../../config/env');
+const { recordUsage } = require('../usage.service');
+const { defaultMaxOutputTokens, estimateTokens, extractActualTokenUsage, releaseTokenReservation, reserveTokenBudget, settleTokenBudget } = require('./tokenBudget.service');
 
 const { persistGeneratedBuffer } = require('../generatedMediaPersistence.service');
 const REQUEST_TIMEOUT_MS = 90000;
@@ -72,20 +74,20 @@ function extractGeminiText(response) {
   return parts.map((part) => part.text || '').join('\n').trim();
 }
 
-async function generateTextWithGemini({ prompt, json = true }) {
+async function generateTextWithGemini({ prompt, json = true, maxOutputTokens = 3000 }) {
   if (!env.geminiApiKey) throw new Error('GEMINI_API_KEY is missing.');
   const model = env.geminiTextModel || 'gemini-2.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.geminiApiKey)}`;
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: json ? { responseMimeType: 'application/json' } : undefined
+    generationConfig: json ? { responseMimeType: 'application/json', maxOutputTokens } : { maxOutputTokens }
   };
   const response = await fetchJson(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  return extractGeminiText(response);
+  return { text: extractGeminiText(response), raw: response, model };
 }
 
 function createOpenAIClient() {
@@ -94,14 +96,15 @@ function createOpenAIClient() {
   return new OpenAI({ apiKey: env.openaiApiKey, maxRetries: 1, timeout: 120000 });
 }
 
-async function generateTextWithOpenAI({ prompt, json = true }) {
+async function generateTextWithOpenAI({ prompt, json = true, maxOutputTokens = 3000 }) {
   const client = createOpenAIClient();
   const response = await client.responses.create({
     model: env.openaiModel,
     input: prompt,
-    text: json ? { format: { type: 'json_object' } } : undefined
+    text: json ? { format: { type: 'json_object' } } : undefined,
+    max_output_tokens: maxOutputTokens
   });
-  return response.output_text || '';
+  return { text: response.output_text || '', raw: response, model: env.openaiModel };
 }
 
 function parseJsonSafely(text) {
@@ -115,18 +118,57 @@ function parseJsonSafely(text) {
   }
 }
 
-async function generateJsonText({ prompt, preferredProvider }) {
+async function generateJsonText({ prompt, preferredProvider, user, brand, taskType = 'text_generation', maxOutputTokens }) {
   const provider = String(preferredProvider || activeProvider('text') || '').trim().toLowerCase();
   if (!provider) {
     return { ok: false, provider: '', data: null, message: 'No hosted text AI provider is configured.' };
   }
+  const outputCap = Math.max(1, Math.floor(Number(maxOutputTokens || defaultMaxOutputTokens(taskType) || 3000)));
+  let tokenReservation = null;
+  let tokenBudgetSettled = false;
   try {
-    let text = '';
-    if (provider === 'gemini') text = await generateTextWithGemini({ prompt, json: true });
-    else if (provider === 'openai') text = await generateTextWithOpenAI({ prompt, json: true });
-    else return { ok: false, provider, data: null, message: `Unsupported hosted text provider: ${provider}` };
-    return { ok: true, provider, data: parseJsonSafely(text) };
+    if (user) {
+      tokenReservation = await reserveTokenBudget({
+        user,
+        brandId: brand?._id || brand,
+        inputText: prompt,
+        maxOutputTokens: outputCap,
+        attemptMultiplier: 1
+      });
+    }
+    let response;
+    if (provider === 'gemini') response = await generateTextWithGemini({ prompt, json: true, maxOutputTokens: outputCap });
+    else if (provider === 'openai') response = await generateTextWithOpenAI({ prompt, json: true, maxOutputTokens: outputCap });
+    else {
+      await releaseTokenReservation(tokenReservation).catch(() => {});
+      return { ok: false, provider, data: null, message: `Unsupported hosted text provider: ${provider}` };
+    }
+    const usage = extractActualTokenUsage(response.raw || {});
+    const estimated = estimateTokens(prompt) + estimateTokens(response.text || '');
+    await settleTokenBudget(tokenReservation, { actualTokens: usage.totalTokens, fallbackTokens: estimated });
+    tokenBudgetSettled = true;
+    if (user) {
+      await recordUsage({
+        user,
+        brand,
+        metric: taskType,
+        taskType,
+        provider,
+        model: response.model || '',
+        tokensUsed: usage.totalTokens || estimated,
+        quantity: 1,
+        metadata: {
+          tokenUsageSource: usage.totalTokens ? usage.source : 'estimated',
+          inputTokens: usage.inputTokens || 0,
+          outputTokens: usage.outputTokens || 0,
+          legacyProviderPath: true
+        }
+      }).catch(() => {});
+    }
+    return { ok: true, provider, data: parseJsonSafely(response.text), tokenUsage: usage.totalTokens ? usage : { totalTokens: estimated, source: 'estimated' } };
   } catch (error) {
+    if (!tokenBudgetSettled) await releaseTokenReservation(tokenReservation).catch(() => {});
+    if (error.status === 402) throw error;
     return { ok: false, provider, data: null, message: error.message || 'Text generation failed.' };
   }
 }

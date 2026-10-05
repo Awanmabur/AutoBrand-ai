@@ -13,3 +13,9 @@ This directory is the operational source of truth for the production architectur
 9. `TESTING.md`, `DEPLOYMENT-RUNBOOK.md`, `OPERATIONS.md`, `INCIDENT-RECOVERY.md`, `PRODUCTION-CHECKLIST.md` — release and incident operations.
 
 The code wins if documentation and implementation ever disagree. Update both in the same change.
+
+## ChatGPT / MCP
+
+- [`SOCIAL-OPERATING-SYSTEM.md`](SOCIAL-OPERATING-SYSTEM.md) — product/UX source of truth for the unified social operating loop, ChatGPT operator, Drive and channel workspaces.
+- [`MCP-CONNECTOR.md`](MCP-CONNECTOR.md) — ChatGPT/Codex remote MCP connector, OAuth, tools, media flow, deployment and testing.
+

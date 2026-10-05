@@ -25,6 +25,13 @@ const recoveryLimiter = createRateLimiter({
   limit: 8,
   message: { error: 'Too many recovery attempts. Try again later.' }
 });
+const mfaLimiter = createRateLimiter({
+  prefix: 'auth-mfa',
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  message: { error: 'Too many verification attempts. Sign in again.' }
+});
+
 const refreshLimiter = createRateLimiter({
   prefix: 'auth-refresh',
   windowMs: 5 * 60 * 1000,
@@ -34,6 +41,8 @@ const refreshLimiter = createRateLimiter({
 
 router.get('/login', requireGuest, authController.showLogin);
 router.post('/login', loginLimiter, requireGuest, authController.login);
+router.get('/mfa', requireGuest, authController.showMfa);
+router.post('/mfa', mfaLimiter, requireGuest, authController.verifyMfa);
 router.get('/register', requireGuest, authController.showRegister);
 router.post('/register', registrationLimiter, requireGuest, authController.register);
 router.get('/google', requireGuest, authController.googleStart);

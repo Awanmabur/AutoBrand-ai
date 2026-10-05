@@ -37,7 +37,7 @@ const DEFAULT_PLAN_MATRIX = [
       autoModeAccess: false,
       approvalWorkflowAccess: false
     },
-    featureList: ['Basic Brand Brain', 'Basic Smart Composer', 'Basic Calendar', 'Limited Handoff', 'Low queue priority'],
+    featureList: ['Basic Brand Brain Assist', 'Basic Smart Composer', 'Basic Calendar', 'Limited AI-assisted Handoff', 'ChatGPT + Drive connection', 'Low queue priority'],
     aiConfig: {
       allowedProviders: ['openai'],
       allowedModels: ['gpt-4.1-mini', 'gpt-image-1'],
@@ -54,9 +54,9 @@ const DEFAULT_PLAN_MATRIX = [
     }
   },
   {
-    name: 'Manual Publisher',
+    name: 'Publish',
     slug: 'manual-publisher',
-    description: 'AI-free publishing for teams that bring their own captions, ads, images and videos.',
+    description: 'Affordable publishing infrastructure with ChatGPT connectivity, Google Drive assets, scheduling, approvals and analytics for teams that bring their own creative work.',
     price: 10,
     currency: 'USD',
     billingInterval: 'month',
@@ -156,8 +156,20 @@ const DEFAULT_PLAN_MATRIX = [
       maxClientApprovalLinks: 0,
       maxStorageMb: 1000
     },
-    features: { brandBrainLevel: 'basic', smartComposerLevel: 'standard', analyticsLevel: 'basic', manualPublisherAccess: true, handoffModeAccess: true },
-    featureList: ['Smart Composer', 'Calendar', 'Basic Analytics', 'Handoff Mode', 'Normal queue priority'],
+    features: {
+      brandBrainLevel: 'basic',
+      smartComposerLevel: 'standard',
+      analyticsLevel: 'basic',
+      manualPublisherAccess: true,
+      calendarAccess: true,
+      handoffModeAccess: true,
+      templateAccess: true,
+      autoModeAccess: false,
+      approvalWorkflowAccess: false,
+      campaignAccess: false,
+      growthStudioAccess: false
+    },
+    featureList: ['AI Brain Assist', 'Smart Composer', 'AI captions and images', 'Calendar', 'Basic Analytics', 'AI-assisted Handoff', 'ChatGPT + Drive connection', 'Normal queue priority'],
     aiConfig: {
       allowedProviders: ['openai'],
       allowedModels: ['gpt-4.1-mini', 'gpt-image-1'],
@@ -206,14 +218,16 @@ const DEFAULT_PLAN_MATRIX = [
       smartComposerLevel: 'advanced',
       analyticsLevel: 'standard',
       manualPublisherAccess: true,
+      calendarAccess: true,
       campaignAccess: true,
       growthStudioAccess: true,
       contentRepurposingAccess: true,
       autoModeAccess: true,
       approvalWorkflowAccess: true,
-      handoffModeAccess: true
+      handoffModeAccess: true,
+      templateAccess: true
     },
-    featureList: ['Advanced Brand Brain', 'Campaigns', 'Growth Studio', 'Approval links', 'Limited Auto Mode'],
+    featureList: ['Advanced AI Brain', 'Background approval mode', 'AI Brain Autopilot', 'Campaigns', 'Growth Studio', 'Approval links', 'Analytics learning'],
     aiConfig: {
       allowedProviders: ['openai'],
       allowedModels: ['gpt-4.1-mini', 'gpt-image-1', 'sora-2'],
@@ -264,6 +278,10 @@ const DEFAULT_PLAN_MATRIX = [
       smartComposerLevel: 'advanced',
       analyticsLevel: 'advanced',
       manualPublisherAccess: true,
+      calendarAccess: true,
+      campaignAccess: true,
+      growthStudioAccess: true,
+      contentRepurposingAccess: true,
       contentScoreAccess: true,
       brandFitCheckerAccess: true,
       riskCheckerAccess: true,
@@ -271,9 +289,10 @@ const DEFAULT_PLAN_MATRIX = [
       bulkCreateAccess: true,
       approvalWorkflowAccess: true,
       autoModeAccess: true,
-      handoffModeAccess: true
+      handoffModeAccess: true,
+      templateAccess: true
     },
-    featureList: ['Content score', 'Brand fit checker', 'Best-time suggestions', 'Bulk create', 'Advanced analytics'],
+    featureList: ['Advanced AI Brain Autopilot', 'Content score', 'Brand fit checker', 'Best-time suggestions', 'Bulk create', 'Advanced analytics'],
     aiConfig: {
       allowedProviders: ['openai'],
       allowedModels: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-image-1', 'sora-2'],
@@ -324,15 +343,25 @@ const DEFAULT_PLAN_MATRIX = [
       smartComposerLevel: 'advanced',
       analyticsLevel: 'advanced',
       manualPublisherAccess: true,
+      calendarAccess: true,
+      campaignAccess: true,
+      growthStudioAccess: true,
+      contentRepurposingAccess: true,
+      contentScoreAccess: true,
+      brandFitCheckerAccess: true,
+      riskCheckerAccess: true,
+      bestTimeSuggestionAccess: true,
+      bulkCreateAccess: true,
       clientApprovalPortalAccess: true,
       competitorWatchAccess: true,
       failedPostRecoveryAccess: true,
       prioritySupportAccess: true,
       autoModeAccess: true,
       handoffModeAccess: true,
-      approvalWorkflowAccess: true
+      approvalWorkflowAccess: true,
+      templateAccess: true
     },
-    featureList: ['Client approval portal', 'Competitor watch', 'Failed post recovery', 'Priority support', 'Premium routing'],
+    featureList: ['Large-team AI Brain automation', 'Client approval portal', 'Competitor watch', 'Failed post recovery', 'Priority support', 'Premium routing'],
     aiConfig: {
       allowedProviders: ['openai'],
       allowedModels: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-image-1', 'sora-2'],
@@ -383,16 +412,27 @@ const DEFAULT_PLAN_MATRIX = [
       smartComposerLevel: 'advanced',
       analyticsLevel: 'advanced',
       manualPublisherAccess: true,
-      whiteLabelAccess: true,
+      calendarAccess: true,
+      campaignAccess: true,
+      growthStudioAccess: true,
+      contentRepurposingAccess: true,
+      contentScoreAccess: true,
+      brandFitCheckerAccess: true,
+      riskCheckerAccess: true,
+      bestTimeSuggestionAccess: true,
+      bulkCreateAccess: true,
       clientApprovalPortalAccess: true,
+      competitorWatchAccess: true,
+      failedPostRecoveryAccess: true,
+      prioritySupportAccess: true,
+      whiteLabelAccess: true,
       agencyWorkspaceAccess: true,
       autoModeAccess: true,
       handoffModeAccess: true,
       approvalWorkflowAccess: true,
-      contentRepurposingAccess: true,
-      bulkCreateAccess: true
+      templateAccess: true
     },
-    featureList: ['White label', 'Client portals', 'Agency workspace', 'Priority AI access', 'Highest queue priority'],
+    featureList: ['Multi-client AI Brain automation', 'White label', 'Client portals', 'Agency workspace', 'Priority AI access', 'Highest queue priority'],
     aiConfig: {
       allowedProviders: ['openai'],
       allowedModels: ['*'],
@@ -479,5 +519,44 @@ const DEFAULT_PLAN_MATRIX = [
     }
   }
 ];
+
+// Core operator/storage/workspace integrations are explicit entitlements.
+// They are intentionally available on every current public plan because they do
+// not bypass the plan matrix: ChatGPT inherits the user's AutoBrand permissions
+// and quotas, Drive uses the user's own storage, and channel workspaces render
+// only the analytics/features allowed by the active plan. Keeping this map
+// explicit prevents a future plan from being silently unlocked by a blanket
+// default.
+const CORE_INTEGRATION_ENTITLEMENTS = Object.freeze({
+  'free-trial': { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  'manual-publisher': { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  starter: { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  growth: { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  pro: { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  business: { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  agency: { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true },
+  superadmin: { chatgptConnectorAccess: true, googleDriveAccess: true, channelWorkspacesAccess: true }
+});
+
+for (const plan of DEFAULT_PLAN_MATRIX) {
+  const integrationEntitlements = CORE_INTEGRATION_ENTITLEMENTS[plan.slug] || {};
+  plan.features = {
+    ...integrationEntitlements,
+    ...(plan.features || {})
+  };
+}
+
+const publishPlan = DEFAULT_PLAN_MATRIX.find((plan) => plan.slug === 'manual-publisher');
+if (publishPlan) {
+  publishPlan.featureList = [
+    'Connect ChatGPT/Codex to create, organize, schedule and publish',
+    'Google Drive asset library or AutoBrand storage — your choice',
+    'Bring your own captions, images and videos with zero AutoBrand AI-generation cost',
+    'Publish now or schedule across connected accounts',
+    'Per-channel workspaces with post performance and analytics',
+    'Approvals, calendar, recovery, templates and deterministic platform formatting',
+    '5 GB AutoBrand media storage plus optional Drive-backed assets'
+  ];
+}
 
 module.exports = { DEFAULT_PLAN_MATRIX };

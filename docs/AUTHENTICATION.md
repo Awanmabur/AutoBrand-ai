@@ -45,3 +45,9 @@ Unlinking is blocked if it would leave the account with no usable login method.
 - CSRF on browser mutations;
 - cross-account OAuth state reuse;
 - accidental removal of the final authentication method.
+## MCP / ChatGPT OAuth
+
+AutoBrand exposes a separate OAuth authorization-server surface for MCP clients. It supports authorization-code + PKCE S256, RFC 8707 resource binding, issuer identification, client discovery/registration paths, short-lived MCP access tokens and rotating refresh tokens. The OAuth grants do not replace AutoBrand workspace membership: a connected client can only act as the linked AutoBrand user and remains subject to normal Brand/TeamMember permission checks.
+
+MCP access is separated into `autobrand.read`, `autobrand.write`, and `autobrand.publish`. Users can revoke individual MCP client grants from Dashboard Settings; account deletion removes all remaining MCP authorization state.
+

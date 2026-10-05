@@ -1,7 +1,8 @@
 const Payment = require('../../models/Payment');
 const User = require('../../models/User');
 const env = require('../../config/env');
-const { getPlanBySlug, createPendingSubscription, activatePlanForUser, revokeSubscriptionForPayment } = require('../subscription.service');
+const { getPlanBySlug, createPendingSubscription, activatePlanForUser, getPlanChangeQuote, revokeSubscriptionForPayment } = require('../subscription.service');
+const { snapshotPlan } = require('../subscription/planSnapshot.service');
 
 const pesapalProvider = () => require('./providers/pesapal.provider');
 function normalizeProviderName() { return 'pesapal'; }
@@ -54,17 +55,38 @@ function applyReconciliationSchedule(payment, status, now = new Date()) {
   return schedule;
 }
 
-async function findReusableCheckout(user, plan) {
+async function findReusableCheckout(user, plan, quote) {
   const since = new Date(Date.now() - 15 * 60 * 1000);
-  return Payment.findOne({ user: user._id, provider: 'pesapal', status: 'pending', 'metadata.plan': plan.slug, createdAt: { $gte: since }, checkoutUrl: { $ne: '' } }).sort({ createdAt: -1 });
+  return Payment.findOne({
+    user: user._id,
+    provider: 'pesapal',
+    status: 'pending',
+    'metadata.plan': plan.slug,
+    amount: Number(quote?.amountDue ?? plan.price ?? 0),
+    'metadata.changeKind': quote?.kind || 'new',
+    createdAt: { $gte: since },
+    checkoutUrl: { $ne: '' }
+  }).sort({ createdAt: -1 });
 }
 
 async function createCheckoutSession({ user, planSlug, onboarding = false }) {
   const plan = await getPlanBySlug(planSlug);
   if (!plan || plan.isActive === false) { const error = new Error('Selected plan is not available.'); error.status = 404; throw error; }
 
+  const quote = await getPlanChangeQuote(user, plan);
+  if (quote.kind === 'same') {
+    const error = new Error(`Your ${plan.name} plan is already active through ${quote.currentSubscription?.currentPeriodEnd ? new Date(quote.currentSubscription.currentPeriodEnd).toLocaleDateString('en-US') : 'the current access period'}.`);
+    error.status = 409;
+    throw error;
+  }
+  if (['downgrade', 'lateral'].includes(quote.kind)) {
+    const error = new Error('Lower-price and equal-price plan changes are scheduled from Billing and take effect after the current access period.');
+    error.status = 409;
+    throw error;
+  }
+
   if (!isFreePlan(plan)) {
-    const reusable = await findReusableCheckout(user, plan);
+    const reusable = await findReusableCheckout(user, plan, quote);
     if (reusable) {
       if (onboarding && !reusable.metadata?.onboarding) {
         reusable.metadata = mergeMetadata(reusable.metadata || {}, { onboarding: true });
@@ -75,17 +97,24 @@ async function createCheckoutSession({ user, planSlug, onboarding = false }) {
   }
 
   const resolvedProvider = isFreePlan(plan) ? 'free' : 'pesapal';
+  const planSnapshot = snapshotPlan(plan);
+  const chargeAmount = isFreePlan(plan) ? 0 : Number(quote.amountDue ?? plan.price ?? 0);
+  const checkoutPlan = typeof plan.toObject === 'function' ? plan.toObject() : { ...plan };
+  checkoutPlan.price = chargeAmount;
+  if (quote.kind === 'upgrade') checkoutPlan.name = `${plan.name} upgrade`;
   const session = isFreePlan(plan)
     ? { provider: 'free', status: 'paid', checkoutUrl: '', reference: `free_${Date.now()}_${user._id || user.id}`, message: 'Free trial activated.' }
-    : await getBillingProvider().createCheckoutSession({ user, plan });
+    : await getBillingProvider().createCheckoutSession({ user, plan: checkoutPlan });
 
   if (!isFreePlan(plan)) await createPendingSubscription(user, plan.slug, { paymentProvider: resolvedProvider, metadata: { selectedAt: new Date().toISOString() } });
 
   const payment = await Payment.create({
-    user: user._id, provider: resolvedProvider, amount: Number(plan.price || 0), currency: String(plan.currency || 'USD').toUpperCase(),
+    user: user._id, provider: resolvedProvider, amount: chargeAmount, currency: String(plan.currency || 'USD').toUpperCase(),
     status: isFreePlan(plan) ? 'paid' : 'pending', reference: session.reference || `${resolvedProvider}_${Date.now()}`,
     providerReference: session.orderTrackingId || session.providerReference || '', checkoutUrl: session.checkoutUrl || '',
-    metadata: mergeMetadata({ plan: plan.slug, onboarding: Boolean(onboarding), expectedAmount: Number(plan.price || 0), expectedCurrency: String(plan.currency || 'USD').toUpperCase(), checkoutUrl: session.checkoutUrl, message: session.message, providerCheckoutStatus: session.status || '', events: [{ type: 'checkout_created', at: new Date().toISOString() }] }, session.metadata ? { [resolvedProvider]: session.metadata } : {}, session.orderTrackingId ? { orderTrackingId: session.orderTrackingId } : {}),
+    planSnapshot,
+    billingChange: { kind: quote.kind, previousSubscriptionId: quote.currentSubscription?._id, unusedCredit: Number(quote.unusedCredit || 0), remainingFraction: Number(quote.remainingFraction || 0), listPrice: Number(plan.price || 0), amountDue: chargeAmount, calculatedAt: quote.calculatedAt || new Date() },
+    metadata: mergeMetadata({ plan: plan.slug, onboarding: Boolean(onboarding), expectedAmount: chargeAmount, expectedCurrency: String(plan.currency || 'USD').toUpperCase(), listPrice: Number(plan.price || 0), unusedCredit: Number(quote.unusedCredit || 0), changeKind: quote.kind, previousSubscriptionId: quote.currentSubscription?._id ? String(quote.currentSubscription._id) : '', remainingFraction: Number(quote.remainingFraction || 0), checkoutUrl: session.checkoutUrl, message: session.message, providerCheckoutStatus: session.status || '', events: [{ type: 'checkout_created', at: new Date().toISOString() }] }, session.metadata ? { [resolvedProvider]: session.metadata } : {}, session.orderTrackingId ? { orderTrackingId: session.orderTrackingId } : {}),
     paidAt: isFreePlan(plan) ? new Date() : undefined,
     reconciliationStatus: isFreePlan(plan) ? 'settled' : 'scheduled',
     nextReconcileAt: isFreePlan(plan) ? undefined : new Date(Date.now() + 2 * 60 * 1000)
@@ -93,7 +122,7 @@ async function createCheckoutSession({ user, planSlug, onboarding = false }) {
 
   // Free trials need no provider proof. Paid plans are activated only by
   // reconcilePaymentFromProvider after a server-to-server Pesapal verification.
-  if (isFreePlan(plan)) await activatePlanForUser(user, plan.slug, { paymentProvider: payment.provider, metadata: { paymentId: payment._id, activatedBy: 'free_checkout' } });
+  if (isFreePlan(plan)) await activatePlanForUser(user, plan.slug, { paymentProvider: payment.provider, planSnapshot, metadata: { paymentId: payment._id, activatedBy: 'free_checkout', billingChange: payment.billingChange } });
   return { plan, session, payment };
 }
 
@@ -196,11 +225,13 @@ async function reconcilePaymentFromProvider({ providerName, payload, user, sourc
       if (!billingUser) throw new Error('The account for this verified payment no longer exists.');
       await activatePlanForUser(billingUser, payment.metadata.plan, {
         paymentProvider: payment.provider,
+        planSnapshot: payment.planSnapshot,
         metadata: {
           paymentId: payment._id,
           providerReference: payment.providerReference,
           confirmationCode: verification.confirmationCode,
-          activatedBy: source
+          activatedBy: source,
+          billingChange: payment.billingChange
         }
       });
     } else if (['failed', 'refunded', 'reversed'].includes(status) && previousStatus === 'paid') {

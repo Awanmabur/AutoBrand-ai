@@ -8,7 +8,7 @@ const Media = require('../models/Media');
 const Post = require('../models/Post');
 const SocialAccount = require('../models/SocialAccount');
 const TeamMember = require('../models/TeamMember');
-const { getCurrentPlan, getUsagePeriod } = require('./subscription.service');
+const { getCurrentPlan, getCurrentSubscription, getUsagePeriod } = require('./subscription.service');
 const { ACTIVE_SOCIAL_STATUSES, SCHEDULED_POST_STATUSES } = require('./usageLimitService');
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -162,8 +162,9 @@ async function buildLiveUsageCounts(user, period) {
 
 async function buildUsageDashboard(user) {
   const period = await getUsagePeriod(user);
-  const [plan, usage, liveUsage] = await Promise.all([
+  const [plan, subscription, usage, liveUsage] = await Promise.all([
     getCurrentPlan(user),
+    getCurrentSubscription(user),
     getUsageForWindow(user, period),
     buildLiveUsageCounts(user, period)
   ]);
@@ -176,7 +177,25 @@ async function buildUsageDashboard(user) {
     const percent = unlimited ? 0 : Number(limit || 0) ? Math.min(100, Math.round((used / Number(limit)) * 100)) : 100;
     return { limitName, metric, label: definition.label || limitName, limit, used, percent, unlimited, warn: !unlimited && percent >= 80 };
   });
-  return { plan, usage, liveUsage, cards, period };
+  const tokenLimit = Number(plan?.aiConfig?.monthlyTokenLimit || 0);
+  if (tokenLimit !== 0 || user.role === 'super_admin') {
+    const tokenUsed = Number(subscription?.aiTokensUsed || 0);
+    const tokenReserved = Number(subscription?.aiTokensReserved || 0);
+    const unlimited = user.role === 'super_admin' || tokenLimit < 0;
+    const percent = unlimited ? 0 : tokenLimit > 0 ? Math.min(100, Math.round(((tokenUsed + tokenReserved) / tokenLimit) * 100)) : 100;
+    cards.push({
+      limitName: 'monthlyTokenLimit',
+      metric: 'ai_tokens',
+      label: 'AI tokens',
+      limit: tokenLimit,
+      used: tokenUsed,
+      reserved: tokenReserved,
+      percent,
+      unlimited,
+      warn: !unlimited && percent >= 80
+    });
+  }
+  return { plan, subscription, usage, liveUsage, cards, period };
 }
 
 module.exports = { LIMIT_DEFINITIONS, buildLiveUsageCounts, buildUsageDashboard, getMonthlyUsage, getUsageForWindow, monthWindow, recordUsage };

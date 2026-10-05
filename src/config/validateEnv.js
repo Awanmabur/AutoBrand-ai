@@ -37,6 +37,23 @@ function isPublicHttpsUrl(value) {
 }
 
 
+
+function isValidHostname(value) {
+  const text = cleanEnvForValidation(value).toLowerCase();
+  if (!text || text.includes('*') || text.includes('/') || text.includes('://') || /\s/.test(text)) return false;
+  try {
+    const parsed = new URL(`https://${text}`);
+    return parsed.hostname === text && !parsed.username && !parsed.password && !parsed.port;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function isValidEmail(value) {
+  const text = cleanEnvForValidation(value);
+  return !text || (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) && text.length <= 320);
+}
+
 function sameHostname(left, right) {
   try {
     return new URL(left).hostname.toLowerCase() === new URL(right).hostname.toLowerCase();
@@ -53,11 +70,13 @@ function validateEnvironment({ production = env.nodeEnv === 'production' } = {})
   if (!['web', 'external', 'off'].includes(env.aiGenerationWorkerMode)) errors.push('AI_GENERATION_WORKER_MODE must be web, external, or off.');
   if (!['web', 'external', 'off'].includes(env.analyticsSyncWorkerMode)) errors.push('ANALYTICS_SYNC_WORKER_MODE must be web, external, or off.');
   if (!['web', 'external', 'off'].includes(env.paymentReconciliationWorkerMode)) errors.push('PAYMENT_RECONCILIATION_WORKER_MODE must be web, external, or off.');
+  if (!['web', 'external', 'off'].includes(env.aiBrainWorkerMode)) errors.push('AI_BRAIN_WORKER_MODE must be web, external, or off.');
   if (!['required', 'optional', 'disabled'].includes(env.emailDeliveryMode)) errors.push('EMAIL_DELIVERY_MODE must be required, optional, or disabled.');
   if (!['gridfs', 'cloudinary', 'local'].includes(env.generatedMediaStorage)) errors.push('GENERATED_MEDIA_STORAGE must be gridfs, cloudinary, or local.');
   if (!Number.isInteger(env.port) || env.port < 1 || env.port > 65535) errors.push('PORT must be between 1 and 65535.');
   if (!env.mongoUri) errors.push('MONGO_URI is required.');
   if (env.jwtRefreshMaxAgeMs <= env.jwtAccessMaxAgeMs) errors.push('JWT_REFRESH_EXPIRES_IN must be longer than JWT_ACCESS_EXPIRES_IN.');
+  if (env.mcpEnabled && env.mcpRefreshMaxAgeMs <= env.mcpAccessMaxAgeMs) errors.push('MCP_REFRESH_EXPIRES_IN must be longer than MCP_ACCESS_EXPIRES_IN.');
 
   if (String(env.billingProvider || '').toLowerCase() !== 'pesapal') errors.push('BILLING_PROVIDER must be pesapal.');
   if (String(env.checkoutDefaultProvider || '').toLowerCase() !== 'pesapal') errors.push('CHECKOUT_DEFAULT_PROVIDER must be pesapal.');
@@ -69,14 +88,34 @@ function validateEnvironment({ production = env.nodeEnv === 'production' } = {})
     COOKIE_SECRET: env.cookieSecret,
     CSRF_SECRET: env.csrfSecret,
     WEBHOOK_SECRET: env.webhookSecret,
+    MEDIA_URL_SIGNING_SECRET: env.mediaUrlSigningSecret,
     TOKEN_ENCRYPTION_KEY: env.tokenEncryptionKey
   };
 
   if (production) {
     if (!isHttpsUrl(env.appUrl)) errors.push('APP_URL must be a valid HTTPS URL in production.');
     if (env.publicAppUrl && !isHttpsUrl(env.publicAppUrl)) errors.push('PUBLIC_APP_URL must be a valid HTTPS URL in production.');
+    for (const host of env.allowedHosts || []) {
+      if (!isValidHostname(host)) errors.push(`ALLOWED_HOSTS entry must be a bare exact hostname without scheme, port, path, or wildcard: ${host}`);
+    }
+    if (!isValidEmail(env.supportEmail)) errors.push('SUPPORT_EMAIL must be a valid email address when configured.');
+    if (!isValidEmail(env.securityContactEmail)) errors.push('SECURITY_CONTACT_EMAIL must be a valid email address when configured.');
+    if (!env.supportEmail) warnings.push('SUPPORT_EMAIL is not configured; public contact inquiries will remain visible in Superadmin but email forwarding is disabled.');
+    if (!env.securityContactEmail) warnings.push('SECURITY_CONTACT_EMAIL is not configured; security.txt will point reporters to the public contact page.');
+    if (env.privilegedMfaEnabled) {
+      if (!env.emailDeliveryEnabled) errors.push('PRIVILEGED_MFA_ENABLED=true requires working SMTP/email delivery in production.');
+      if (!isSecureSecret(env.privilegedMfaChallengeSecret)) errors.push('PRIVILEGED_MFA_CHALLENGE_SECRET must be a unique random value of at least 32 characters when privileged MFA is enabled.');
+      if (env.privilegedMfaChallengeSecret && Object.values(secrets).includes(env.privilegedMfaChallengeSecret)) errors.push('PRIVILEGED_MFA_CHALLENGE_SECRET must be distinct from web/session/token-encryption secrets.');
+    }
+    if (!env.privilegedMfaEnabled) warnings.push('PRIVILEGED_MFA_ENABLED is disabled; enable it before granting production administrative access.');
     if (/localhost|127\.0\.0\.1/i.test(env.mongoUri)) errors.push('MONGO_URI must not point to localhost in production.');
     if (env.generatedMediaStorage === 'local') errors.push('GENERATED_MEDIA_STORAGE=local is not allowed in production because local disk is ephemeral. Use gridfs or cloudinary.');
+    if (env.mcpEnabled) {
+      if (!isPublicHttpsUrl(env.mcpOAuthIssuer)) errors.push('MCP_OAUTH_ISSUER must be a public HTTPS URL when MCP_ENABLED=true in production.');
+      if (!isPublicHttpsUrl(env.mcpResourceUrl)) errors.push('MCP_RESOURCE_URL must be a public HTTPS URL when MCP_ENABLED=true in production.');
+      if (!isSecureSecret(env.mcpOAuthTokenSecret)) errors.push('MCP_OAUTH_TOKEN_SECRET must be a unique random value of at least 32 characters when MCP_ENABLED=true.');
+      if (env.mcpOAuthTokenSecret && Object.values(secrets).includes(env.mcpOAuthTokenSecret)) errors.push('MCP_OAUTH_TOKEN_SECRET must be distinct from web/session/token-encryption secrets.');
+    }
 
     if (String(env.pesapalEnvironment || '').toLowerCase() !== 'production') errors.push('PESAPAL_ENVIRONMENT must be production when NODE_ENV=production.');
     if (!env.pesapalConsumerKey || !env.pesapalConsumerSecret) errors.push('PESAPAL_CONSUMER_KEY and PESAPAL_CONSUMER_SECRET are required in production.');
@@ -124,6 +163,7 @@ function validateEnvironment({ production = env.nodeEnv === 'production' } = {})
   if (env.aiGenerationWorkerMode === 'off') warnings.push('AI_GENERATION_WORKER_MODE=off: AI-created posts will remain queued.');
   if (env.analyticsSyncWorkerMode === 'off') warnings.push('ANALYTICS_SYNC_WORKER_MODE=off: provider analytics and asynchronous publication status will not be synchronized.');
   if (env.paymentReconciliationWorkerMode === 'off') warnings.push('PAYMENT_RECONCILIATION_WORKER_MODE=off: missed Pesapal callback/IPN recovery and periodic reversal checks are disabled.');
+  if (env.aiBrainWorkerMode === 'off') warnings.push('AI_BRAIN_WORKER_MODE=off: autonomous AI Brain background runs are disabled; manual/ChatGPT workflows still work.');
   if (env.tokenEncryptionKeySource === 'development_file') warnings.push(`TOKEN_ENCRYPTION_KEY was loaded from ${env.tokenEncryptionKeyFile}. Keep this file when replacing the project, or set TOKEN_ENCRYPTION_KEY explicitly.`);
   if (env.tokenEncryptionKeySource === 'ephemeral_fallback') warnings.push('TOKEN_ENCRYPTION_KEY is ephemeral because the development key file could not be created. Connected social accounts will require reconnection after restart.');
   if (env.redisEnabled && !env.redisConfigured) errors.push('REDIS_ENABLED=true requires REDIS_URL or REDIS_HOST.');

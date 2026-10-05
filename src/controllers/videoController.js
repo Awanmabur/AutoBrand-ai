@@ -167,6 +167,7 @@ async function storeAutoVideo(req, res, next) {
 
     const mediaItems = await selectedMedia(req, brand._id);
     const aiScenes = await generateVideoScenePlan({
+      user: req.user,
       brand,
       goal: req.body.goal,
       offer: req.body.offer,
@@ -213,6 +214,7 @@ async function storeCleanVideo(req, res, next) {
 
     const mediaItems = await selectedMedia(req, brand._id);
     const aiScenes = await generateVideoScenePlan({
+      user: req.user,
       brand,
       goal: req.body.prompt,
       offer: req.body.offer,
@@ -267,6 +269,7 @@ async function storeImageToVideo(req, res, next) {
     }
 
     const aiScenes = await generateVideoScenePlan({
+      user: req.user,
       brand,
       goal: req.body.prompt || 'turn uploaded images into a promotional video',
       offer: req.body.offer,
@@ -322,6 +325,7 @@ async function storeAvatarVideo(req, res, next) {
     }
 
     const aiScenes = await generateVideoScenePlan({
+      user: req.user,
       brand,
       goal: req.body.script || req.body.prompt || 'owner avatar promotional video',
       offer: req.body.offer,

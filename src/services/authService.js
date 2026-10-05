@@ -3,6 +3,11 @@ const User = require('../models/User');
 const env = require('../config/env');
 const { signAccessToken, signRefreshToken, verifyRefreshToken, hashToken } = require('./tokenService');
 
+const legacyAccessCookieName = 'accessToken';
+const legacyRefreshCookieName = 'refreshToken';
+const accessCookieName = env.nodeEnv === 'production' ? '__Host-autobrand-access' : legacyAccessCookieName;
+const refreshCookieName = env.nodeEnv === 'production' ? '__Host-autobrand-refresh' : legacyRefreshCookieName;
+
 function refreshExpiryDate() {
   return new Date(Date.now() + env.jwtRefreshMaxAgeMs);
 }
@@ -105,18 +110,21 @@ async function rotateRefreshToken(refreshToken, req) {
 }
 
 function setAuthCookies(res, tokens) {
-  res.cookie('accessToken', tokens.accessToken, cookieOptions(env.jwtAccessMaxAgeMs));
-  res.cookie('refreshToken', tokens.refreshToken, cookieOptions(env.jwtRefreshMaxAgeMs));
+  res.cookie(accessCookieName, tokens.accessToken, cookieOptions(env.jwtAccessMaxAgeMs));
+  res.cookie(refreshCookieName, tokens.refreshToken, cookieOptions(env.jwtRefreshMaxAgeMs));
+  if (accessCookieName !== legacyAccessCookieName) res.clearCookie(legacyAccessCookieName, { path: '/', sameSite: 'lax', secure: true });
+  if (refreshCookieName !== legacyRefreshCookieName) res.clearCookie(legacyRefreshCookieName, { path: '/', sameSite: 'lax', secure: true });
 }
 
 function clearAuthCookies(res) {
   const options = { path: '/', sameSite: 'lax', secure: env.nodeEnv === 'production' };
-  res.clearCookie('accessToken', options);
-  res.clearCookie('refreshToken', options);
+  for (const name of new Set([accessCookieName, refreshCookieName, legacyAccessCookieName, legacyRefreshCookieName])) {
+    res.clearCookie(name, options);
+  }
 }
 
 function getRefreshTokenFromRequest(req) {
-  return req.cookies?.refreshToken || '';
+  return req.cookies?.[refreshCookieName] || req.cookies?.[legacyRefreshCookieName] || '';
 }
 
 module.exports = {
@@ -126,5 +134,9 @@ module.exports = {
   revokeAllSessions,
   setAuthCookies,
   clearAuthCookies,
-  getRefreshTokenFromRequest
+  getRefreshTokenFromRequest,
+  accessCookieName,
+  refreshCookieName,
+  legacyAccessCookieName,
+  legacyRefreshCookieName
 };

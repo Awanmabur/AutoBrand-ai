@@ -18,6 +18,7 @@ function validate(overrides = {}) {
     COOKIE_SECRET: 'c'.repeat(40),
     CSRF_SECRET: 'd'.repeat(40),
     WEBHOOK_SECRET: 'e'.repeat(40),
+    MEDIA_URL_SIGNING_SECRET: 'g'.repeat(40),
     TOKEN_ENCRYPTION_KEY: 'f'.repeat(40),
     ALLOW_DEVELOPMENT_EMAIL_LINKS: 'false',
     EMAIL_DELIVERY_MODE: 'disabled',

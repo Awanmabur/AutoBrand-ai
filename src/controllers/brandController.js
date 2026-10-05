@@ -3,6 +3,7 @@ const Brand = require('../models/Brand');
 const BrandAsset = require('../models/BrandAsset');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { assertCanCreateBrand } = require('../services/usageLimitService');
+const { assertAiBrainEntitlements, applyAiBrainSettings } = require('../services/aiBrain/aiBrainSettings.service');
 const { addBrandAsset } = require('../services/brandBrain/brandAsset.service');
 const { updateBrandScore } = require('../services/brandBrain/brandScore.service');
 const { assertBrandAccess } = require('../services/authorization/brandAccess.service');
@@ -97,8 +98,20 @@ function brandPayload(body) {
     rejectedStyles: splitLines(body.rejectedStyles),
     highPerformingTopics: splitLines(body.highPerformingTopics),
     brandKnowledgeBase: parseKnowledgeBase(body.brandKnowledgeBase),
+    aiBrain: {
+      enabled: body.aiBrainEnabled === 'on',
+      operatingMode: ['assist', 'approval', 'autopilot'].includes(String(body.aiBrainOperatingMode || '').toLowerCase()) ? String(body.aiBrainOperatingMode).toLowerCase() : 'assist',
+      contentSource: ['manual_assets', 'chatgpt_operator', 'autobrand_ai', 'hybrid'].includes(String(body.aiBrainContentSource || '').toLowerCase()) ? String(body.aiBrainContentSource).toLowerCase() : 'manual_assets',
+      learnFromAnalytics: body.aiBrainLearnFromAnalytics !== 'off',
+      useBestTimes: body.aiBrainUseBestTimes !== 'off',
+      requireApproval: body.aiBrainRequireApproval !== 'off',
+      autoPublish: body.aiBrainAutoPublish === 'on',
+      pauseOnError: body.aiBrainPauseOnError !== 'off',
+      minContentScore: Math.max(1, Math.min(100, Number(body.aiBrainMinContentScore || body.strengthTarget || 80))),
+      instructions: String(body.aiBrainInstructions || '').trim().slice(0, 5000)
+    },
     autoPosting: {
-      enabled: body.autoPostingEnabled === 'on',
+      enabled: body.aiBrainEnabled === 'on' && ['approval', 'autopilot'].includes(String(body.aiBrainOperatingMode || '').toLowerCase()),
       postsPerDay: Number(body.autoPostsPerDay || 1),
       postsPerWeek: Number(body.autoPostsPerWeek || 7),
       postsPerMonth: Number(body.autoPostsPerMonth || 30),
@@ -277,10 +290,13 @@ async function saveBrandUploadAssets({ brand, user, body }) {
 async function store(req, res, next) {
   try {
     await assertCanCreateBrand(req.user);
+    const payload = brandPayload(req.body);
+    await assertAiBrainEntitlements(req.user, payload.aiBrain);
     const brand = await Brand.create({
       owner: req.user._id,
-      ...brandPayload(req.body)
+      ...payload
     });
+    if (payload.aiBrain?.enabled) await applyAiBrainSettings({ user: req.user, brand, input: payload.aiBrain });
     await saveBrandUploadAssets({ brand, user: req.user, body: req.body });
     await updateBrandScore(brand);
 
@@ -325,8 +341,12 @@ async function update(req, res, next) {
     const brand = await assertBrandAccess(req.user, req.params.id, 'brand.manage', { status: 'active' });
     if (!brand) return res.status(404).render('dashboard/pages/error', { layout: req.user ? 'layouts/dashboard' : 'layouts/main' });
 
-    Object.assign(brand, brandPayload(req.body));
-    await brand.save();
+    const payload = brandPayload(req.body);
+    await assertAiBrainEntitlements(req.user, payload.aiBrain, brand._id);
+    const { aiBrain, autoPosting, ...brandFields } = payload;
+    Object.assign(brand, brandFields);
+    brand.autoPosting = { ...(brand.autoPosting?.toObject?.() || brand.autoPosting || {}), ...autoPosting };
+    await applyAiBrainSettings({ user: req.user, brand, input: aiBrain });
     await saveBrandUploadAssets({ brand, user: req.user, body: req.body });
     await updateBrandScore(brand);
 
@@ -346,6 +366,7 @@ async function archive(req, res, next) {
     const brand = await assertBrandAccess(req.user, req.params.id, 'brand.manage', { status: 'active' });
     brand.status = 'archived';
     brand.autoPosting = { ...(brand.autoPosting?.toObject?.() || brand.autoPosting || {}), enabled: false };
+    brand.aiBrain = { ...(brand.aiBrain?.toObject?.() || brand.aiBrain || {}), enabled: false, lastRunStatus: 'paused' };
     await brand.save();
     return res.redirect('/dashboard/brand-brain?brand_archived=1');
   } catch (error) { return next(error); }

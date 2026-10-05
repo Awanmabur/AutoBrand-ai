@@ -26,4 +26,4 @@ Use application/API/audit records for provider calls, administrative actions, fa
 - Pesapal reconciliation failures/reversals;
 - deletion backlog;
 - AI credits/usage by plan and workspace;
-- Manual Publisher publish volume and storage.
+- Publish publish volume and storage.

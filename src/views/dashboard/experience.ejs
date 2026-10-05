@@ -102,33 +102,29 @@
     </div>
 
     <div class="sidebar-scroll" id="sidebarScroll">
-      <p class="nav-label">Overview</p>
+      <p class="nav-label">Main</p>
       <nav class="side-nav">
         <a class="active" href="/dashboard/overview" data-page="overview"><span><svg class="icon"><use href="#icon-home"></use></svg>Dashboard</span><b>Home</b></a>
-        <% if (canSeePage('quick-create')) { %><a href="/dashboard/quick-create" data-page="quick-create"><span><svg class="icon"><use href="#icon-plus"></use></svg><%= aiComposerEnabled ? 'Full Composer' : 'Manual Publisher' %></span><b><%= aiComposerEnabled ? 'AI' : 'No AI' %></b></a><% } %>
-        <% if (canSeePage('brand-brain')) { %><a href="/dashboard/brand-brain" data-page="brand-brain"><span><svg class="icon"><use href="#icon-brain"></use></svg>Brand Brain</span><b><%= dashboardData.nav.brands %></b></a><% } %>
-        <% if (canSeePage('content-library')) { %><a href="/dashboard/content-library" data-page="content-library"><span><svg class="icon"><use href="#icon-grid"></use></svg>Content Library</span><b><%= dashboardData.nav.content %></b></a><% } %>
+        <% if (canSeePage('quick-create')) { %><a href="/dashboard/quick-create" data-page="quick-create"><span><svg class="icon"><use href="#icon-plus"></use></svg>Create</span><b><%= aiComposerEnabled ? 'AI' : 'BYO' %></b></a><% } %>
+        <% if (canSeePage('calendar')) { %><a href="/dashboard/calendar" data-page="calendar"><span><svg class="icon"><use href="#icon-calendar"></use></svg>Calendar</span><b><%= dashboardData.nav.scheduled %></b></a><% } %>
+        <% if (canSeePage('content-library')) { %><a href="/dashboard/content-library" data-page="content-library"><span><svg class="icon"><use href="#icon-grid"></use></svg>Library</span><b><%= dashboardData.nav.content %></b></a><% } %>
+        <% if (canSeePage('social')) { %><a href="/dashboard/social" data-page="social"><span><svg class="icon"><use href="#icon-send"></use></svg>Channels</span><b><%= dashboardData.nav.social %></b></a><% } %>
+        <% if (canSeePage('analytics')) { %><a href="/dashboard/analytics" data-page="analytics"><span><svg class="icon"><use href="#icon-chart"></use></svg>Analytics</span><b>Live</b></a><% } %>
       </nav>
 
-      <p class="nav-label">Planning & Creative</p>
+      <p class="nav-label">Tools</p>
       <nav class="side-nav">
-        <% if (canSeePage('campaigns')) { %><a href="/dashboard/campaigns" data-page="campaigns"><span><svg class="icon"><use href="#icon-chart"></use></svg>Campaigns & Growth</span><b><%= dashboardData.nav.campaigns %></b></a><% } %>
-        <% if (canSeePage('media')) { %><a href="/dashboard/media" data-page="media"><span><svg class="icon"><use href="#icon-image"></use></svg>Media & Images</span><b><%= dashboardData.nav.images %></b></a><% } %>
+        <% if (canSeePage('brand-brain')) { %><a href="/dashboard/brand-brain" data-page="brand-brain"><span><svg class="icon"><use href="#icon-brain"></use></svg>Brand Brain</span><b><%= dashboardData.nav.brands %></b></a><% } %>
+        <% if (canSeePage('campaigns')) { %><a href="/dashboard/campaigns" data-page="campaigns"><span><svg class="icon"><use href="#icon-chart"></use></svg>Campaigns</span><b><%= dashboardData.nav.campaigns %></b></a><% } %>
+        <% if (canSeePage('media')) { %><a href="/dashboard/media" data-page="media"><span><svg class="icon"><use href="#icon-image"></use></svg>Assets</span><b><%= dashboardData.nav.images %></b></a><% } %>
         <% if (canSeePage('video-system')) { %><a href="/dashboard/video-system" data-page="video-system"><span><svg class="icon"><use href="#icon-play"></use></svg>Video Studio</span><b><%= dashboardData.nav.videos %></b></a><% } %>
         <% if (canSeePage('avatar-video')) { %><a href="/dashboard/avatar-video" data-page="avatar-video"><span><svg class="icon"><use href="#icon-avatar"></use></svg>Avatar Video</span><b><%= dashboardData.nav.avatars || 0 %></b></a><% } %>
+        <% if (canSeePage('approvals')) { %><a href="/dashboard/approvals" data-page="approvals"><span><svg class="icon"><use href="#icon-check"></use></svg>Approvals</span><b><%= dashboardData.nav.approvals %></b></a><% } %>
       </nav>
 
-      <p class="nav-label">Publishing</p>
+      <p class="nav-label">Workspace</p>
       <nav class="side-nav">
-        <% if (canSeePage('calendar')) { %><a href="/dashboard/calendar" data-page="calendar"><span><svg class="icon"><use href="#icon-calendar"></use></svg>Calendar & Schedule</span><b><%= dashboardData.nav.scheduled %></b></a><% } %>
-        <% if (canSeePage('social')) { %><a href="/dashboard/social" data-page="social"><span><svg class="icon"><use href="#icon-send"></use></svg>Social Channels</span><b><%= dashboardData.nav.social %></b></a><% } %>
-        <% if (canSeePage('approvals')) { %><a href="/dashboard/approvals" data-page="approvals"><span><svg class="icon"><use href="#icon-check"></use></svg>Approvals & Handoff</span><b><%= dashboardData.nav.approvals %></b></a><% } %>
-        <% if (canSeePage('analytics')) { %><a href="/dashboard/analytics" data-page="analytics"><span><svg class="icon"><use href="#icon-chart"></use></svg>Analytics</span><b>Live</b></a><% } %>
         <a href="/dashboard/notifications" data-page="notifications"><span><svg class="icon"><use href="#icon-message"></use></svg>Notifications</span><b><%= dashboardData.nav.unread || '0' %></b></a>
-      </nav>
-
-      <p class="nav-label">Admin</p>
-      <nav class="side-nav">
         <% if (canSeePage('team')) { %><a href="/dashboard/team" data-page="team"><span><svg class="icon"><use href="#icon-users"></use></svg>Team & Roles</span><b><%= dashboardData.nav.team || 0 %></b></a><% } %>
         <a href="/dashboard/billing" data-page="billing"><span><svg class="icon"><use href="#icon-card"></use></svg>Plan & Billing</span><b><%= dashboardData.nav.plan %></b></a>
         <% if (canSeeDashboardPlans) { %><a href="/dashboard/plans" data-page="plans"><span><svg class="icon"><use href="#icon-card"></use></svg>Plan Management</span><b>Plans</b></a><% } %>
@@ -150,11 +146,19 @@
         </form>
       </nav>
 
-      <div class="upgrade-card">
-        <strong>Need more capacity?</strong>
-        <p>Compare your current plan with Manual Publisher and the AI plans before you upgrade.</p>
-        <a class="btn btn-light" href="/dashboard/billing">View plan & usage</a>
-      </div>
+      <% if (dashboardData.user.role === 'Super Admin') { %>
+        <div class="upgrade-card">
+          <strong>Superadmin mode</strong>
+          <p>All AutoBrand features, limits, AI tools and platform controls are unlocked.</p>
+          <a class="btn btn-light" href="/dashboard/admin">Platform controls</a>
+        </div>
+      <% } else { %>
+        <div class="upgrade-card">
+          <strong>Need more capacity?</strong>
+          <p>Compare Publish and AI plans when your brands, team or automation needs grow.</p>
+          <a class="btn btn-light" href="/dashboard/billing">View plan & usage</a>
+        </div>
+      <% } %>
     </div>
   </aside>
 
@@ -585,7 +589,7 @@
           <% supportedPlatforms.forEach((platform) => { %>
             <% const liveCount = socialAccounts.filter((account) => account.platform === platform.key).length; %>
             <% const iconKey = platform.key === 'x' ? 'x_platform' : platform.key; %>
-            <a class="channel-tile" href="/dashboard/social"><svg class="icon"><use href="#icon-<%= iconKey %>"></use></svg><span><%= platform.label %><small><%= liveCount %> live</small></span></a>
+            <a class="channel-tile" href="/dashboard/channels/<%= encodeURIComponent(platform.key) %>"><svg class="icon"><use href="#icon-<%= iconKey %>"></use></svg><span><%= platform.label %><small><%= liveCount %> live · open workspace</small></span></a>
           <% }) %>
         </div>
       </article>
@@ -716,12 +720,13 @@
 
     <template id="dashboard-form-admin">
       <article class="card real-form-card">
-        <div class="card-head"><div><h3>Admin console shortcut</h3><p>Super-admin tools are available here: plans, users, brands, subscriptions, payments, AI usage, failed jobs, connected accounts, provider readiness, API logs and audit logs.</p></div><a class="btn btn-primary" href="/dashboard/plans">Open plan page</a></div>
+        <div class="card-head"><div><h3>Admin console shortcut</h3><p>Super-admin tools are available here: plans, users, brands, subscriptions, payments and public inquiries. Monitor AI usage, failed jobs, connected accounts, provider readiness, API logs and audit logs.</p></div><a class="btn btn-primary" href="/dashboard/plans">Open plan page</a></div>
         <div class="data-list">
           <div class="data-row"><div><strong>Subscription plan management</strong><span>Create, edit, duplicate, reorder, activate and deactivate plans from the production admin page.</span></div><a class="badge" href="/dashboard/plans">Plans</a></div>
           <div class="data-row"><div><strong>User & subscription management</strong><span>Use the admin workspace for account status and plan control.</span></div><span class="badge">Admin</span></div>
           <div class="data-row"><div><strong>Failed publishing and AI job retry</strong><span>Retry failed posts and failed video jobs through the existing admin backend.</span></div><span class="badge">Retry</span></div>
           <div class="data-row"><div><strong>Provider readiness and logs</strong><span>Review connected accounts, provider readiness, AI usage, API logs, audit logs and payments.</span></div><span class="badge">Logs</span></div>
+          <div class="data-row"><div><strong>Public contact inquiries</strong><span>Review website contact messages and mark them open or resolved from the same admin workspace.</span></div><span class="badge">Inbox</span></div>
         </div>
       </article>
     </template>
@@ -776,6 +781,67 @@
             <label class="full">Current password<input name="password" type="password" autocomplete="current-password" required placeholder="Re-authenticate before linking"></label>
             <button class="btn btn-primary full" type="submit">Link Google securely</button>
           </form>
+        <% } %>
+      </article>
+
+      <article class="card real-form-card">
+        <% const drive = dashboardData.user.googleDrive || {}; %>
+        <div class="card-head"><div><h3>Google Drive asset library</h3><p>Use your own Drive as an AutoBrand asset vault. AutoBrand creates a private root folder and one folder per brand, without requesting access to your whole Drive.</p></div><span class="badge"><%= drive.connected ? 'Connected' : 'Optional' %></span></div>
+        <% if (drive.connected) { %>
+          <div class="data-list">
+            <div class="data-row"><div><strong><%= drive.name || drive.email || 'Google Drive' %></strong><span><%= drive.email || '' %> · Folder: <%= drive.rootFolderName || 'AutoBrand AI' %></span></div><span class="badge">Ready</span></div>
+            <% if (drive.rootWebViewLink) { %><div class="data-row"><div><strong>AutoBrand Drive folder</strong><span>Assets created or uploaded through AutoBrand can be mirrored here.</span></div><a class="btn btn-ghost" href="<%= drive.rootWebViewLink %>" target="_blank" rel="noopener noreferrer">Open Drive</a></div><% } %>
+          </div>
+          <form action="/dashboard/actions/settings/storage-preference" method="post" class="real-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label class="full">Default asset storage
+              <select name="assetStoragePreference">
+                <option value="platform" <%= dashboardData.user.assetStoragePreference === 'platform' ? 'selected' : '' %>>AutoBrand storage — fastest publishing</option>
+                <option value="google_drive" <%= dashboardData.user.assetStoragePreference === 'google_drive' ? 'selected' : '' %>>Google Drive — keep the original in my Drive</option>
+                <option value="both" <%= dashboardData.user.assetStoragePreference === 'both' ? 'selected' : '' %>>Both — publishing copy + Drive backup</option>
+              </select>
+            </label>
+            <button class="btn btn-primary full" type="submit">Save storage preference</button>
+          </form>
+          <form action="/dashboard/actions/settings/google-drive/disconnect" method="post" class="real-form-grid" data-confirm="Disconnect Google Drive from AutoBrand? Existing Drive files will remain in your Drive.">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="btn btn-ghost full" type="submit">Disconnect Google Drive</button>
+          </form>
+        <% } else { %>
+          <% if (dashboardData.user.googleDriveConfigured) { %>
+            <div class="data-row full"><div><strong>Private by default</strong><span>AutoBrand requests the Google Drive <code>drive.file</code> scope, so it manages only files and folders created or explicitly used with AutoBrand.</span></div><span class="badge">Least access</span></div>
+            <a class="btn btn-primary" href="/dashboard/settings/google-drive/connect">Connect Google Drive</a>
+          <% } else { %>
+            <div class="data-row full"><div><strong>Drive integration not configured</strong><span>Add the Google Drive OAuth environment variables to enable one-click connection.</span></div><span class="badge">Admin setup</span></div>
+          <% } %>
+        <% } %>
+      </article>
+
+      <article class="card real-form-card">
+        <div class="card-head"><div><h3>ChatGPT & MCP connections</h3><p>Turn ChatGPT into an AutoBrand operator. With your approval it can create drafts, upload generated images/videos, choose Drive or AutoBrand storage, schedule/publish posts and read performance analytics. Revoking a connection immediately blocks its access and refresh tokens.</p></div><span class="badge"><%= dashboardData.user.mcpAuthorizations?.filter((item) => item.active).length || 0 %> active</span></div>
+        <% const mcpAuthorizations = dashboardData.user.mcpAuthorizations || []; %>
+        <% if (!mcpAuthorizations.length) { %>
+          <div class="data-row full"><div><strong>No MCP connections</strong><span>No ChatGPT or other MCP client is currently linked to this AutoBrand account.</span></div><span class="badge">Secure</span></div>
+        <% } else { %>
+          <div class="data-list">
+            <% mcpAuthorizations.forEach((connection) => { %>
+              <div class="data-row">
+                <div>
+                  <strong><%= connection.clientName || 'MCP client' %></strong>
+                  <span><%= (connection.scopes || []).join(' · ') || 'No scopes' %> · Last used <%= connection.lastUsedAt ? new Date(connection.lastUsedAt).toLocaleString() : 'never' %></span>
+                </div>
+                <% if (connection.active) { %>
+                  <form action="/dashboard/actions/settings/mcp/revoke" method="post" data-confirm="Revoke this ChatGPT / MCP connection? Existing AutoBrand MCP access will stop working.">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" name="clientId" value="<%= connection.clientId %>">
+                    <button class="btn btn-ghost btn-danger-subtle" type="submit">Revoke</button>
+                  </form>
+                <% } else { %>
+                  <span class="badge">Revoked</span>
+                <% } %>
+              </div>
+            <% }) %>
+          </div>
         <% } %>
       </article>
 

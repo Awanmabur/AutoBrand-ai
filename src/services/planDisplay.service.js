@@ -14,12 +14,12 @@ const PLAN_PRESENTATION = Object.freeze({
     outcome: 'Explore Brand Brain, manual publishing, basic AI text/images, calendar and handoff for seven days.'
   },
   'manual-publisher': {
-    displayName: 'Manual Publisher',
+    displayName: 'Publish',
     family: 'manual',
-    familyLabel: 'No-AI plan',
-    workflowLabel: 'Bring your own text and media',
-    bestFor: 'Businesses and teams that already create their own captions, ads, images or videos and mainly need publishing infrastructure.',
-    outcome: 'Create, validate, schedule, approve and publish without any generative-AI usage.'
+    familyLabel: 'Bring your own AI',
+    workflowLabel: 'Bring your own text and media · ChatGPT + Drive',
+    bestFor: 'Businesses and creators who use ChatGPT or their own creative tools and want affordable scheduling, approvals, analytics and reliable publishing.',
+    outcome: 'Let ChatGPT create and manage assets while AutoBrand handles storage, scheduling, publishing and performance.'
   },
   starter: {
     displayName: 'AI Starter',
@@ -255,6 +255,9 @@ function buildComparisonRows(limits = {}, features = {}, aiConfig = {}) {
     { label: 'Auto Mode', value: yesNo(features.autoModeAccess) },
     { label: 'Handoff Mode', value: yesNo(features.handoffModeAccess) },
     { label: 'Approvals', value: yesNo(features.approvalWorkflowAccess) },
+    { label: 'ChatGPT connector', value: yesNo(Boolean(features.chatgptConnectorAccess)) },
+    { label: 'Google Drive assets', value: yesNo(Boolean(features.googleDriveAccess)) },
+    { label: 'Channel workspaces', value: yesNo(Boolean(features.channelWorkspacesAccess)) },
     { label: 'Bulk create', value: yesNo(features.bulkCreateAccess) },
     { label: 'Content score', value: yesNo(features.contentScoreAccess) },
     { label: 'Brand fit checker', value: yesNo(features.brandFitCheckerAccess) },

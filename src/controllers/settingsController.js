@@ -7,7 +7,9 @@ const { isEmailConfigured, sendVerificationEmail } = require('../services/emailS
 const { facebookConnectionChecklist } = require('../services/facebookService');
 const { checkProviders } = require('../services/providerHealthService');
 const { revokeAllSessions, issueAuthTokens, setAuthCookies } = require('../services/authService');
+const { revokeUserAuthorization } = require('../services/mcp/mcpOAuth.service');
 const { isGoogleConfigured, createGoogleState, buildGoogleAuthUrl } = require('../services/googleAuthService');
+const { setTransientCookie } = require('../services/transientCookie.service');
 const {
   applyDeleteAccountRequest,
   cancelDeleteAccountRequest,
@@ -268,8 +270,8 @@ async function linkGoogle(req, res, next) {
       secure: process.env.NODE_ENV === 'production',
       maxAge: 10 * 60 * 1000
     };
-    res.cookie('googleOAuthState', state, cookieOptions);
-    res.cookie('googleOAuthPurpose', 'link', cookieOptions);
+    setTransientCookie(res, 'google-oauth-state', state, 10 * 60 * 1000);
+    setTransientCookie(res, 'google-oauth-purpose', 'link', 10 * 60 * 1000);
     await auditAccountAction(req, 'account.google_link_started');
     return res.redirect(303, buildGoogleAuthUrl(state));
   } catch (error) {
@@ -297,6 +299,20 @@ async function unlinkGoogle(req, res, next) {
   }
 }
 
+
+async function revokeMcpAuthorization(req, res, next) {
+  try {
+    const clientId = String(req.body.clientId || '').trim();
+    if (!clientId) return redirectError(res, 'MCP client ID is required.');
+    const revoked = await revokeUserAuthorization(req.user, clientId);
+    await auditAccountAction(req, 'mcp.oauth.revoked_by_user', { clientId, revoked });
+    return redirectNotice(res, revoked ? 'ChatGPT / MCP connection revoked.' : 'That MCP connection was already revoked.');
+  } catch (error) {
+    if (!error.status) return redirectError(res, error.message);
+    return next(error);
+  }
+}
+
 module.exports = {
   index,
   diagnostics,
@@ -307,5 +323,6 @@ module.exports = {
   deleteAccountRequest,
   cancelDeleteAccount,
   linkGoogle,
-  unlinkGoogle
+  unlinkGoogle,
+  revokeMcpAuthorization
 };

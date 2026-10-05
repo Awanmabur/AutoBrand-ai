@@ -43,7 +43,7 @@
 
 - [ ] Public pricing, signup, checkout, dashboard billing and admin Plan Management all use `US$` for USD amounts.
 - [ ] Free Trial is shown as `US$0 · 7 days`, requires no Pesapal payment and does not automatically convert to paid.
-- [ ] Manual Publisher and AI Starter are both clearly shown as `US$10 · 1 month of access`, with Manual Publisher explicitly no-AI and AI Starter explicitly generative-AI enabled.
+- [ ] Publish and AI Starter are both clearly shown as `US$10 · 1 month of access`; Publish has zero included AutoBrand generative-AI credits but includes ChatGPT/Codex connector, Google Drive, scheduling and analytics, while AI Starter includes AutoBrand generative AI.
 - [ ] No customer-facing surface promises automatic renewal or automatic charging; the current Pesapal flow requires a new verified payment for the next access period.
 - [ ] New Free Trial signup lands in the welcome/workspace setup flow without visiting checkout.
 - [ ] New paid signup lands on the exact selected-plan review/Pesapal checkout and enters the same welcome/workspace setup flow only after verified payment.
@@ -56,7 +56,7 @@
 
 - [ ] Owner and invited member can work on the same brand according to RBAC.
 - [ ] Removed member cannot publish through a stale queued job.
-- [ ] Manual Publisher performs draft/schedule/publish without any AI call/credit use.
+- [ ] Publish performs draft/schedule/publish without any implicit AutoBrand AI call/credit use; a connected ChatGPT/Codex account is treated as bring-your-own AI.
 - [ ] Bulk CSV import validates whole batch before insertion.
 - [ ] Local template video produces a real MP4 at 0 AI credits.
 - [ ] Archive/restore works.
@@ -78,3 +78,33 @@
 - [ ] AI/analytics worker mode matches actual deployed processes.
 - [ ] Monitoring alerts exist for failures/backlogs/payment discrepancies.
 - [ ] Account deletion scheduling and cancellation tested.
+
+## Google Drive
+
+- [ ] Google OAuth client has the exact production callback URL `/dashboard/settings/google-drive/callback`.
+- [ ] Requested scope is the narrow `drive.file` scope plus identity scopes; full-Drive access is not requested.
+- [ ] Connect, refresh, reconnect and disconnect flows work for a controlled account.
+- [ ] AutoBrand / Google Drive / Both storage preference is tested.
+- [ ] Existing media can be backed up to Drive and ChatGPT `upload_media` can target Drive/Both.
+- [ ] Disconnect/account deletion revokes AutoBrand access but does not delete user-owned Drive files.
+
+## ChatGPT / MCP connector
+
+- [ ] `MCP_ENABLED=true` only after the AutoBrand deployment is public HTTPS.
+- [ ] `MCP_OAUTH_ISSUER` is the canonical public AutoBrand origin.
+- [ ] `MCP_RESOURCE_URL` is the canonical HTTPS `/mcp` URL.
+- [ ] `MCP_OAUTH_TOKEN_SECRET` is unique, random, >=32 characters and not reused by any web/session/provider secret.
+- [ ] `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` return the expected resource and scopes.
+- [ ] `/.well-known/oauth-authorization-server` advertises PKCE S256, issuer identification, DCR and CIMD support.
+- [ ] MCP Inspector connects successfully in both handshake mode and 2026 modern discovery mode.
+- [ ] ChatGPT Developer Mode can add the production `/mcp` URL and complete AutoBrand login/consent.
+- [ ] `get_profile` identifies the correct AutoBrand account and exposes no unrelated sensitive data.
+- [ ] Tool scan shows `outputSchema`, OAuth `securitySchemes`, `_meta.securitySchemes`, profile metadata and file metadata.
+- [ ] A generated/uploaded image can pass through `upload_media` to AutoBrand, Google Drive or both and becomes a durable AutoBrand `Media` record.
+- [ ] A test draft can be created/edited without publishing.
+- [ ] Immediate publish is tested only against test social accounts before production brands.
+- [ ] Scheduled publish can be cancelled before provider dispatch.
+- [ ] Provider delivery IDs/errors are visible through `get_post` without exposing provider tokens.
+- [ ] Refresh-token rotation/replay protection has been tested.
+- [ ] Revoking a ChatGPT/MCP connection in Settings immediately prevents further MCP access.
+- [ ] Account deletion removes the user's MCP codes, refresh tokens, grants and revocation records.

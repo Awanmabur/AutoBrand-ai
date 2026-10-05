@@ -2,7 +2,6 @@ const path = require('path');
 const express = require('express');
 const expressLayouts = require('express-ejs-layouts');
 const helmet = require('helmet');
-const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const methodOverride = require('method-override');
 const mongoose = require('mongoose');
@@ -10,6 +9,7 @@ const crypto = require('crypto');
 const requestSanitizer = require('./middlewares/requestSanitizer');
 const { createRateLimiter } = require('./config/rateLimit');
 const { streamGridFsMedia } = require('./services/gridFsMediaStorage.service');
+const { streamMedia: streamGoogleDriveMedia } = require('./services/storage/googleDrive.service');
 
 const env = require('./config/env');
 const attachUser = require('./middlewares/attachUser');
@@ -17,7 +17,11 @@ const csrfProtection = require('./middlewares/csrfProtection');
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
 const databaseAvailability = require('./middlewares/databaseAvailability');
+const hostValidation = require('./middlewares/hostValidation');
+const noIndexPrivate = require('./middlewares/noIndexPrivate');
+const safeRequestLogger = require('./middlewares/safeRequestLogger');
 
+const discoveryRoutes = require('./routes/discovery');
 const publicRoutes = require('./routes/public');
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -38,6 +42,11 @@ const avatarRoutes = require('./routes/avatars');
 const settingsRoutes = require('./routes/settings');
 const adminRoutes = require('./routes/admin');
 const webhookRoutes = require('./routes/webhooks');
+const mcpOAuthController = require('./controllers/mcp/oauth.controller');
+const mcpOAuthPublicRoutes = require('./routes/mcp/oauthPublic');
+const mcpOAuthBrowserRoutes = require('./routes/mcp/oauthBrowser');
+const mcpRoutes = require('./routes/mcp');
+const mcpController = require('./controllers/mcp/mcp.controller');
 
 const app = express();
 app.disable('x-powered-by');
@@ -59,12 +68,14 @@ app.use(helmet({
       baseUri: ["'self'"],
       objectSrc: ["'none'"],
       scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'"],
+      styleSrcElem: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+      styleSrcAttr: ["'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       mediaSrc: ["'self'", 'blob:', 'https:'],
       connectSrc: ["'self'", 'https:'],
-      frameSrc: ["'self'", 'https:'],
-      frameAncestors: ["'self'"],
+      frameSrc: ["'self'"],
+      frameAncestors: ["'none'"],
       formAction: ["'self'"],
       ...(env.nodeEnv === 'production' ? { upgradeInsecureRequests: [] } : {})
     }
@@ -79,7 +90,9 @@ app.use((_req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(self), usb=()');
   next();
 });
-app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
+app.use(hostValidation);
+app.use(noIndexPrivate);
+app.use(safeRequestLogger(env.nodeEnv));
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   dotfiles: 'deny',
   etag: true,
@@ -109,7 +122,7 @@ app.use((req, res, next) => {
 
 function health(req, res) {
   res.set('Cache-Control', 'no-store');
-  res.json({ ok: true, app: env.appName, timestamp: new Date().toISOString(), requestId: req.id });
+  res.json(env.nodeEnv === 'production' ? { ok: true, requestId: req.id } : { ok: true, app: env.appName, timestamp: new Date().toISOString(), requestId: req.id });
 }
 
 app.get('/health', health);
@@ -117,16 +130,31 @@ app.get('/healthz', health);
 app.get('/readyz', (req, res) => {
   const ready = mongoose.connection.readyState === 1;
   res.set('Cache-Control', 'no-store');
-  return res.status(ready ? 200 : 503).json({ ok: ready, mongoState: mongoose.connection.readyState, redisEnabled: env.redisEnabled, requestId: req.id });
+  const payload = env.nodeEnv === 'production' ? { ok: ready, requestId: req.id } : { ok: ready, mongoState: mongoose.connection.readyState, redisEnabled: env.redisEnabled, requestId: req.id };
+  return res.status(ready ? 200 : 503).json(payload);
 });
+
+// MCP/OAuth discovery is intentionally available before database middleware so
+// ChatGPT can discover authentication even during a database incident.
+app.get('/.well-known/oauth-protected-resource', mcpOAuthController.protectedResource);
+app.get('/.well-known/oauth-protected-resource/mcp', mcpOAuthController.protectedResource);
+app.get('/.well-known/oauth-authorization-server', mcpOAuthController.authorizationServer);
+app.get('/.well-known/openid-configuration', mcpOAuthController.authorizationServer);
+app.get('/docs/mcp', mcpController.docs);
+app.use('/', discoveryRoutes);
 
 // Fail fast while MongoDB is reconnecting instead of letting media,
 // authentication, dashboard, API, or publishing requests wait for timeouts.
 app.use(databaseAvailability);
 // Generated media persisted in MongoDB/GridFS. This route is public so Meta can
 // fetch it from the configured HTTPS APP_URL, and supports byte ranges for video.
+app.get('/uploads/db/:id/t/:token/:filename?', streamGridFsMedia);
+app.head('/uploads/db/:id/t/:token/:filename?', streamGridFsMedia);
+// Legacy unsigned URLs are kept only for an explicit migration window.
 app.get('/uploads/db/:id/:filename?', streamGridFsMedia);
 app.head('/uploads/db/:id/:filename?', streamGridFsMedia);
+app.get('/uploads/drive/:id/:token/:filename?', streamGoogleDriveMedia);
+app.head('/uploads/drive/:id/:token/:filename?', streamGoogleDriveMedia);
 app.use(express.urlencoded({ extended: false, limit: '2mb', parameterLimit: 1000 }));
 app.use(express.json({
   limit: '2mb',
@@ -142,8 +170,14 @@ app.use(createRateLimiter({
   limit: env.rateLimitMax
 }));
 
+// OAuth token/registration and MCP JSON-RPC calls are bearer/PKCE protected and
+// must not require browser CSRF cookies.
+app.use('/mcp/oauth', mcpOAuthPublicRoutes);
+app.use('/mcp', mcpRoutes);
+
 app.use(attachUser);
 app.use(csrfProtection);
+app.use('/mcp/oauth', mcpOAuthBrowserRoutes);
 
 app.use((req, res, next) => {
   if (req.path.startsWith('/auth') || req.path.startsWith('/dashboard')) {

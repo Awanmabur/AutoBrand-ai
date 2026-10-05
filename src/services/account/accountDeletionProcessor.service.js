@@ -11,6 +11,7 @@ const BrandAsset = require('../../models/BrandAsset');
 const AiJob = require('../../models/AiJob');
 const AiVideoJob = require('../../models/AiVideoJob');
 const Analytics = require('../../models/Analytics');
+const AnalyticsSyncJob = require('../../models/AnalyticsSyncJob');
 const GrowthAsset = require('../../models/GrowthAsset');
 const AvatarProfile = require('../../models/AvatarProfile');
 const AvatarConsent = require('../../models/AvatarConsent');
@@ -26,10 +27,19 @@ const Notification = require('../../models/Notification');
 const ApiLog = require('../../models/ApiLog');
 const AuditLog = require('../../models/AuditLog');
 const RefreshToken = require('../../models/RefreshToken');
+const CreditLedger = require('../../models/CreditLedger');
+const McpAuthorizationCode = require('../../models/McpAuthorizationCode');
+const McpRefreshToken = require('../../models/McpRefreshToken');
+const McpOAuthGrant = require('../../models/McpOAuthGrant');
+const McpRevokedAccessToken = require('../../models/McpRevokedAccessToken');
+const CloudStorageConnection = require('../../models/CloudStorageConnection');
 const Subscription = require('../../models/Subscription');
 const Payment = require('../../models/Payment');
+const PublicInquiry = require('../../models/PublicInquiry');
+const PrivilegedLoginChallenge = require('../../models/PrivilegedLoginChallenge');
 const { deleteGridFsFile, gridFsIdFromUrl } = require('../gridFsMediaStorage.service');
 const { cloudinary, isCloudinaryConfigured } = require('../../config/cloudinary');
+const googleDrive = require('../storage/googleDrive.service');
 
 const LEASE_MS = 15 * 60 * 1000;
 let timer = null;
@@ -65,7 +75,7 @@ async function removeStoredAsset(asset = {}) {
     return;
   }
 
-  if (fileUrl.startsWith('/uploads/')) {
+  if (fileUrl.startsWith('/uploads/') && !fileUrl.startsWith('/uploads/drive/')) {
     const publicRoot = path.resolve(process.cwd(), 'public');
     const absolute = path.resolve(publicRoot, `.${fileUrl.split(/[?#]/)[0]}`);
     if (absolute.startsWith(`${publicRoot}${path.sep}`)) await fs.unlink(absolute).catch(() => {});
@@ -95,6 +105,7 @@ async function purgeOwnedWorkspaces(userId) {
     Post.deleteMany({ brand: { $in: brandIds } }),
     Campaign.deleteMany({ brand: { $in: brandIds } }),
     Analytics.deleteMany({ brand: { $in: brandIds } }),
+    AnalyticsSyncJob.deleteMany({ brand: { $in: brandIds } }),
     AiJob.deleteMany({ brand: { $in: brandIds } }),
     AiVideoJob.deleteMany({ brand: { $in: brandIds } }),
     GrowthAsset.deleteMany({ brand: { $in: brandIds } }),
@@ -117,10 +128,30 @@ async function finalizeAccountDeletion(user) {
   const workspaceResult = await purgeOwnedWorkspaces(userId);
   const now = new Date();
 
+  // Revoke AutoBrand's provider access before removing the connection record.
+  // User-owned Google Drive files remain in the user's Drive by design.
+  await googleDrive.disconnect(userId).catch((error) => {
+    console.warn('[account-deletion] Google Drive revoke failed', { userId: String(userId), message: error.message });
+  });
+
   await Promise.all([
     RefreshToken.deleteMany({ user: userId }),
+    PrivilegedLoginChallenge.deleteMany({ user: userId }),
+    McpAuthorizationCode.deleteMany({ user: userId }),
+    McpRefreshToken.deleteMany({ user: userId }),
+    McpOAuthGrant.deleteMany({ user: userId }),
+    McpRevokedAccessToken.deleteMany({ user: userId }),
+    CloudStorageConnection.deleteMany({ owner: userId }),
     Notification.deleteMany({ user: userId }),
     ApiLog.deleteMany({ user: userId }),
+    PublicInquiry.updateMany({ email: String(user.email || '').toLowerCase() }, { $set: { email: identity.email, name: identity.name, 'metadata.accountDeletedAt': now.toISOString() } }),
+    CreditLedger.updateMany(
+      { $or: [{ user: userId }, { actor: userId }] },
+      {
+        $unset: { actor: 1, brand: 1, reason: 1, referenceId: 1 },
+        $set: { referenceType: 'account_deleted' }
+      }
+    ),
     TeamMember.updateMany({ user: userId }, {
       $set: { status: 'removed', name: 'Deleted member', email: identity.email, acceptedAt: undefined },
       $unset: { user: 1, inviteTokenHash: 1, inviteExpiresAt: 1 }

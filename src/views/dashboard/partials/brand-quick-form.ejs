@@ -1,3 +1,11 @@
+<%
+  const brainPlanFeatures = (dashboardData && dashboardData.featureAccess && dashboardData.featureAccess.features) || {};
+  const brainPlanLimits = (dashboardData && dashboardData.currentPlan && dashboardData.currentPlan.limits) || {};
+  const brainIsSuperadmin = Boolean(dashboardData && dashboardData.featureAccess && dashboardData.featureAccess.isSuperadmin);
+  const brainCanUseChatGPT = brainIsSuperadmin || Boolean(brainPlanFeatures.chatgptConnectorAccess);
+  const brainCanUseBuiltInAi = brainIsSuperadmin || (String(brainPlanFeatures.smartComposerLevel || 'none').toLowerCase() !== 'none' && Number(brainPlanLimits.maxAiTextGenerations || 0) !== 0);
+  const brainCanUseAutomation = brainIsSuperadmin || Boolean(brainPlanFeatures.autoModeAccess);
+%>
 <form action="/dashboard/actions/brands" method="post" class="real-form-grid brand-brain-form" data-brand-upload-form>
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <label>Brand name<input name="name" required placeholder="Your brand name"></label>
@@ -40,7 +48,19 @@
   <label>Preferred hashtags<textarea name="preferredHashtags" rows="3" placeholder="#brand #local #offer"></textarea></label>
   <label>Blocked words<textarea name="blockedWords" rows="3" placeholder="Words, claims or phrases AI must avoid"></textarea></label>
   <label>Competitors<textarea name="competitors" rows="3" placeholder="Competitor names or URLs"></textarea></label>
-  <label class="checkbox-line full"><input name="autoPostingEnabled" type="checkbox" checked> Auto-posting enabled</label>
+  <fieldset class="composer-fieldset full"><legend>AI Brain operating mode</legend><div class="real-form-grid nested-grid">
+    <label class="checkbox-line full"><input name="aiBrainEnabled" type="checkbox"> Enable AI Brain for this brand</label>
+    <label>Operating mode<select name="aiBrainOperatingMode"><option value="assist" selected>Assist — user stays in control</option><option value="approval" <%= brainCanUseAutomation ? '' : 'disabled' %>>Background approval — AI prepares content for review<%= brainCanUseAutomation ? '' : ' (Growth+)' %></option><option value="autopilot" <%= brainCanUseAutomation ? '' : 'disabled' %>>Autopilot — AI schedules automatically<%= brainCanUseAutomation ? '' : ' (Growth+)' %></option></select></label>
+    <label>Content source<select name="aiBrainContentSource"><option value="manual_assets" selected>Manual assets — AutoBrand finishes the workflow</option><option value="chatgpt_operator" <%= brainCanUseChatGPT ? '' : 'disabled' %>>ChatGPT Operator — my connected ChatGPT operates AutoBrand</option><option value="autobrand_ai" <%= brainCanUseBuiltInAi ? '' : 'disabled' %>>AutoBrand AI — use included AI credits<%= brainCanUseBuiltInAi ? '' : ' (AI plan required)' %></option><option value="hybrid" <%= (brainCanUseChatGPT && brainCanUseBuiltInAi) ? '' : 'disabled' %>>Hybrid — ChatGPT/manual + AutoBrand AI<%= (brainCanUseChatGPT && brainCanUseBuiltInAi) ? '' : ' (AI plan required)' %></option></select></label>
+    <label>Learn from analytics<select name="aiBrainLearnFromAnalytics"><option value="on" selected>Yes</option><option value="off">No</option></select></label>
+    <label>Use best-time guidance<select name="aiBrainUseBestTimes"><option value="on" selected>Yes</option><option value="off">No</option></select></label>
+    <label>Approval before publishing<select name="aiBrainRequireApproval"><option value="on" selected>Required</option><option value="off">Not required</option></select></label>
+    <label class="checkbox-line"><input name="aiBrainAutoPublish" type="checkbox" <%= brainCanUseAutomation ? '' : 'disabled' %>> Allow automatic scheduling/publishing<%= brainCanUseAutomation ? '' : ' (Growth+)' %></label>
+    <label>Error behavior<select name="aiBrainPauseOnError"><option value="on" selected>Pause Brain on error</option><option value="off">Retry later</option></select></label>
+    <label>Minimum content score<input name="aiBrainMinContentScore" type="number" min="1" max="100" value="80"></label>
+    <label class="full">Brain instructions<textarea name="aiBrainInstructions" rows="3" placeholder="Examples: Never make price claims without an offer. Prioritize demos. Keep captions concise. Use customer proof when available."></textarea></label>
+    <p class="muted full">Plan rules are enforced server-side. Manual and ChatGPT modes stay user-controlled. AutoBrand AI can assist on eligible AI plans; unattended background Approval/Autopilot starts on Growth and higher.</p>
+  </div></fieldset>
   <label>Auto frequency unit<select name="autoFrequencyUnit"><option value="day">Day</option><option value="week" selected>Week</option><option value="month">Month</option></select></label>
   <label>Posts per day<input name="autoPostsPerDay" type="number" min="1" value="1"></label>
   <label>Posts per week<input name="autoPostsPerWeek" type="number" min="1" value="7"></label>

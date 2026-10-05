@@ -1,45 +1,36 @@
-AutoBrand AI production release
-Version: 1.0.5
-Release date: 2026-09-08
+AutoBrand AI v1.6.0 — Final Production Candidate
+Release date: 2026-10-04
 
-Verification on cumulative source tree:
-- JavaScript syntax: PASS (244 files)
-- Automated tests: 258 total / 257 passed / 0 failed / 1 skipped
-- Skip reason: recovered development node_modules contains Windows Sharp binaries while verification host is Linux; release excludes node_modules and production runtime preflight requires fresh Linux optional dependencies.
-- Static security gate: PASS
-- Production dependency audit (offline, omit dev): 0 vulnerabilities
-- Source production preflight: PASS
-- Release secret/mock scan: PASS
+Verification performed on the clean staged source tree:
+- Automated tests: 305 total / 304 passed / 0 failed / 1 expected skip
+- JavaScript syntax: 277 files checked / PASS
+- Static security gate: 276 JavaScript files inspected / PASS
+- Production source preflight: PASS
+- Release secret/mock/archive scan: PASS
+- Cached/offline production dependency audit: 0 known vulnerabilities
+- Fresh online npm advisory audit: NOT COMPLETED in this environment because registry.npmjs.org DNS resolution returned EAI_AGAIN. Run npm audit --omit=dev on the production/CI network.
 
-v1.0.5 MongoDB index compatibility:
-- Mongoose autoIndex is disabled in all environments.
-- Central index manager owns startup index creation/upgrades.
-- Legacy non-unique Payment provider+reference index is detected before Model.createIndexes().
-- Duplicate Payment provider/reference groups are checked first.
-- Clean legacy index is replaced with unique `uniq_payment_provider_reference`.
-- Duplicate financial references fail closed; no payment rows are automatically deleted/merged.
-- Production migration reports paymentReferenceUniqueness before any apply-mode mutation.
+Expected production runtime:
+- Node.js 24.x
+- Fresh npm ci --include=optional (to install native Sharp and ffmpeg dependencies)
+- MongoDB production database with backup before migration
+- Redis optional/shared acceleration; Mongo-backed durability remains available where designed
+- HTTPS public APP_URL / PUBLIC_APP_URL
+- Production Pesapal credentials and IPN readiness
+- Production provider OAuth credentials/approvals for each enabled social network
+- Production Google Drive OAuth if enabled
+- Production MCP OAuth configuration if ChatGPT/Codex connection is enabled
+- Working SMTP for privileged MFA and account email flows
 
-Plan/billing/onboarding contract retained from v1.0.4:
-- Free Trial: US$0 / 7 days / no payment / no automatic paid conversion.
-- Manual Publisher: US$10 / 1 month of access / zero generative AI.
-- AI Starter: US$10 / 1 month of access / generative AI included according to plan limits/credits.
-- Current Pesapal billing is manual per access period; no automatic renewal or automatic next-period charge is promised.
-- Usage quotas follow subscription currentPeriodStart -> currentPeriodEnd.
-- Trial signup enters welcome/workspace setup directly; paid signup enters exact plan review/Pesapal and reaches welcome only after verified payment.
+v1.6 highlights:
+- signed GridFS media URLs + safe previous-key rotation window
+- migration of legacy unsigned media references
+- remote media ingestion into controlled storage
+- privileged administrator MFA challenge flow
+- expanded account-deletion privacy cleanup
+- Brain worker deployment declaration
+- canonical SEO, sitemap, JSON-LD, Open Graph/Twitter metadata
+- OpenAI/Apple search crawler access separated from training crawler preference
+- public/private noindex boundary and discovery documents
 
-Excluded from release:
-- node_modules
-- .git
-- .env and local secret keys
-- local uploads/generated runtime files
-- logs/caches/coverage/tmp
-- nested archives
-
-Production upgrade requirement:
-1. npm ci --include=optional
-2. npm run migrate:production
-3. Back up the database and confirm paymentReferenceUniqueness.duplicateGroups = 0.
-4. npm run migrate:production:apply
-5. NODE_ENV=production npm run preflight:runtime
-6. Start web/workers only after the migration and runtime preflight pass.
+Deployment cannot be proven by a source archive alone. Before real customer traffic, complete the production runtime preflight, provider end-to-end tests, CDN/WAF crawler tests, Mongo backup/restore drill, alerting checks, and launch-jurisdiction legal review described in the documentation.

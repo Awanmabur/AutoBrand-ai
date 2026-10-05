@@ -21,6 +21,8 @@ const paymentSchema = new mongoose.Schema(
     reconciliationLeaseOwner: { type: String, default: '', maxlength: 120 },
     reconciliationAttempts: { type: Number, default: 0, min: 0 },
     reconciliationError: { type: String, default: '', maxlength: 1000 },
+    planSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+    billingChange: { type: mongoose.Schema.Types.Mixed, default: null },
     metadata: { type: mongoose.Schema.Types.Mixed }
   },
   { timestamps: true, optimisticConcurrency: true }

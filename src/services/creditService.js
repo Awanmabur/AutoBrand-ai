@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const CreditLedger = require('../models/CreditLedger');
 const Subscription = require('../models/Subscription');
 const { notifyLowCredits } = require('./notification.service');
-const { getCurrentSubscription, getPlanBySlug } = require('./subscription.service');
+const { getCurrentSubscription, getPlanBySlug, planForSubscription } = require('./subscription.service');
 const { resolveBillingUser } = require('./usageLimitService');
 
 function normalizedAmount(value) {
@@ -19,7 +19,7 @@ async function subscriptionCreditContext(user) {
 
   const subscription = await getCurrentSubscription(user);
   if (!subscription) return { subscription: null, plan: null, included: 0, used: 0, balance: 0 };
-  const plan = subscription.planRef || await getPlanBySlug(subscription.plan, { includeInactive: true });
+  const plan = await planForSubscription(subscription) || subscription.planRef || await getPlanBySlug(subscription.plan, { includeInactive: true });
   const included = Number(plan?.includedCredits || 0);
   const used = Number(subscription.creditsUsed || 0);
   return {

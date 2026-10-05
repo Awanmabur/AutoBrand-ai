@@ -1,6 +1,11 @@
 const Media = require('../models/Media');
 const Post = require('../models/Post');
 const { generateJsonText, generateImage, generateVideo } = require('./aiProviderService');
+const UsageLog = require('../models/UsageLog');
+const { spendCredits } = require('./creditService');
+const { creditsForGeneration } = require('./aiContentGeneration.service');
+const { imageCreditsForResults } = require('./aiImageWorkflow.service');
+const { assertCanGenerateText, assertCanGenerateImage, assertCanCreateVideo } = require('./usageLimitService');
 
 const DEFAULT_CONTENT_MIX = ['promo', 'offer', 'testimonial', 'educational', 'faq', 'proof', 'behind_the_scenes'];
 const DEFAULT_MEDIA_MIX = ['auto', 'image', 'slides', 'video'];
@@ -158,6 +163,8 @@ function localPost({ brand, platform, index, contentType, mediaFormat }) {
 
 async function generateCampaignBatch(input) {
   const brand = input.brand;
+  const actorUser = input.actorUser;
+  if (actorUser) await assertCanGenerateText(actorUser, brand._id);
   const platforms = asArray(input.platforms).length ? asArray(input.platforms) : DEFAULT_PLATFORMS;
   const frequencyUnit = input.frequencyUnit || brand.autoPosting?.frequencyUnit || 'week';
   const count = clamp(input.count || countFromFrequency({ body: input, brand }), 1, 90, 7);
@@ -172,7 +179,11 @@ async function generateCampaignBatch(input) {
   });
   const result = await generateJsonText({
     preferredProvider: input.aiProvider || input.textProvider || undefined,
-    prompt: buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, customerGoal: input.customerGoal, strengthTarget })
+    prompt: buildBatchPrompt({ brand, platforms, count, contentMix, mediaMix, customerGoal: input.customerGoal, strengthTarget }),
+    user: actorUser,
+    brand,
+    taskType: count > 7 ? 'content_calendar_generation' : 'campaign_generation',
+    maxOutputTokens: count > 7 ? 6000 : 4000
   });
   if (!result.ok) {
     const error = new Error(result.message || 'AI campaign generation failed.');
@@ -197,6 +208,12 @@ async function generateCampaignBatch(input) {
     slidePrompts: asArray(post.slidePrompts).slice(0, 5),
     videoScenes: asArray(post.videoScenes).slice(0, 5)
   }));
+  if (actorUser) {
+    const outputType = frequencyUnit === 'month' || count > 7 ? '30_day_content_calendar' : frequencyUnit === 'week' || count > 1 ? '7_day_campaign' : 'single_post';
+    const credits = creditsForGeneration({ outputType });
+    await spendCredits({ user: actorUser, brandId: brand._id, amount: credits, reason: 'AutoBrand AI campaign copy generation', referenceType: 'Brand', referenceId: brand._id });
+    await UsageLog.create({ user: actorUser._id, brand: brand._id, action: 'ai_generate_content', provider: result.provider || input.aiProvider || 'ai', credits, metadata: { source: input.usageSource || 'auto_campaign', count: posts.length, frequencyUnit, outputType } });
+  }
   return {
     ok: result.ok,
     provider: result.provider || 'openai',
@@ -216,7 +233,7 @@ function desiredImageCount(post, input, brand) {
   return clamp(post.imagePrompts?.length || minFromBrand, minFromBrand, maxFromBrand, minFromBrand);
 }
 
-async function createMediaForGeneratedPost({ userId, brand, postPlan, input }) {
+async function createMediaForGeneratedPost({ userId, actorUser, brand, postPlan, input }) {
   const shouldGenerate = input.generateImages !== false && input.generateMedia !== false;
   if (!shouldGenerate) return { mediaIds: [], errors: [] };
   const prompts = postPlan.mediaFormat === 'carousel_slides'
@@ -235,6 +252,7 @@ async function createMediaForGeneratedPost({ userId, brand, postPlan, input }) {
         ? `Image variation ${index + 1} of ${count}. Make it a distinct real-looking branded image, not a text card.
 `
         : '';
+    if (actorUser) await assertCanGenerateImage(actorUser, 1, brand._id);
     const result = await generateImage({
       preferredProvider: input.imageProvider || undefined,
       brand,
@@ -276,6 +294,11 @@ Platform: ${postPlan.platform}. Language: ${postPlan.language || brand.language}
       variants: [{ kind: 'openai_generated_image', label: 'OpenAI generated image', url: result.fileUrl, prompt: result.aiPrompt, status: 'ready', metadata: result.metadata || {}, createdAt: new Date() }]
     });
     mediaIds.push(media._id);
+    if (actorUser) {
+      const credits = imageCreditsForResults([result]);
+      await spendCredits({ user: actorUser, brandId: brand._id, amount: credits, reason: 'AutoBrand AI campaign image generation', referenceType: 'Media', referenceId: media._id });
+      await UsageLog.create({ user: actorUser._id, brand: brand._id, action: 'ai_generate_image', provider: result.provider || input.imageProvider || 'ai', credits, metadata: { source: input.usageSource || 'auto_campaign', count: 1, media: [media._id], platform: postPlan.platform } });
+    }
   }
   return { mediaIds, errors };
 }
@@ -296,9 +319,10 @@ function videoPromptForPost({ brand, postPlan }) {
   ].filter(Boolean).join('\n');
 }
 
-async function createVideoForGeneratedPost({ userId, brand, postPlan, input, sourceMedia }) {
+async function createVideoForGeneratedPost({ userId, actorUser, brand, postPlan, input, sourceMedia }) {
   const shouldGenerate = input.generateVideos !== false && input.generateMedia !== false;
   if (!shouldGenerate || postPlan.mediaFormat !== 'short_video') return null;
+  if (actorUser) await assertCanCreateVideo(actorUser, brand._id, 1);
   const result = await generateVideo({
     preferredProvider: input.videoProvider || undefined,
     brand,
@@ -333,11 +357,16 @@ async function createVideoForGeneratedPost({ userId, brand, postPlan, input, sou
     },
     variants: [{ kind: `${result.provider || 'ai'}_generated_video`, label: result.providerModel || `${result.provider || 'AI'} generated video`, url: result.outputUrl, prompt: videoPromptForPost({ brand, postPlan }), status: 'ready', metadata: { providerJobId: result.providerJobId }, createdAt: new Date() }]
   });
+  if (actorUser) {
+    const credits = 100;
+    await spendCredits({ user: actorUser, brandId: brand._id, amount: credits, reason: 'AutoBrand AI campaign video generation', referenceType: 'Media', referenceId: media._id });
+    await UsageLog.create({ user: actorUser._id, brand: brand._id, action: 'ai_generate_video', provider: result.provider || input.videoProvider || 'ai', credits, metadata: { source: input.usageSource || 'auto_campaign', count: 1, media: [media._id], platform: postPlan.platform } });
+  }
   return { mediaId: media._id };
 }
 
-async function createScheduledPostsFromBatch({ userId, brand, targetAccounts, input, enqueue }) {
-  const batch = await generateCampaignBatch({ ...input, brand });
+async function createScheduledPostsFromBatch({ userId, actorUser, brand, targetAccounts, input, enqueue }) {
+  const batch = await generateCampaignBatch({ ...input, brand, actorUser });
   const preferredSlots = asArray(input.preferredSlots).length ? asArray(input.preferredSlots) : brand.autoPosting?.preferredSlots || ['morning', 'evening'];
   const slots = buildAutoSlots({
     startDate: input.startDate,
@@ -348,10 +377,10 @@ async function createScheduledPostsFromBatch({ userId, brand, targetAccounts, in
   const createdPosts = [];
   for (let index = 0; index < batch.posts.length; index += 1) {
     const plan = batch.posts[index];
-    const imageResult = await createMediaForGeneratedPost({ userId, brand, postPlan: plan, input });
+    const imageResult = await createMediaForGeneratedPost({ userId, actorUser, brand, postPlan: plan, input });
     const mediaIds = imageResult.mediaIds;
     const sourceMedia = mediaIds.length ? await Media.findById(mediaIds[0]) : null;
-    const videoResult = await createVideoForGeneratedPost({ userId, brand, postPlan: plan, input, sourceMedia });
+    const videoResult = await createVideoForGeneratedPost({ userId, actorUser, brand, postPlan: plan, input, sourceMedia });
     if (plan.mediaFormat === 'short_video') {
       mediaIds.splice(0, mediaIds.length);
       if (videoResult?.mediaId) mediaIds.push(videoResult.mediaId);

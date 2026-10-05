@@ -1097,6 +1097,7 @@ async function processPostGenerationJob(job) {
 
   if (plan.needsText) {
     generated = await generatePostIdea({
+      user: billingUser,
       brand,
       platform: body.platform || post.platform || "facebook",
       platforms: toArray(

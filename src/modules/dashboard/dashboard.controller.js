@@ -36,6 +36,10 @@ const { defaultMessage, defaultTitle } = require('../../utils/errorResponse');
 const env = require('../../config/env');
 const { accessibleBrandIds } = require('../../services/authorization/brandAccess.service');
 const { workspaceDashboardPages } = require('../../services/authorization/dashboardAccess.service');
+const { listUserAuthorizations } = require('../../services/mcp/mcpOAuth.service');
+const CloudStorageConnection = require('../../models/CloudStorageConnection');
+const PublicInquiry = require('../../models/PublicInquiry');
+const { summary: storageSummary, isConfigured: isGoogleDriveConfigured } = require('../../services/storage/googleDrive.service');
 
 const DASHBOARD_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TIME_ZONE || process.env.TZ || 'Africa/Kampala';
 
@@ -661,6 +665,22 @@ function brandRecord(brand) {
     brandCompletenessScore: checklist.score,
     brandVoiceSummary: brand.brandVoiceSummary || '',
     checklist,
+    aiBrain: {
+      enabled: Boolean(brand.aiBrain?.enabled),
+      operatingMode: brand.aiBrain?.operatingMode || 'assist',
+      contentSource: brand.aiBrain?.contentSource || 'manual_assets',
+      learnFromAnalytics: brand.aiBrain?.learnFromAnalytics !== false,
+      useBestTimes: brand.aiBrain?.useBestTimes !== false,
+      requireApproval: brand.aiBrain?.requireApproval !== false,
+      autoPublish: Boolean(brand.aiBrain?.autoPublish),
+      pauseOnError: brand.aiBrain?.pauseOnError !== false,
+      minContentScore: brand.aiBrain?.minContentScore || 80,
+      instructions: brand.aiBrain?.instructions || '',
+      nextRunAt: brand.aiBrain?.nextRunAt || null,
+      lastRunAt: brand.aiBrain?.lastRunAt || null,
+      lastRunStatus: brand.aiBrain?.lastRunStatus || 'never',
+      lastRunError: brand.aiBrain?.lastRunError || ''
+    },
     autoPosting: {
       enabled: Boolean(autoPosting.enabled),
       postsPerDay: autoPosting.postsPerDay || 1,
@@ -918,12 +938,15 @@ function buildDashboardData({
   adminSocialAccounts = [],
   adminApiLogs = [],
   adminAuditLogs = [],
+  adminPublicInquiries = [],
   adminPlans = [],
   planSubscriptionCounts = {},
   currentPlan = null,
   featureAccess = null,
   usageDashboard = null,
   publicPricingPlans = [],
+  mcpAuthorizations = [],
+  cloudStorage = null,
   platformAdminView = false,
   dashboardError = null
 }) {
@@ -1180,7 +1203,7 @@ function buildDashboardData({
       {
       id: recordId(account),
       kind: 'social_account',
-      href: '/dashboard/social',
+      href: `/dashboard/channels/${encodeURIComponent(String(account.platform || ''))}`,
       editHref: '/dashboard/social',
       editAction: `/dashboard/actions/social/${recordId(account)}/update`,
       editMethod: 'post',
@@ -1258,7 +1281,8 @@ function buildDashboardData({
       href: '/dashboard/media',
       editHref: '/dashboard/media',
       actions: recordId(asset) ? [
-        { label: 'Create draft', action: `/dashboard/actions/media/${recordId(asset)}/create-draft`, method: 'post', kind: 'draft' }
+        { label: 'Create draft', action: `/dashboard/actions/media/${recordId(asset)}/create-draft`, method: 'post', kind: 'draft' },
+        ...(asset.externalProvider === 'google_drive' && asset.externalFileId ? [] : [{ label: 'Back up to Drive', action: `/dashboard/actions/media/${recordId(asset)}/drive-backup`, method: 'post', kind: 'media' }])
       ] : [],
       deleteAction: recordId(asset) ? `/dashboard/actions/media/${recordId(asset)}?_method=DELETE` : '',
       deleteLabel: 'Delete media',
@@ -1276,6 +1300,8 @@ function buildDashboardData({
         MIME: asset.mimeType,
         Size: `${compactNumber(asset.size)} bytes`,
         Folder: asset.folder,
+        'Storage provider': asset.storageProvider || 'platform',
+        'Google Drive': asset.externalWebViewLink || '',
         Tags: asset.tags,
         'Consent required': asset.consentRequired ? 'Yes' : 'No',
         'Consent status': titleCase(asset.consentStatus),
@@ -1498,7 +1524,7 @@ function buildDashboardData({
       ? (isTrialSubscription ? `trial ends ${formatDate(subscription.currentPeriodEnd)}` : `access through ${formatDate(subscription.currentPeriodEnd)} · pay again to continue`)
       : 'access period not set';
     return card(
-    `${displayPlanName(subscription.plan, subscription.planRef?.name)} subscription`,
+    `${displayPlanName(subscription.plan, subscription.planSnapshot?.name || subscription.planRef?.name)} subscription`,
     `${subscription.user?.email ? `${subscription.user.email} · ` : ''}${titleCase(subscription.provider || 'pesapal')} · ${periodEndText}`,
     titleCase(subscription.status || 'active'),
     {
@@ -1506,10 +1532,14 @@ function buildDashboardData({
       kind: 'subscription',
       href: '/dashboard/billing',
       editHref: '/dashboard/billing',
+      actions: subscription.scheduledPlanChange?.status === 'pending' ? [{ label: 'Cancel scheduled change', action: '/dashboard/billing/plan/scheduled/cancel', method: 'post', kind: 'billing' }] : [],
       details: {
         User: subscription.user?.email || entityId(subscription.user),
-        Plan: displayPlanName(subscription.plan, subscription.planRef?.name),
+        Plan: displayPlanName(subscription.plan, subscription.planSnapshot?.name || subscription.planRef?.name),
+        'Contracted price': subscription.planSnapshot?.currency ? `${subscription.planSnapshot.currency} ${Number(subscription.planSnapshot.price || 0).toFixed(2)}` : '',
         'Plan record': subscription.planRef?.name || entityId(subscription.planRef),
+        'Contract snapshot': subscription.planSnapshot?.capturedAt || '',
+        'Scheduled plan change': subscription.scheduledPlanChange?.status === 'pending' ? `${displayPlanName(subscription.scheduledPlanChange.targetPlan, subscription.scheduledPlanChange.targetPlanSnapshot?.name)} on ${formatDate(subscription.scheduledPlanChange.effectiveAt)}` : '',
         Provider: titleCase(subscription.provider),
         Status: titleCase(subscription.status),
         'Access period start': subscription.currentPeriodStart ? formatDateTime(subscription.currentPeriodStart) : '',
@@ -1729,7 +1759,7 @@ function buildDashboardData({
   ));
   const usageCards = (usageDashboard?.cards || []).map((usage) => card(
     usage.label || titleCase(usage.limitName || usage.metric),
-    usage.unlimited ? `${usage.used} used · unlimited on this plan` : `${usage.used} used of ${usage.limit}`,
+    usage.unlimited ? `${usage.used} used · unlimited on this plan` : `${usage.used} used${usage.reserved ? ` · ${usage.reserved} reserved` : ''} of ${usage.limit}`,
     usage.warn ? 'Upgrade soon' : 'Usage',
     {
       kind: 'usage',
@@ -1738,6 +1768,7 @@ function buildDashboardData({
       details: {
         Metric: usage.metric,
         Used: usage.used,
+        Reserved: usage.reserved || 0,
         Limit: usage.unlimited ? 'Unlimited' : usage.limit,
         Percent: usage.unlimited ? 'Unlimited' : `${usage.percent}%`,
         Warning: usage.warn ? '80% or higher' : 'No'
@@ -1858,6 +1889,35 @@ function buildDashboardData({
         })
       ])
     : [];
+  const publicInquiryCards = platformAdminView ? adminPublicInquiries.map((inquiry) => {
+    const inquiryId = recordId(inquiry);
+    return card(
+      inquiry.name || inquiry.email || 'Public inquiry',
+      `${inquiry.email || 'No email'}${inquiry.teamType ? ` · ${inquiry.teamType}` : ''} · ${truncate(inquiry.message || '', 88)}`,
+      titleCase(inquiry.status || 'new'),
+      {
+        id: inquiryId,
+        kind: 'public_inquiry',
+        href: '/dashboard/admin',
+        editHref: '/dashboard/admin',
+        actions: inquiryId ? [
+          ...(inquiry.status !== 'open' ? [{ label: 'Mark open', action: `/dashboard/actions/admin/public-inquiries/${inquiryId}/status`, method: 'post', kind: 'inquiry', hiddenFields: { status: 'open' } }] : []),
+          ...(inquiry.status !== 'resolved' ? [{ label: 'Resolve', action: `/dashboard/actions/admin/public-inquiries/${inquiryId}/status`, method: 'post', kind: 'inquiry', hiddenFields: { status: 'resolved' } }] : [])
+        ] : [],
+        details: {
+          Name: inquiry.name,
+          Email: inquiry.email,
+          Team: inquiry.teamType,
+          Message: inquiry.message,
+          Status: titleCase(inquiry.status),
+          Source: inquiry.source,
+          'Request ID': inquiry.requestId,
+          'Received at': inquiry.createdAt ? formatDateTime(inquiry.createdAt) : '',
+          'Resolved at': inquiry.resolvedAt ? formatDateTime(inquiry.resolvedAt) : ''
+        }
+      }
+    );
+  }) : [];
   const adminCards = [
     planManagementCard,
     ...adminPlanCards,
@@ -1870,6 +1930,7 @@ function buildDashboardData({
     ...failedJobCards,
     ...adminSocialAccountCards,
     ...providerReadinessCards,
+    ...publicInquiryCards,
     ...apiLogCards,
     ...auditLogCards
   ];
@@ -2068,11 +2129,15 @@ function buildDashboardData({
       accountDeletionError: user.accountDeletionError || '',
       role: titleCase(user.role || 'brand_owner'),
       plan: planName,
-      planSlug: plan
+      planSlug: plan,
+      mcpAuthorizations,
+      assetStoragePreference: user.assetStoragePreference || 'platform',
+      googleDrive: storageSummary(cloudStorage),
+      googleDriveConfigured: isGoogleDriveConfigured()
     },
     workspace: {
       name: primaryBrand?.name || 'Brand Workspace',
-      subtitle: `${planName} plan · ${brands.length} active ${brands.length === 1 ? 'brand' : 'brands'}`,
+      subtitle: user.role === 'super_admin' ? `Superadmin · all features unlocked · ${brands.length} active ${brands.length === 1 ? 'brand' : 'brands'}` : `${planName} plan · ${brands.length} active ${brands.length === 1 ? 'brand' : 'brands'}`,
       primaryBrandName: primaryBrand?.name || 'Your first brand'
     },
     currentPlan: currentPlanDisplay || (currentPlan ? plainPlan(currentPlan) : null),
@@ -2118,7 +2183,8 @@ function buildDashboardData({
           nextActionCard,
           card('Workspace focus', brands.length ? `${primaryBrand.name} is the active workspace feeding campaign and post generation.` : 'No active brand yet. Create Brand Brain data to unlock real generation context.', brands.length ? 'Brand' : 'Start'),
           card('Publishing queue', `${scheduledCount} scheduled, ${publishedCount} published and ${failedCount} failed posts are tracked.`, scheduledCount ? 'Live' : 'Queue'),
-          card('Connected social', `${connectedAccounts} connected account${connectedAccounts === 1 ? '' : 's'} across ${connectedPlatforms || 0} platform${connectedPlatforms === 1 ? '' : 's'}.`, connectedAccounts ? 'OAuth' : 'Connect'),
+          card('Connected social', `${connectedAccounts} connected account${connectedAccounts === 1 ? '' : 's'} across ${connectedPlatforms || 0} platform${connectedPlatforms === 1 ? '' : 's'}.`, connectedAccounts ? 'OAuth' : 'Connect', { href: '/dashboard/social' }),
+          card('AI operator', `${mcpAuthorizations.filter((item) => item.active).length || 0} ChatGPT/MCP connection${mcpAuthorizations.filter((item) => item.active).length === 1 ? '' : 's'} · ${cloudStorage?.status === 'connected' ? 'Google Drive ready' : 'AutoBrand storage'}.`, mcpAuthorizations.some((item) => item.active) ? 'Connected' : 'Connect', { href: '/dashboard/settings' }),
           card('Brand memory', `${productCount} products, ${offerCount} offers and ${ruleCount} brand rules are saved.`, 'Brain'),
           card('Video workload', `${videoJobTotal} AI video job${videoJobTotal === 1 ? '' : 's'} with ${compactNumber(sum(videoJobs.map((job) => job.costCredits)))} video credits used.`, 'Video'),
           card('Unread alerts', `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'} need attention.`, unreadCount ? 'Now' : 'Clear')
@@ -2400,6 +2466,7 @@ function buildDashboardData({
           [compactNumber(platformAdminView ? adminBrands.length : brands.length), 'Brands', platformAdminView ? 'Platform' : 'Workspace'],
           [compactNumber(platformAdminView ? adminUserRecords.length : workspaceUserCards.length), 'Users', 'Accounts'],
           [compactNumber(paymentRecords.length), 'Payments', 'Billing'],
+          [compactNumber(platformAdminView ? adminPublicInquiries.filter((item) => item.status !== 'resolved').length : 0), 'Inquiries', platformAdminView ? 'Open/new' : 'Platform admin'],
           [compactNumber((platformAdminView ? failedPostRecords.length : failedCount) + failedJobCards.length), 'Failures', 'Retry']
         ],
         cards: adminCards,
@@ -2571,6 +2638,7 @@ async function index(req, res, next) {
       adminSocialAccounts,
       adminApiLogs,
       adminAuditLogs,
+      adminPublicInquiries,
       adminPlans,
       planCountRows,
       publicPricingPlans
@@ -2628,6 +2696,7 @@ async function index(req, res, next) {
       canViewPlatformAdmin ? SocialAccount.find().populate('brand').populate('owner').sort({ updatedAt: -1 }).limit(48).lean() : Promise.resolve([]),
       canViewPlatformAdmin ? ApiLog.find().populate('user').sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
       canViewPlatformAdmin ? AuditLog.find().populate('user').sort({ createdAt: -1 }).limit(48).lean() : Promise.resolve([]),
+      canViewPlatformAdmin ? PublicInquiry.find().sort({ createdAt: -1 }).limit(100).lean() : Promise.resolve([]),
       shouldLoadAdminPlans ? SubscriptionPlan.find().sort({ sortOrder: 1, createdAt: 1 }).lean() : Promise.resolve([]),
       shouldLoadAdminPlans ? Subscription.aggregate([{ $group: { _id: '$planRef', count: { $sum: 1 } } }]) : Promise.resolve([]),
       getPublicPricingCards()
@@ -2671,6 +2740,12 @@ async function index(req, res, next) {
       analyticsSyncJobs
     });
     const analyticsTotals = analyticsDashboard.totals || {};
+    const mcpAuthorizations = ['settings', 'overview'].includes(requestedPage) && env.mcpEnabled
+      ? await listUserAuthorizations(req.user).catch(() => [])
+      : [];
+    const cloudStorage = ['settings', 'overview'].includes(requestedPage)
+      ? await CloudStorageConnection.findOne({ owner: req.user._id, provider: 'google_drive' }).lean().catch(() => null)
+      : null;
 
     const dashboardData = buildDashboardData({
       user: req.user,
@@ -2736,12 +2811,15 @@ async function index(req, res, next) {
       adminSocialAccounts,
       adminApiLogs,
       adminAuditLogs,
+      adminPublicInquiries,
       adminPlans,
       planSubscriptionCounts,
       currentPlan,
       featureAccess,
       usageDashboard,
       publicPricingPlans,
+      mcpAuthorizations,
+      cloudStorage,
       platformAdminView: canViewPlatformAdmin,
       dashboardError: requestedPage === 'errors' ? dashboardErrorFromRequest(req) : null
     });

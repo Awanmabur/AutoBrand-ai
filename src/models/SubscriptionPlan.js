@@ -44,7 +44,10 @@ const featureSchema = new mongoose.Schema(
     prioritySupportAccess: { type: Boolean, default: false },
     templateAccess: { type: Boolean, default: true },
     failedPostRecoveryAccess: { type: Boolean, default: false },
-    agencyWorkspaceAccess: { type: Boolean, default: false }
+    agencyWorkspaceAccess: { type: Boolean, default: false },
+    chatgptConnectorAccess: { type: Boolean, default: false },
+    googleDriveAccess: { type: Boolean, default: false },
+    channelWorkspacesAccess: { type: Boolean, default: false }
   },
   { _id: false, strict: false }
 );

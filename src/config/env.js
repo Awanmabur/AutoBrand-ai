@@ -10,6 +10,13 @@ function cleanEnv(value) {
   return String(value || '').trim();
 }
 
+function extractEmailAddress(value) {
+  const raw = cleanEnv(value);
+  if (!raw) return '';
+  const angle = raw.match(/<([^<>\s]+@[^<>\s]+)>/);
+  return cleanEnv(angle ? angle[1] : raw);
+}
+
 function boolEnv(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
   return String(value).toLowerCase() === 'true';
@@ -21,6 +28,7 @@ const defaultAppUrl = configuredAppUrl || `http://localhost:${process.env.PORT |
 const aiGenerationWorkerMode = (cleanEnv(process.env.AI_GENERATION_WORKER_MODE) || 'web').toLowerCase();
 const analyticsSyncWorkerMode = (cleanEnv(process.env.ANALYTICS_SYNC_WORKER_MODE) || 'web').toLowerCase();
 const paymentReconciliationWorkerMode = (cleanEnv(process.env.PAYMENT_RECONCILIATION_WORKER_MODE) || 'web').toLowerCase();
+const aiBrainWorkerMode = (cleanEnv(process.env.AI_BRAIN_WORKER_MODE) || 'web').toLowerCase();
 const publishingPaused = boolEnv(process.env.PAUSE_PUBLISHING, false);
 const ephemeralSecrets = new Map();
 function secretEnv(name) {
@@ -103,6 +111,13 @@ const env = {
   aiImageProvider: process.env.AI_IMAGE_PROVIDER || 'openai',
   aiVideoProvider: process.env.AI_VIDEO_PROVIDER || 'openai',
   publicAppUrl: cleanEnv(process.env.PUBLIC_APP_URL || process.env.APP_URL),
+  allowedHosts: cleanEnv(process.env.ALLOWED_HOSTS).split(',').map((item) => item.trim().toLowerCase()).filter(Boolean),
+  supportEmail: extractEmailAddress(process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM),
+  securityContactEmail: extractEmailAddress(process.env.SECURITY_CONTACT_EMAIL || process.env.SUPPORT_EMAIL || process.env.EMAIL_FROM),
+  privilegedMfaEnabled: boolEnv(process.env.PRIVILEGED_MFA_ENABLED, false),
+  privilegedMfaChallengeSecret: secretEnv('PRIVILEGED_MFA_CHALLENGE_SECRET'),
+  privilegedMfaExpiresMinutes: Math.max(2, Math.min(30, Number(process.env.PRIVILEGED_MFA_EXPIRES_MINUTES || 10))),
+  allowAiTrainingCrawlers: boolEnv(process.env.ALLOW_AI_TRAINING_CRAWLERS, false),
   generatedMediaStorage: (cleanEnv(process.env.GENERATED_MEDIA_STORAGE) || 'gridfs').toLowerCase(),
   generatedMediaGridFsBucket: cleanEnv(process.env.GENERATED_MEDIA_GRIDFS_BUCKET) || 'autobrand_generated_media',
   // Publishing is a core runtime responsibility. The legacy ENABLE_SCHEDULED_PUBLISHING
@@ -179,6 +194,11 @@ const env = {
   runPaymentReconciliationWorkerInWeb: paymentReconciliationWorkerMode === 'web',
   paymentReconciliationPollMs: Math.max(30000, Number(process.env.PAYMENT_RECONCILIATION_POLL_MS || 60000)),
   paymentReconciliationConcurrency: Math.max(1, Math.min(10, Number(process.env.PAYMENT_RECONCILIATION_CONCURRENCY || 2))),
+  aiBrainWorkerMode,
+  aiBrainWorkerEnabled: aiBrainWorkerMode !== 'off',
+  runAiBrainWorkerInWeb: aiBrainWorkerMode === 'web',
+  aiBrainPollMs: Math.max(30000, Number(process.env.AI_BRAIN_POLL_MS || 60000)),
+  aiBrainConcurrency: Math.max(1, Math.min(5, Number(process.env.AI_BRAIN_CONCURRENCY || 1))),
   paymentReconciliationLeaseMs: Math.max(60000, Number(process.env.PAYMENT_RECONCILIATION_LEASE_MS || 5 * 60 * 1000)),
   paymentReconciliationPendingDays: Math.max(1, Math.min(30, Number(process.env.PAYMENT_RECONCILIATION_PENDING_DAYS || 7))),
   paymentReconciliationPaidDays: Math.max(7, Math.min(365, Number(process.env.PAYMENT_RECONCILIATION_PAID_DAYS || 180))),
@@ -194,6 +214,11 @@ const env = {
   googleOAuthProxy: cleanEnv(process.env.GOOGLE_OAUTH_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY),
   googleOAuthDnsOrder: cleanEnv(process.env.GOOGLE_OAUTH_DNS_ORDER),
   googleOAuthIpFamily: cleanEnv(process.env.GOOGLE_OAUTH_IP_FAMILY),
+  googleDriveClientId: cleanEnv(process.env.GOOGLE_DRIVE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID),
+  googleDriveClientSecret: cleanEnv(process.env.GOOGLE_DRIVE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET),
+  googleDriveCallbackUrl: cleanEnv(process.env.GOOGLE_DRIVE_CALLBACK_URL) || `${defaultAppUrl}/dashboard/settings/google-drive/callback`,
+  googleDriveScopes: process.env.GOOGLE_DRIVE_SCOPES || 'openid email profile https://www.googleapis.com/auth/drive.file',
+  googleDriveRootFolderName: cleanEnv(process.env.GOOGLE_DRIVE_ROOT_FOLDER_NAME) || 'AutoBrand AI',
   googleBusinessClientId: cleanEnv(process.env.GOOGLE_BUSINESS_CLIENT_ID || process.env.GOOGLE_CLIENT_ID),
   googleBusinessClientSecret: cleanEnv(process.env.GOOGLE_BUSINESS_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET),
   googleBusinessCallbackUrl: cleanEnv(process.env.GOOGLE_BUSINESS_CALLBACK_URL) || `${defaultAppUrl}/dashboard/actions/social/google-business/callback`,
@@ -237,6 +262,17 @@ const env = {
     .split(',')
     .map((domain) => domain.trim())
     .filter(Boolean),
+  // ChatGPT/Codex MCP connector. Disabled by default in production until explicitly enabled.
+  mcpEnabled: boolEnv(process.env.MCP_ENABLED, nodeEnv !== 'production'),
+  mcpOAuthIssuer: cleanEnv(process.env.MCP_OAUTH_ISSUER) || defaultAppUrl,
+  mcpResourceUrl: cleanEnv(process.env.MCP_RESOURCE_URL) || `${defaultAppUrl}/mcp`,
+  mcpOAuthTokenSecret: secretEnv('MCP_OAUTH_TOKEN_SECRET'),
+  mcpAccessExpiresIn: cleanEnv(process.env.MCP_ACCESS_EXPIRES_IN) || '15m',
+  mcpRefreshExpiresIn: cleanEnv(process.env.MCP_REFRESH_EXPIRES_IN) || '30d',
+  mcpAccessMaxAgeMs: durationToMs(process.env.MCP_ACCESS_EXPIRES_IN || '15m', 15 * 60 * 1000),
+  mcpRefreshMaxAgeMs: durationToMs(process.env.MCP_REFRESH_EXPIRES_IN || '30d', 30 * 24 * 60 * 60 * 1000),
+  mcpDynamicClientRegistrationEnabled: boolEnv(process.env.MCP_DYNAMIC_CLIENT_REGISTRATION_ENABLED, true),
+  mcpMaxUploadBytes: Math.max(1024 * 1024, Math.min(500 * 1024 * 1024, Number(process.env.MCP_MAX_UPLOAD_BYTES || process.env.MAX_UPLOAD_BYTES || 100 * 1024 * 1024))),
   redisUrl: cleanEnv(process.env.REDIS_URL || process.env.REDISCLOUD_URL || process.env.REDIS_TLS_URL),
   // Redis is optional. A hosted URL enables it automatically; host/port mode
   // requires REDIS_ENABLED=true so an empty local Redis installation cannot
@@ -261,6 +297,9 @@ const env = {
   cookieSecret: secretEnv('COOKIE_SECRET'),
   csrfSecret: secretEnv('CSRF_SECRET'),
   webhookSecret: secretEnv('WEBHOOK_SECRET'),
+  mediaUrlSigningSecret: secretEnv('MEDIA_URL_SIGNING_SECRET'),
+  mediaUrlSigningSecretsPrevious: parseSecretList(process.env.MEDIA_URL_SIGNING_SECRET_PREVIOUS),
+  allowLegacyPublicGridFsUrls: boolEnv(process.env.ALLOW_LEGACY_PUBLIC_GRIDFS_URLS, nodeEnv !== 'production'),
   tokenEncryptionKey: tokenEncryptionSecret.value,
   tokenEncryptionKeySource: tokenEncryptionSecret.source,
   tokenEncryptionKeyConfigured: tokenEncryptionSecret.configured,

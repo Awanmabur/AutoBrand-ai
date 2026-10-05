@@ -12,6 +12,7 @@ const { startAccountDeletionProcessor, stopAccountDeletionProcessor } = require(
 const { startAnalyticsSyncProcessor, stopAnalyticsSyncProcessor } = require('./src/services/analytics/analyticsSync.service');
 const { ensureDefaultTemplates } = require('./src/services/templateVideoService');
 const { startPaymentReconciliationProcessor, stopPaymentReconciliationProcessor } = require('./src/services/billing/paymentReconciliation.service');
+const { startAiBrainProcessor, stopAiBrainProcessor } = require('./src/services/aiBrain/aiBrainProcessor.service');
 
 async function startServer() {
   const validation = validateEnvironment();
@@ -34,6 +35,13 @@ async function startServer() {
     console.log('Pesapal reconciliation is delegated to a dedicated worker (PAYMENT_RECONCILIATION_WORKER_MODE=external).');
   } else {
     console.warn('Pesapal reconciliation is intentionally disabled (PAYMENT_RECONCILIATION_WORKER_MODE=off). Callback/IPN verification remains active.');
+  }
+  if (env.runAiBrainWorkerInWeb) {
+    startAiBrainProcessor({ pollMs: env.aiBrainPollMs, concurrency: env.aiBrainConcurrency });
+  } else if (env.aiBrainWorkerMode === 'external') {
+    console.log('AI Brain automation is delegated to a dedicated worker (AI_BRAIN_WORKER_MODE=external).');
+  } else {
+    console.warn('AI Brain background automation is intentionally disabled (AI_BRAIN_WORKER_MODE=off).');
   }
   if (env.publishingPaused) {
     console.warn('Publishing is intentionally paused (PAUSE_PUBLISHING=true).');
@@ -65,6 +73,7 @@ async function startServer() {
     stopAccountDeletionProcessor();
     stopAnalyticsSyncProcessor();
     stopPaymentReconciliationProcessor();
+    stopAiBrainProcessor();
     server.close(async () => {
       await closeQueueResources().catch(() => {});
       await mongoose.connection.close().catch(() => {});

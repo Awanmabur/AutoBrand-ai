@@ -53,7 +53,7 @@ walk();
 const requiredDocs = [
   'docs/ARCHITECTURE.md', 'docs/SECURITY.md', 'docs/PESAPAL-BILLING.md', 'docs/WORKSPACE-RBAC.md',
   'docs/MANUAL-PUBLISHER.md', 'docs/ANALYTICS.md', 'docs/BACKGROUND-WORKERS.md', 'docs/DATA-LIFECYCLE.md',
-  'docs/DEPLOYMENT-RUNBOOK.md', 'docs/PRODUCTION-CHECKLIST.md'
+  'docs/DEPLOYMENT-RUNBOOK.md', 'docs/PRODUCTION-CHECKLIST.md', 'docs/MCP-CONNECTOR.md'
 ];
 for (const file of requiredDocs) if (!fs.existsSync(path.join(ROOT, file))) failures.push(`Required production documentation is missing: ${file}`);
 

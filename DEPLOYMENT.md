@@ -83,6 +83,8 @@ Before a production upgrade, run:
 npm run migrate:production
 ```
 
+For v1.4.0 this dry-run also reports/backfills immutable subscription/payment commercial snapshots and initializes AI token-budget counters/reservation state for legacy subscriptions. Back up the database and review unresolved snapshot rows before applying.
+
 Review `paymentReferenceUniqueness` in the dry-run report and take a database backup. If `duplicateGroups` is `0`, apply the migration:
 
 ```bash
@@ -389,3 +391,80 @@ TRUST_PROXY_HOPS=1
 The production CSRF cookie is named `__Host-autobrand-csrf`. The application removes the legacy `csrfToken` cookie and can recover a same-origin form submission when a browser omits the cookie or retains a stale duplicate. Cross-site submissions and unsigned tokens are still rejected.
 
 After deploying a build that changes cookie/security behavior, perform one hard refresh. Users affected by an older deployment can clear site data for `autobrand-ai.onrender.com` or open a private window once.
+## ChatGPT / MCP deployment
+
+The connector is part of the main AutoBrand web service and is exposed at `/mcp`; it does not require a second Node service. Before enabling it in production:
+
+```env
+MCP_ENABLED=true
+MCP_OAUTH_ISSUER=https://your-autobrand-domain.example
+MCP_RESOURCE_URL=https://your-autobrand-domain.example/mcp
+MCP_OAUTH_TOKEN_SECRET=<unique-random-32+-character-secret>
+MCP_ACCESS_EXPIRES_IN=15m
+MCP_REFRESH_EXPIRES_IN=30d
+MCP_DYNAMIC_CLIENT_REGISTRATION_ENABLED=true
+MCP_MAX_UPLOAD_BYTES=104857600
+```
+
+`MCP_OAUTH_TOKEN_SECRET` must be distinct from the normal web/session/provider secrets. Confirm OAuth discovery, MCP Inspector compatibility and test-account publishing before adding the production endpoint to ChatGPT. See `docs/MCP-CONNECTOR.md` and `docs/PRODUCTION-CHECKLIST.md`.
+
+
+
+## Google Drive asset storage
+
+Configure a Google OAuth web application with this exact callback:
+
+```text
+https://YOUR-AUTOBRAND-DOMAIN/dashboard/settings/google-drive/callback
+```
+
+Required environment values:
+
+```env
+GOOGLE_DRIVE_CLIENT_ID=...
+GOOGLE_DRIVE_CLIENT_SECRET=...
+GOOGLE_DRIVE_CALLBACK_URL=https://YOUR-AUTOBRAND-DOMAIN/dashboard/settings/google-drive/callback
+GOOGLE_DRIVE_SCOPES="openid email profile https://www.googleapis.com/auth/drive.file"
+GOOGLE_DRIVE_ROOT_FOLDER_NAME="AutoBrand AI"
+```
+
+Use the narrow `drive.file` scope; AutoBrand only needs to work with Drive files/folders created or selected through the app. Test connect, upload, token refresh, media proxy publishing, backup, disconnect and account deletion before production rollout.
+
+
+## v1.6 final hardening requirements
+
+Generate a distinct media signing secret and privileged-MFA challenge secret:
+
+```env
+MEDIA_URL_SIGNING_SECRET=<unique random 48+ byte value>
+ALLOW_LEGACY_PUBLIC_GRIDFS_URLS=false
+PRIVILEGED_MFA_ENABLED=true
+PRIVILEGED_MFA_CHALLENGE_SECRET=<different unique random 48+ byte value>
+PRIVILEGED_MFA_EXPIRES_MINUTES=10
+```
+
+Privileged MFA requires working SMTP/email delivery. Do not give production administrative access while `PRIVILEGED_MFA_ENABLED=false`.
+
+Before disabling legacy unsigned GridFS URLs, run the production migration. The migration reports `signedGridFsUrls` in dry-run mode and rewrites legacy Media, BrandAsset, AI-video and VideoRender URLs only when `--apply` is used.
+
+If workers are deployed as separate processes, run all enabled modes including the Brain worker:
+
+```text
+worker:          node workers/postWorker.js
+aiworker:        node workers/aiGenerationWorker.js
+analyticsworker: node workers/analyticsSyncWorker.js
+billingworker:   node workers/paymentReconciliationWorker.js
+brainworker:     node workers/aiBrainWorker.js
+```
+
+Set the corresponding `*_WORKER_MODE=external` only when that dedicated worker is actually running; otherwise leave the responsibility in the web process.
+
+For SEO/AI discovery, keep public marketing pages reachable through CDN/WAF bot controls while authenticated/token-bearing paths remain blocked/noindex. See `docs/SEO-AI-DISCOVERY.md`.
+
+## Edge performance and crawler reachability
+
+Put the production app behind a TLS CDN/reverse proxy that supports HTTP/2 or HTTP/3 and Brotli/gzip compression for HTML, CSS, JavaScript, JSON, XML and text responses. Do not cache authenticated dashboard/API responses; respect AutoBrand's `private/no-store` headers. Static assets may be cached/revalidated according to the application headers.
+
+Do not configure bot challenges that block the public SEO/discovery paths (`/`, public marketing pages, `/robots.txt`, `/sitemap.xml`, `/llms.txt`) for search crawlers you intend to support. Keep `/dashboard`, `/auth`, `/mcp`, `/review` and token-bearing media/private paths out of search indexes regardless of CDN configuration.
+
+For media-signing key rotation, put the old key temporarily in `MEDIA_URL_SIGNING_SECRET_PREVIOUS` while `MEDIA_URL_SIGNING_SECRET` contains the new key. New URLs use only the current key; verification accepts the configured previous keys during the migration window. Remove old keys after all still-needed URLs have been regenerated or expired from workflows.

@@ -1,6 +1,8 @@
 const express = require('express');
 const dashboardController = require('../controllers/dashboardController');
 const analyticsController = require('../controllers/analyticsController');
+const channelWorkspaceController = require('../controllers/channelWorkspaceController');
+const storageController = require('../controllers/storageController');
 const requireAuth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 
@@ -35,6 +37,9 @@ router.get('/content-library/:id/edit', redirectToDashboardPage('content-library
 router.get('/content-library/:id', redirectToDashboardPage('content-library', { mode: 'view' }));
 router.get('/analytics/export.csv', analyticsController.exportCsv);
 router.get('/api/posts', dashboardController.postsApi);
+router.get('/settings/google-drive/connect', storageController.googleDriveStart);
+router.get('/settings/google-drive/callback', storageController.googleDriveCallback);
+router.get('/channels/:platform', channelWorkspaceController.show);
 
 router.get('/:page', dashboardController.index);
 

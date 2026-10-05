@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
@@ -7,7 +8,8 @@ const {
   rotateRefreshToken,
   revokeAllSessions,
   setAuthCookies,
-  clearAuthCookies
+  clearAuthCookies,
+  getRefreshTokenFromRequest
 } = require('../services/authService');
 const { hashToken } = require('../services/tokenService');
 const {
@@ -29,6 +31,8 @@ const { attachSelectedPlanAfterSignup, resolveSignupPlan, signupNextUrlForPlan }
 const { validatePassword } = require('../services/account/account.service');
 const env = require('../config/env');
 const { isEmailConfigured, sendPasswordResetEmail, sendVerificationEmail } = require('../services/emailService');
+const { setTransientCookie, getTransientCookie, clearTransientCookie } = require('../services/transientCookie.service');
+const { requiresPrivilegedMfa, createPrivilegedMfaChallenge, verifyPrivilegedMfaChallenge } = require('../services/privilegedMfa.service');
 
 const DUMMY_PASSWORD_HASH = '$2a$12$rQ0wqYXgCB6aQqGg32rQtehO11sO2qfVfHKv0YkTyMl6o9gQJsK5K';
 
@@ -62,6 +66,58 @@ function appendQuery(url, params = {}) {
   });
   const suffix = search.toString();
   return `${path}${suffix ? `?${suffix}` : ''}`;
+}
+
+
+
+async function beginPrivilegedMfa(req, res, user, nextPath = '/dashboard') {
+  const challenge = await createPrivilegedMfaChallenge({ user, req, nextPath: safeRedirectPath(nextPath, '/dashboard') });
+  const maxAge = Math.max(2, Number(env.privilegedMfaExpiresMinutes || 10)) * 60 * 1000;
+  setTransientCookie(res, 'privileged-mfa-challenge', challenge.challengeId, maxAge);
+  setTransientCookie(res, 'privileged-mfa-nonce', challenge.browserNonce, maxAge);
+  await auditAuth(req, 'auth.mfa_challenge_sent', user, { expiresAt: challenge.expiresAt });
+  return res.render('auth/mfa', { title: 'Security verification', layout: 'layouts/auth', error: null });
+}
+
+function showMfa(req, res) {
+  if (!getTransientCookie(req, 'privileged-mfa-challenge') || !getTransientCookie(req, 'privileged-mfa-nonce')) return res.redirect('/auth/login');
+  return res.render('auth/mfa', { title: 'Security verification', layout: 'layouts/auth', error: null });
+}
+
+async function verifyMfa(req, res, next) {
+  try {
+    const challengeId = getTransientCookie(req, 'privileged-mfa-challenge');
+    const browserNonce = getTransientCookie(req, 'privileged-mfa-nonce');
+    if (!challengeId || !browserNonce) return res.redirect('/auth/login');
+    const challenge = await verifyPrivilegedMfaChallenge({ challengeId, browserNonce, code: req.body.code });
+    const user = await User.findById(challenge.user);
+    if (!user || user.status !== 'active' || !requiresPrivilegedMfa(user)) {
+      clearTransientCookie(res, 'privileged-mfa-challenge');
+      clearTransientCookie(res, 'privileged-mfa-nonce');
+      return res.redirect('/auth/login');
+    }
+    user.lastLoginAt = new Date();
+    user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
+    await user.save();
+    const tokens = await issueAuthTokens(user, req);
+    setAuthCookies(res, tokens);
+    clearTransientCookie(res, 'privileged-mfa-challenge');
+    clearTransientCookie(res, 'privileged-mfa-nonce');
+    await auditAuth(req, 'auth.mfa_succeeded', user);
+    return res.redirect(safeRedirectPath(challenge.nextPath, '/dashboard'));
+  } catch (error) {
+    const challengeId = getTransientCookie(req, 'privileged-mfa-challenge');
+    if (error?.status === 401 || error?.status === 403 || error?.status === 429) {
+      clearTransientCookie(res, 'privileged-mfa-challenge');
+      clearTransientCookie(res, 'privileged-mfa-nonce');
+    }
+    if (error?.status && error.status < 500) {
+      return res.status(error.status).render('auth/mfa', { title: 'Security verification', layout: 'layouts/auth', error: error.message });
+    }
+    if (challengeId) await auditAuth(req, 'auth.mfa_failed', null, { challengeHash: hashToken(challengeId) });
+    return next(error);
+  }
 }
 
 function showLogin(req, res) {
@@ -212,9 +268,12 @@ async function login(req, res, next) {
 
     user.failedLoginAttempts = 0;
     user.lockUntil = undefined;
-    user.lastLoginAt = new Date();
     await user.save();
 
+    if (requiresPrivilegedMfa(user)) return beginPrivilegedMfa(req, res, user, nextPath);
+
+    user.lastLoginAt = new Date();
+    await user.save();
     const tokens = await issueAuthTokens(user, req);
     setAuthCookies(res, tokens);
     await auditAuth(req, 'auth.login_succeeded', user);
@@ -234,48 +293,32 @@ function googleStart(req, res) {
     });
   }
 
-  if (req.query.plan) {
-    res.cookie('signupSelectedPlan', String(req.query.plan), {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 15 * 60 * 1000
-    });
-  }
-
-  if (req.query.next) {
-    res.cookie('signupNextPath', safeRedirectPath(req.query.next, '/dashboard'), {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 15 * 60 * 1000
-    });
-  }
+  if (req.query.plan) setTransientCookie(res, 'signup-selected-plan', String(req.query.plan), 15 * 60 * 1000);
+  if (req.query.next) setTransientCookie(res, 'signup-next-path', safeRedirectPath(req.query.next, '/dashboard'), 15 * 60 * 1000);
 
   const state = createGoogleState();
-  res.cookie('googleOAuthState', state, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 10 * 60 * 1000
-  });
+  setTransientCookie(res, 'google-oauth-state', state, 10 * 60 * 1000);
   return res.redirect(buildGoogleAuthUrl(state));
+}
+
+
+function timingSafeTextEqual(left, right) {
+  const a = Buffer.from(String(left || ''));
+  const b = Buffer.from(String(right || ''));
+  return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 async function googleCallback(req, res, next) {
   try {
     if (!isGoogleConfigured()) return res.redirect('/auth/login');
 
-    const expectedState = req.cookies.googleOAuthState;
-    const selectedPlanSlug = req.cookies.signupSelectedPlan;
-    const oauthPurpose = String(req.cookies.googleOAuthPurpose || 'login');
-    const signupNextPath = safeRedirectPath(req.cookies.signupNextPath, '');
-    res.clearCookie('googleOAuthState');
-    res.clearCookie('signupSelectedPlan');
-    res.clearCookie('signupNextPath');
-    res.clearCookie('googleOAuthPurpose');
+    const expectedState = getTransientCookie(req, 'google-oauth-state');
+    const selectedPlanSlug = getTransientCookie(req, 'signup-selected-plan');
+    const oauthPurpose = String(getTransientCookie(req, 'google-oauth-purpose') || 'login');
+    const signupNextPath = safeRedirectPath(getTransientCookie(req, 'signup-next-path'), '');
+    for (const key of ['google-oauth-state','signup-selected-plan','signup-next-path','google-oauth-purpose']) clearTransientCookie(res, key);
 
-    if (!req.query.state || req.query.state !== expectedState) {
+    if (!timingSafeTextEqual(req.query.state, expectedState)) {
       return res.status(403).render('dashboard/pages/error', { message: 'Invalid Google OAuth state.' });
     }
 
@@ -384,6 +427,8 @@ async function googleCallback(req, res, next) {
     }
     if (redirectUrl.startsWith('/dashboard/billing')) redirectUrl = appendQuery(redirectUrl, { onboarding: 1 });
 
+    if (requiresPrivilegedMfa(user)) return beginPrivilegedMfa(req, res, user, redirectUrl);
+
     const tokens = await issueAuthTokens(user, req);
     setAuthCookies(res, tokens);
     return res.redirect(redirectUrl);
@@ -412,7 +457,7 @@ async function googleCallback(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = getRefreshTokenFromRequest(req);
 
     if (refreshToken) {
       await RefreshToken.updateOne(
@@ -431,7 +476,7 @@ async function logout(req, res, next) {
 
 async function refresh(req, res, next) {
   try {
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const refreshToken = getRefreshTokenFromRequest(req) || req.body.refreshToken;
     if (!refreshToken) return res.status(401).json({ error: 'Missing refresh token.' });
 
     const tokens = await rotateRefreshToken(refreshToken, req);
@@ -645,6 +690,8 @@ async function resendVerification(req, res, next) {
 
 module.exports = {
   showLogin,
+  showMfa,
+  verifyMfa,
   showRegister,
   register,
   login,

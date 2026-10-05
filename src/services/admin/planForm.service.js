@@ -41,7 +41,10 @@ const FEATURE_FLAGS = [
   ['prioritySupportAccess', 'Priority support'],
   ['templateAccess', 'Templates'],
   ['failedPostRecoveryAccess', 'Failed post recovery'],
-  ['agencyWorkspaceAccess', 'Agency workspace']
+  ['agencyWorkspaceAccess', 'Agency workspace'],
+  ['chatgptConnectorAccess', 'ChatGPT connector'],
+  ['googleDriveAccess', 'Google Drive assets'],
+  ['channelWorkspacesAccess', 'Per-channel workspaces']
 ].map(([name, label]) => ({ name, label }));
 
 const AI_PROVIDER_OPTIONS = ['openai', 'gemini', 'deepseek', 'groq', 'anthropic', 'mistral', 'replicate', 'stability', 'fal'];

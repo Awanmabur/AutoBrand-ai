@@ -1,0 +1,28 @@
+<div class="section-kicker">ChatGPT connection</div>
+<h1>Connect <%= authorization.clientName %> to AutoBrand AI?</h1>
+<p>This connection will act as <strong><%= user.name %></strong> and will only have the permissions listed below.</p>
+
+<div class="auth-form" style="margin: 1.5rem 0;">
+  <% authorization.scopes.forEach((scope) => { %>
+    <div style="padding: .9rem 1rem; border: 1px solid rgba(15,23,42,.12); border-radius: 14px; margin-bottom: .75rem; text-align:left;">
+      <strong><%= scope %></strong>
+      <div style="margin-top:.25rem; opacity:.78;"><%= scopeDescriptions[scope] || 'AutoBrand permission' %></div>
+    </div>
+  <% }) %>
+</div>
+
+<p style="font-size:.92rem; opacity:.78;">AutoBrand will still enforce your normal workspace roles, brand permissions, approval rules, plan limits and connected-account readiness.</p>
+
+<form action="/mcp/oauth/authorize" method="post" class="auth-form">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <input type="hidden" name="response_type" value="code">
+  <input type="hidden" name="client_id" value="<%= authorization.clientId %>">
+  <input type="hidden" name="redirect_uri" value="<%= authorization.redirectUri %>">
+  <input type="hidden" name="scope" value="<%= authorization.scopes.join(' ') %>">
+  <input type="hidden" name="state" value="<%= authorization.state %>">
+  <input type="hidden" name="code_challenge" value="<%= authorization.codeChallenge %>">
+  <input type="hidden" name="code_challenge_method" value="S256">
+  <input type="hidden" name="resource" value="<%= authorization.resource %>">
+  <button class="btn btn-primary" name="decision" value="approve" type="submit">Allow connection</button>
+  <button class="btn" name="decision" value="deny" type="submit">Deny</button>
+</form>

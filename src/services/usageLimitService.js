@@ -95,11 +95,12 @@ async function assertCanCreateManualPost(user, requestedCount = 1, brandId) {
 }
 async function assertCanCreateVideo(user, brandId, requestedCount = 1) {
   const billingUser = await resolveBillingUser(user, brandId); const brands = await ownerBrandIds(billingUser); const { start, end } = await getUsagePeriod(billingUser);
-  const [studioVideos, postVideos] = await Promise.all([
+  const [studioVideos, postVideos, directVideos] = await Promise.all([
     AiVideoJob.countDocuments({ brand: { $in: brands }, mode: { $ne: 'avatar_video' }, createdAt: { $gte: start, $lt: end } }),
-    AiJob.countDocuments({ brand: { $in: brands }, taskType: { $in: ['post_content_generation', 'post_video_generation'] }, $or: [{ taskType: 'post_video_generation' }, { 'metadata.plan.needsVideo': true }], status: { $ne: 'cancelled' }, createdAt: { $gte: start, $lt: end } })
+    AiJob.countDocuments({ brand: { $in: brands }, taskType: { $in: ['post_content_generation', 'post_video_generation'] }, $or: [{ taskType: 'post_video_generation' }, { 'metadata.plan.needsVideo': true }], status: { $ne: 'cancelled' }, createdAt: { $gte: start, $lt: end } }),
+    UsageLog.countDocuments({ brand: { $in: brands }, action: 'ai_generate_video', createdAt: { $gte: start, $lt: end } })
   ]);
-  return assertLimit(billingUser, 'maxAiVideoGenerations', studioVideos + postVideos, 'AI video generation(s) per access period', requestedCount);
+  return assertLimit(billingUser, 'maxAiVideoGenerations', studioVideos + postVideos + directVideos, 'AI video generation(s) per access period', requestedCount);
 }
 async function assertCanCreateAvatarVideo(user, requestedCount = 1, brandId) {
   const billingUser = await resolveBillingUser(user, brandId); const brands = await ownerBrandIds(billingUser); const { start, end } = await getUsagePeriod(billingUser);

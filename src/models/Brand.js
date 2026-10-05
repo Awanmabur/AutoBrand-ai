@@ -74,6 +74,22 @@ const brandSchema = new mongoose.Schema(
     defaultPostingTimes: stringArray,
     approvalRequiredByDefault: { type: Boolean, default: false },
     autoPostingPreferences: { type: mongoose.Schema.Types.Mixed, default: {} },
+    aiBrain: {
+      enabled: { type: Boolean, default: false },
+      operatingMode: { type: String, enum: ['assist', 'approval', 'autopilot'], default: 'assist' },
+      contentSource: { type: String, enum: ['manual_assets', 'chatgpt_operator', 'autobrand_ai', 'hybrid'], default: 'manual_assets' },
+      learnFromAnalytics: { type: Boolean, default: true },
+      useBestTimes: { type: Boolean, default: true },
+      requireApproval: { type: Boolean, default: true },
+      autoPublish: { type: Boolean, default: false },
+      pauseOnError: { type: Boolean, default: true },
+      minContentScore: { type: Number, default: 80, min: 1, max: 100 },
+      instructions: { type: String, trim: true, maxlength: 5000, default: '' },
+      nextRunAt: { type: Date, index: true },
+      lastRunAt: { type: Date },
+      lastRunStatus: { type: String, enum: ['never', 'running', 'success', 'failed', 'paused'], default: 'never' },
+      lastRunError: { type: String, maxlength: 1000, default: '' }
+    },
     autoPosting: {
       enabled: { type: Boolean, default: false },
       postsPerDay: { type: Number, default: 1 },

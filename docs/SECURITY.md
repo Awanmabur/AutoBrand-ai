@@ -74,3 +74,23 @@ AutoBrand does not rely on Mongoose `autoIndex` in any environment. A central st
 ## Privileged bootstrap
 
 The production superadmin seeder has no default privileged email/password path. New superadmin creation requires an explicit validated email and strong password. An existing non-superadmin account cannot be promoted implicitly; the operator must set the explicit `SUPERADMIN_ALLOW_PROMOTION=true` safety latch after verifying the target account.
+## ChatGPT / MCP connector security
+
+The native AutoBrand MCP connector uses a dedicated OAuth 2.1 boundary rather than reusing browser cookies or web JWT secrets. OAuth access tokens are audience/resource bound, short-lived, carry a `jti`, and are checked against both access-token revocation state and the user's active MCP authorization grant. Refresh tokens rotate atomically; detected replay revokes the remaining token family.
+
+Tool access is scope separated: `autobrand.read`, `autobrand.write`, and `autobrand.publish`. The MCP layer never turns these scopes into workspace authority by itself: every brand/media/post operation still goes through AutoBrand's normal user-to-brand authorization and provider-readiness checks. Publishing and scheduling remain audited external actions.
+
+Users can revoke a ChatGPT/MCP client from Dashboard Settings. Grant revocation blocks live access tokens on subsequent requests and revokes active refresh tokens for that client. Account deletion removes MCP authorization codes, refresh tokens, grants and access-token revocation records.
+
+MCP file ingestion stores media through AutoBrand's durable media pipeline before it can be referenced by a post. Provider OAuth credentials remain encrypted in AutoBrand's existing social-account credential store and are never returned through MCP tools.
+
+
+## v1.6 privileged sign-in and public media hardening
+
+Production administrators should enable `PRIVILEGED_MFA_ENABLED=true` with a distinct `PRIVILEGED_MFA_CHALLENGE_SECRET` and working SMTP. Privileged password/Google primary authentication does not issue browser auth tokens until the short-lived MFA challenge succeeds. Challenges are stored server-side, expire through MongoDB TTL, are browser-bound, attempt-limited, single-use, and audited.
+
+Generated GridFS media uses HMAC-signed public paths. `MEDIA_URL_SIGNING_SECRET` must be a distinct production secret. Run the production migration before enforcing `ALLOW_LEGACY_PUBLIC_GRIDFS_URLS=false`; the migration rewrites known legacy URL-bearing records to signed paths. Public media URLs can still be shared with social providers, so treat the signed URL itself as a bearer capability and do not log it in analytics/error systems unnecessarily.
+
+Remote media import is an ingestion boundary, not a permanent hotlink. AutoBrand downloads through the SSRF/content gate, validates bytes/MIME/size, and persists the validated asset into the user's selected storage workflow.
+
+For media-signing key rotation, put the old key temporarily in `MEDIA_URL_SIGNING_SECRET_PREVIOUS` while `MEDIA_URL_SIGNING_SECRET` contains the new key. New URLs use only the current key; verification accepts the configured previous keys during the migration window. Remove old keys after all still-needed URLs have been regenerated or expired from workflows.

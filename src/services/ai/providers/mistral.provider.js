@@ -8,7 +8,7 @@ async function run(input) {
   const model = input.model || env.mistralTextModel || 'mistral-large-latest';
   const raw = await requestJson(provider, 'https://api.mistral.ai/v1/chat/completions', {
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-    body: { model, messages: [{ role: 'system', content: systemPrompt(input) }, { role: 'user', content: promptText(input) }], temperature: 0.7 }
+    body: { model, messages: [{ role: 'system', content: systemPrompt(input) }, { role: 'user', content: promptText(input) }], temperature: 0.7, max_tokens: Math.max(1, Math.floor(Number(input?.metadata?.maxOutputTokens || 2000))) }
   });
   return textResponse({ provider, model, input, text: raw?.choices?.[0]?.message?.content || '', raw });
 }

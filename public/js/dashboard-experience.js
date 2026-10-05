@@ -28,6 +28,12 @@ const dashboardBasePath = '/dashboard';
 const dashboardTimeZone = liveData.timeZone || 'Africa/Kampala';
 const roleAccess = liveData.roleAccess || {};
 const currentPlan = liveData.currentPlan || {};
+const currentPlanFeatures = liveData.featureAccess?.features || currentPlan.features || {};
+const currentPlanLimits = currentPlan.limits || {};
+const isSuperadminPlan = Boolean(liveData.featureAccess?.isSuperadmin || currentUser.role === 'super_admin');
+const canUseChatGptOperator = isSuperadminPlan || Boolean(currentPlanFeatures.chatgptConnectorAccess);
+const canUseBuiltInAiBrain = isSuperadminPlan || (String(currentPlanFeatures.smartComposerLevel || 'none').toLowerCase() !== 'none' && Number(currentPlanLimits.maxAiTextGenerations || 0) !== 0);
+const canUseAiBrainAutomation = isSuperadminPlan || Boolean(currentPlanFeatures.autoModeAccess);
 const isStaticDashboardErrorPage = Boolean(liveData.isErrorPage);
 const pageLocks = roleAccess.pageLocks || liveData.featureAccess?.pageLocks || {};
 const pageAliases = {
@@ -1217,7 +1223,7 @@ function renderBillingDashboard(page = {}) {
         </div>
       </article>
       <article class="card billing-plan-explainer">
-        <div class="card-head"><div><span class="kicker">how plans work</span><h3>Choose the workflow first, then the capacity.</h3><p>Free Trial is US$0 for 7 days. Manual Publisher is US$10 for 1 month of no-AI publishing. AI Starter is also US$10 for 1 month, but includes generative AI and different limits. Growth and higher AI plans add automation, video and larger team capacity.</p></div></div>
+        <div class="card-head"><div><span class="kicker">how plans work</span><h3>Choose the workflow first, then the capacity.</h3><p>Free Trial is US$0 for 7 days. Publish is US$10 for 1 month for uploaded assets or your connected ChatGPT/Codex, with Drive, scheduling, approvals and analytics but no AutoBrand AI generation. AI Starter is also US$10 for 1 month and adds AutoBrand AI generation. Growth and higher plans add the background AI Brain, autopilot, video and larger team capacity.</p></div></div>
         <div class="billing-explainer-grid">
           <div><strong>Capacity</strong><span>Brands, connected accounts, team members and storage describe how much can exist at once.</span></div>
           <div><strong>Usage</strong><span>Posts, AI generations, approvals and similar allowances reset on the plan period shown.</span></div>
@@ -1374,7 +1380,18 @@ function brandEditForm(brand) {
     <label>Preferred hashtags<textarea name="preferredHashtags" rows="3">${escapeHtml(brand.form?.preferredHashtags || '')}</textarea></label>
     <label>Blocked words<textarea name="blockedWords" rows="3">${escapeHtml(brand.form?.blockedWords || '')}</textarea></label>
     <label>Competitors<textarea name="competitors" rows="3">${escapeHtml(brand.form?.competitors || '')}</textarea></label>
-    <label class="checkbox-line full"><input name="autoPostingEnabled" type="checkbox" ${brand.autoPosting?.enabled ? 'checked' : ''}> Auto-posting enabled</label>
+    <fieldset class="composer-fieldset full"><legend>AI Brain operating mode</legend><div class="real-form-grid nested-grid">
+      <label class="checkbox-line full"><input name="aiBrainEnabled" type="checkbox" ${brand.aiBrain?.enabled ? 'checked' : ''}> Enable AI Brain for this brand</label>
+      <label>Operating mode<select name="aiBrainOperatingMode"><option value="assist" ${brand.aiBrain?.operatingMode === 'assist' ? 'selected' : ''}>Assist</option><option value="approval" ${brand.aiBrain?.operatingMode === 'approval' ? 'selected' : ''} ${canUseAiBrainAutomation ? '' : 'disabled'}>Background approval${canUseAiBrainAutomation ? '' : ' (Growth+)'}</option><option value="autopilot" ${brand.aiBrain?.operatingMode === 'autopilot' ? 'selected' : ''} ${canUseAiBrainAutomation ? '' : 'disabled'}>Autopilot${canUseAiBrainAutomation ? '' : ' (Growth+)'}</option></select></label>
+      <label>Content source<select name="aiBrainContentSource"><option value="manual_assets" ${brand.aiBrain?.contentSource === 'manual_assets' ? 'selected' : ''}>Manual assets</option><option value="chatgpt_operator" ${brand.aiBrain?.contentSource === 'chatgpt_operator' ? 'selected' : ''} ${canUseChatGptOperator ? '' : 'disabled'}>ChatGPT Operator</option><option value="autobrand_ai" ${brand.aiBrain?.contentSource === 'autobrand_ai' ? 'selected' : ''} ${canUseBuiltInAiBrain ? '' : 'disabled'}>AutoBrand AI${canUseBuiltInAiBrain ? '' : ' (AI plan required)'}</option><option value="hybrid" ${brand.aiBrain?.contentSource === 'hybrid' ? 'selected' : ''} ${(canUseChatGptOperator && canUseBuiltInAiBrain) ? '' : 'disabled'}>Hybrid${(canUseChatGptOperator && canUseBuiltInAiBrain) ? '' : ' (AI plan required)'}</option></select></label>
+      <label>Learn from analytics<select name="aiBrainLearnFromAnalytics"><option value="on" ${brand.aiBrain?.learnFromAnalytics !== false ? 'selected' : ''}>Yes</option><option value="off" ${brand.aiBrain?.learnFromAnalytics === false ? 'selected' : ''}>No</option></select></label>
+      <label>Use best-time guidance<select name="aiBrainUseBestTimes"><option value="on" ${brand.aiBrain?.useBestTimes !== false ? 'selected' : ''}>Yes</option><option value="off" ${brand.aiBrain?.useBestTimes === false ? 'selected' : ''}>No</option></select></label>
+      <label>Approval before publishing<select name="aiBrainRequireApproval"><option value="on" ${brand.aiBrain?.requireApproval !== false ? 'selected' : ''}>Required</option><option value="off" ${brand.aiBrain?.requireApproval === false ? 'selected' : ''}>Not required</option></select></label>
+      <label class="checkbox-line"><input name="aiBrainAutoPublish" type="checkbox" ${brand.aiBrain?.autoPublish ? 'checked' : ''} ${canUseAiBrainAutomation ? '' : 'disabled'}> Allow automatic publishing${canUseAiBrainAutomation ? '' : ' (Growth+)'}</label>
+      <label>Error behavior<select name="aiBrainPauseOnError"><option value="on" ${brand.aiBrain?.pauseOnError !== false ? 'selected' : ''}>Pause on error</option><option value="off" ${brand.aiBrain?.pauseOnError === false ? 'selected' : ''}>Retry later</option></select></label>
+      <label>Minimum content score<input name="aiBrainMinContentScore" type="number" min="1" max="100" value="${escapeHtml(brand.aiBrain?.minContentScore || 80)}"></label>
+      <label class="full">Brain instructions<textarea name="aiBrainInstructions" rows="3">${escapeHtml(brand.aiBrain?.instructions || '')}</textarea></label>
+    </div></fieldset>
     <label>Auto frequency unit<select name="autoFrequencyUnit"><option value="day" ${brand.autoPosting?.frequencyUnit === 'day' ? 'selected' : ''}>Day</option><option value="week" ${brand.autoPosting?.frequencyUnit === 'week' ? 'selected' : ''}>Week</option><option value="month" ${brand.autoPosting?.frequencyUnit === 'month' ? 'selected' : ''}>Month</option></select></label>
     <label>Posts per day<input name="autoPostsPerDay" type="number" min="1" value="${escapeHtml(brand.autoPosting?.postsPerDay || 1)}"></label>
     <label>Posts per week<input name="autoPostsPerWeek" type="number" min="1" value="${escapeHtml(brand.autoPosting?.postsPerWeek || 7)}"></label>
@@ -1448,6 +1465,7 @@ function brandDetailHtml(brand) {
         detailRow('Colors / font / local style', escapeHtml(`${listValue(brand.brandColors)} · ${brand.fontStyle || 'No font'} · ${brand.localStyle || 'No local style'}`))
       ])}
       ${detailGroup('Automation', [
+        detailRow('AI Brain', escapeHtml(`${brand.aiBrain?.enabled ? 'Enabled' : 'Off'} · ${brand.aiBrain?.operatingMode || 'assist'} · ${brand.aiBrain?.contentSource || 'manual_assets'} · ${brand.aiBrain?.lastRunStatus || 'never'}`)),
         detailRow('Auto posting', escapeHtml(`${brand.autoPosting?.enabled ? 'Enabled' : 'Off'} · ${brand.autoPosting?.postsPerWeek || 0}/week`)),
         detailRow('Media mix', escapeHtml(listValue(brand.autoPosting?.mediaMix))),
         detailRow('Preferred slots', escapeHtml(listValue(brand.autoPosting?.preferredSlots))),
@@ -2365,7 +2383,7 @@ const planLevelFields = [
   ['brandBrainLevel', 'Brand Brain level'], ['smartComposerLevel', 'Smart Composer level'], ['analyticsLevel', 'Analytics level']
 ];
 const planFeatureFields = [
-  ['manualPublisherAccess', 'Manual Publisher / no-AI workflow'], ['bulkImportAccess', 'Bulk manual CSV import'],
+  ['manualPublisherAccess', 'Publish / bring-your-own-AI workflow'], ['bulkImportAccess', 'Bulk manual CSV import'],
   ['calendarAccess', 'Calendar'], ['campaignAccess', 'Campaigns'], ['growthStudioAccess', 'Growth Studio'],
   ['autoModeAccess', 'Auto Mode'], ['handoffModeAccess', 'Handoff Mode'], ['approvalWorkflowAccess', 'Approval workflows'],
   ['clientApprovalPortalAccess', 'Client approval portal'], ['contentRepurposingAccess', 'Content repurposing'], ['bulkCreateAccess', 'Bulk create'],
@@ -2433,7 +2451,7 @@ function planEditorHtml(plan = {}, mode = 'create') {
       <label class="checkbox-line"><input name="isPopular" type="checkbox" value="on" ${checkedAttr(plan.isPopular)}><span>Popular badge</span></label>
       <section class="form-section full"><h4>2. Capacity and usage limits</h4><p>Brands/accounts/team/storage are capacity. Posts, approvals and AI generations are period usage ceilings. Use -1 only when the plan is intentionally unlimited.</p></section>
       ${planLimitFields.map(([name, label]) => `<label><span>${escapeHtml(label)}</span><input name="limits[${escapeHtml(name)}]" type="number" value="${escapeHtml(limits[name] ?? 0)}"></label>`).join('')}
-      <section class="form-section full"><h4>3. Feature access</h4><p>Enable the actual product workflow. Manual Publisher should explicitly enable manualPublisherAccess and keep AI limits/credits at zero.</p></section>
+      <section class="form-section full"><h4>3. Feature access</h4><p>Enable the actual product workflow. Publish should explicitly enable manualPublisherAccess and keep AutoBrand AI limits/credits at zero.</p></section>
       ${planLevelFields.map(([name, label]) => `<label><span>${escapeHtml(label)}</span><select name="features[${escapeHtml(name)}]">${planLevelChoices.map((choice) => `<option value="${choice}" ${selectedAttr(choice, features[name] || 'basic')}>${escapeHtml(choice)}</option>`).join('')}</select></label>`).join('')}
       <div class="check-grid full">${planFeatureFields.map(([name, label]) => `<label class="checkbox-line"><input name="features[${escapeHtml(name)}]" type="checkbox" value="on" ${checkedAttr(features[name])}><span>${escapeHtml(label)}</span></label>`).join('')}</div>
       <label class="full"><span>Pricing card feature checklist</span><textarea name="featureList" rows="5" placeholder="One feature per line">${escapeHtml(planFeatureList(plan))}</textarea></label>
@@ -2628,7 +2646,7 @@ function onboardingWelcomeMarkup(searchParams) {
   const money = currentPlan.recurringPriceLabel || currentPlan.priceLabel || '';
   const manualOnly = currentPlan.family === 'manual';
   const creationStep = manualOnly
-    ? 'Open Manual Publisher, write your exact copy, choose your uploaded media and validate the post.'
+    ? 'Open Publish, write your exact copy, choose your uploaded media and validate the post.'
     : 'Open the Composer. You can publish manually, and use generative AI only where your plan includes it.';
   return `<article class="card onboarding-welcome-card">
     <div class="card-head"><div><span class="kicker">welcome to AutoBrand</span><h3>Your ${escapeHtml(planName)} is ready.</h3><p>Start with the workspace setup below. Plan, money, usage and payment information remains available under Plan & Billing.</p></div><a class="btn btn-ghost" href="/dashboard/billing">Plan & Billing</a></div>

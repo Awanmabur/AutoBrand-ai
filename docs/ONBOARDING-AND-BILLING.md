@@ -9,7 +9,7 @@ AutoBrand asks the customer to choose **how they want to work** before asking th
 | Plan | Public price | Access | Generative AI | Main purpose |
 |---|---:|---|---|---|
 | Free Trial | US$0 | 7 days | Limited | Test the real workflow before paying |
-| Manual Publisher | US$10 | 1 month | No | Bring your own copy/media; AutoBrand validates, schedules and publishes |
+| Publish | US$10 | 1 month | 0 included AutoBrand AI credits | Bring your own creative or connect ChatGPT/Codex; Drive, approvals, scheduling and analytics included |
 | AI Starter | US$10 | 1 month | Yes | Entry-level AI-assisted content creation |
 | Growth | US$20 | 1 month | Yes | Campaigns, approvals, AI video and limited automation |
 | Pro | US$50 | 1 month | Yes | Higher-volume AI/video operations |
@@ -109,17 +109,17 @@ Workspace setup journey
 
 Starting checkout never grants paid capability. A callback/IPN notification alone never grants paid capability. The authoritative billing service verifies Pesapal server-to-server and activates entitlement idempotently.
 
-## 6. Manual Publisher vs AI Starter at the same US$10 price
+## 6. Publish vs AI Starter at the same US$10 price
 
 These are intentionally different products rather than "cheap" and "expensive" versions of the same workflow.
 
-### Manual Publisher — US$10 · 1 month
+### Publish — US$10 · 1 month
 
-Choose this when the customer already creates their own advertising text, captions, images or videos. It has zero generative-AI credits and zero generative-AI quotas. AutoBrand supplies publishing infrastructure, deterministic validation/tools, scheduling, approvals, analytics and recovery.
+Choose this when the customer brings their own creative work **or connects ChatGPT/Codex as their AI operator**. The tier includes zero AutoBrand generative-AI credits/quotas, but includes the ChatGPT connector, Google Drive integration, publishing infrastructure, deterministic validation/tools, scheduling, approvals, channel workspaces, analytics and recovery. ChatGPT-generated assets can be uploaded into AutoBrand/Drive without converting them into AutoBrand-billed AI generations.
 
 ### AI Starter — US$10 · 1 month
 
-Choose this when the customer wants generative-AI assistance. It includes an AI credit budget and explicit AI generation limits, but has different workspace capacity from Manual Publisher.
+Choose this when the customer wants generative-AI assistance. It includes an AI credit budget and explicit AI generation limits, but has different workspace capacity from Publish.
 
 Public and dashboard copy must always explain this difference when the two US$10 plans appear together.
 

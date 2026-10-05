@@ -38,7 +38,8 @@ const userSchema = new mongoose.Schema(
     tokenVersion: { type: Number, default: 0, min: 0 },
     failedLoginAttempts: { type: Number, default: 0, min: 0 },
     lockUntil: { type: Date },
-    passwordChangedAt: { type: Date }
+    passwordChangedAt: { type: Date },
+    assetStoragePreference: { type: String, enum: ['platform', 'google_drive', 'both'], default: 'platform' }
   },
   { timestamps: true }
 );
@@ -68,7 +69,8 @@ userSchema.methods.safeProfile = function safeProfile() {
     plan: this.plan,
     status: this.status,
     isVerified: this.isVerified,
-    accountDeletionStatus: this.accountDeletionStatus
+    accountDeletionStatus: this.accountDeletionStatus,
+    assetStoragePreference: this.assetStoragePreference
   };
 };
 

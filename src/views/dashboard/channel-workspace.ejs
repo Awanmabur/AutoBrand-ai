@@ -1,0 +1,98 @@
+<section class="channel-workspace platform-<%= platform %>">
+  <div class="page-head channel-hero">
+    <div>
+      <span class="kicker">Channel workspace</span>
+      <h2><%= platformLabel %></h2>
+      <p>One place for connection health, publishing history, performance, recommendations and the next content action.</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-primary" href="/dashboard/quick-create?platform=<%= encodeURIComponent(platform) %>">Create for <%= platformLabel %></a>
+      <a class="btn btn-ghost" href="/dashboard/social">All channels</a>
+    </div>
+  </div>
+
+  <% if (brands.length > 1) { %>
+  <form class="channel-filter" method="get">
+    <label>Brand
+      <select name="brand">
+        <option value="">All accessible brands</option>
+        <% brands.forEach((brand) => { %><option value="<%= brand._id %>" <%= selectedBrand === String(brand._id) ? 'selected' : '' %>><%= brand.name %></option><% }) %>
+      </select><button class="btn btn-ghost" type="submit">Apply filter</button>
+    </label>
+  </form>
+  <% } %>
+
+  <div class="stat-grid channel-stat-grid">
+    <article class="stat-card"><span>Connected</span><strong><%= stats.readyAccounts %>/<%= stats.accounts %></strong><small>ready accounts</small></article>
+    <article class="stat-card"><span>Publish success</span><strong><%= stats.successRate %>%</strong><small><%= stats.published %> published · <%= stats.failed %> failed</small></article>
+    <article class="stat-card"><span>Impressions</span><strong><%= Number(stats.impressions || 0).toLocaleString() %></strong><small>last 30 days</small></article>
+    <article class="stat-card"><span>Engagement</span><strong><%= Number(stats.engagementRate || 0).toFixed(2) %>%</strong><small><%= Number(stats.followersGained || 0).toLocaleString() %> followers gained</small></article>
+  </div>
+
+  <div class="channel-grid">
+    <article class="panel channel-panel">
+      <div class="card-head"><div><h3>Accounts & health</h3><p>Fix connection problems before they become failed posts.</p></div><span class="badge"><%= stats.readyAccounts %> ready</span></div>
+      <% if (!accounts.length) { %>
+        <div class="empty-state">No <%= platformLabel %> account is connected yet. <a href="/dashboard/social">Connect one from Social Channels.</a></div>
+      <% } else { %>
+        <div class="data-list">
+        <% accounts.forEach((account) => { %>
+          <div class="data-row channel-account-row">
+            <div>
+              <strong><%= account.name %></strong>
+              <span><%= account.brand %> · <%= account.ready ? 'Ready to publish' : (account.blockers.join(', ') || account.status) %></span>
+              <% if (account.lastPublishError) { %><small class="text-danger"><%= account.lastPublishError %></small><% } %>
+            </div>
+            <div class="row-actions">
+              <span class="badge"><%= account.health %></span>
+              <% if (account.syncAction) { %><form action="<%= account.syncAction %>" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-ghost" type="submit">Sync</button></form><% } %>
+              <form action="/dashboard/actions/social/<%= account.id %>/health-check" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-ghost" type="submit">Check</button></form>
+            </div>
+          </div>
+        <% }) %>
+        </div>
+      <% } %>
+    </article>
+
+    <article class="panel channel-panel">
+      <div class="card-head"><div><h3>What to do next</h3><p>AutoBrand turns recent performance into simple actions.</p></div><span class="badge"><%= analyticsCapabilities.recommendations ? 'Insights' : 'Basic analytics' %></span></div>
+      <% const recommendations = analyticsView.recommendations || []; %>
+      <% if (!analyticsCapabilities.recommendations) { %>
+        <p class="empty-state">Your current plan includes channel health, publishing history and core performance metrics. Standard Analytics and above add performance recommendations and deeper post comparisons.</p>
+      <% } else if (!recommendations.length) { %><p class="empty-state">Publish and sync performance data to unlock channel recommendations.</p><% } else { %>
+        <ol class="recommendation-list"><% recommendations.forEach((item) => { %><li><%= item %></li><% }) %></ol>
+      <% } %>
+      <div class="channel-actions">
+        <a class="btn btn-primary" href="/dashboard/quick-create?platform=<%= encodeURIComponent(platform) %>">Create next post</a>
+        <a class="btn btn-ghost" href="/dashboard/calendar">Open calendar</a>
+      </div>
+    </article>
+  </div>
+
+  <article class="panel channel-panel">
+    <div class="card-head"><div><h3>Recent <%= platformLabel %> posts</h3><p>Published, scheduled, draft and failed content for this channel.</p></div><span class="badge"><%= recentPosts.length %> loaded</span></div>
+    <% if (!recentPosts.length) { %><p class="empty-state">No posts for this channel yet.</p><% } else { %>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Post</th><th>Brand</th><th>Status</th><th>When</th><th>Result</th></tr></thead><tbody>
+        <% recentPosts.forEach((post) => { %><tr>
+          <td><strong><%= String(post.title).slice(0, 100) %></strong><br><small><%= post.type %></small></td>
+          <td><%= post.brand %></td>
+          <td><span class="badge"><%= post.status %></span></td>
+          <td><%= post.publishedAt ? new Date(post.publishedAt).toLocaleString() : post.scheduledAt ? new Date(post.scheduledAt).toLocaleString() : '—' %></td>
+          <td><% if (post.url) { %><a href="<%= post.url %>" target="_blank" rel="noopener noreferrer">View live</a><% } else if (post.error) { %><span class="text-danger"><%= String(post.error).slice(0, 120) %></span><% } else { %>—<% } %></td>
+        </tr><% }) %>
+      </tbody></table></div>
+    <% } %>
+  </article>
+
+  <% if (analyticsCapabilities.topPerformance) { %>
+  <article class="panel channel-panel">
+    <div class="card-head"><div><h3>Top performance</h3><p>Provider-synced results from the last 30 days.</p></div><a class="btn btn-ghost" href="/dashboard/analytics">Full analytics</a></div>
+    <% const topPosts = (analyticsView.records || []).slice().sort((a,b) => Number(b.engagementRate||0)-Number(a.engagementRate||0)).slice(0,8); %>
+    <% if (!topPosts.length) { %><p class="empty-state">Analytics are waiting for provider sync.</p><% } else { %>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Post</th><th>Impressions</th><th>Reach</th><th>Engagement</th><th>Clicks</th></tr></thead><tbody>
+        <% topPosts.forEach((item) => { %><tr><td><%= item.post?.title || item.post?.caption || 'Post' %></td><td><%= Number(item.impressions||0).toLocaleString() %></td><td><%= Number(item.reach||0).toLocaleString() %></td><td><%= Number(item.engagementRate||0).toFixed(2) %>%</td><td><%= Number(item.clicks||0).toLocaleString() %></td></tr><% }) %>
+      </tbody></table></div>
+    <% } %>
+  </article>
+  <% } %>
+</section>

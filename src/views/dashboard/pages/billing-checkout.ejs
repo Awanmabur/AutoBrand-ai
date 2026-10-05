@@ -30,6 +30,18 @@
           <div class="price"><%= plan.recurringPriceLabel %></div>
         </div>
 
+        <% if (changeQuote && changeQuote.kind === 'upgrade') { %>
+          <div class="checkout-alert success">
+            <strong>Prorated upgrade</strong>
+            <span>Your unused current-plan value gives you a <%= changeQuoteCreditLabel %> credit. You pay <%= changeQuoteAmountLabel %> now for a fresh <%= plan.accessPeriodLabel || 'access period' %>; the upgraded plan activates only after Pesapal verification.</span>
+          </div>
+          <div class="item-grid checkout-records">
+            <article class="mini-record"><strong>Full new-plan price</strong><span><%= plan.recurringPriceLabel %></span></article>
+            <article class="mini-record"><strong>Unused-plan credit</strong><span>- <%= changeQuoteCreditLabel %></span></article>
+            <article class="mini-record"><strong>Amount due now</strong><span><%= changeQuoteAmountLabel %></span></article>
+          </div>
+        <% } %>
+
         <div class="item-grid checkout-records checkout-plan-records">
           <article class="mini-record"><strong>Billing currency</strong><span><%= plan.currencyLabel %></span></article>
           <article class="mini-record"><strong>AI budget</strong><span><%= plan.aiCreditsLabel %></span></article>
@@ -98,8 +110,8 @@
         <a class="button ghost" href="/pricing">Compare paid plans first</a>
       <% } else { %>
         <div class="section-kicker">Payment method</div>
-        <h2>Pay <%= plan ? plan.recurringPriceLabel : '' %> with Pesapal</h2>
-        <p class="muted">This is the plan price shown throughout AutoBrand. Pesapal will show the payment methods available for your checkout.</p>
+        <h2>Pay <%= changeQuote && changeQuote.kind === 'upgrade' ? changeQuoteAmountLabel : (plan ? plan.recurringPriceLabel : '') %> with Pesapal</h2>
+        <p class="muted"><%= changeQuote && changeQuote.kind === 'upgrade' ? 'This amount already includes your unused-current-plan credit. Pesapal will verify the exact prorated amount before AutoBrand activates the upgrade.' : 'This is the plan price shown throughout AutoBrand. Pesapal will show the payment methods available for your checkout.' %></p>
 
         <div class="payment-method-card pesapal-card selected">
           <div class="payment-method-icon">P</div>
@@ -120,7 +132,7 @@
           <button class="button" type="submit">Continue to Pesapal</button>
           <a class="button ghost" href="/pricing">Compare plans</a>
         </form>
-        <p class="muted checkout-terms-note">By continuing, you are starting checkout for <strong><%= plan.recurringPriceLabel %></strong>. Paid access begins only after verified payment. One payment buys this access period; AutoBrand does not automatically charge the next period.</p>
+        <p class="muted checkout-terms-note">By continuing, you are starting checkout for <strong><%= changeQuote && changeQuote.kind === 'upgrade' ? changeQuoteAmountLabel : plan.recurringPriceLabel %></strong>. Paid access begins only after verified payment. One payment buys this access period; AutoBrand does not automatically charge the next period.</p>
       <% } %>
     </article>
   </div>

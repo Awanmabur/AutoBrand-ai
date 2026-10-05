@@ -114,6 +114,9 @@ const DEFAULT_PLAN_FEATURES = {
   templateAccess: true,
   failedPostRecoveryAccess: false,
   agencyWorkspaceAccess: false,
+  chatgptConnectorAccess: false,
+  googleDriveAccess: false,
+  channelWorkspacesAccess: false,
   teamAccess: true
 };
 

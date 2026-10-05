@@ -4,6 +4,44 @@ AutoBrand AI is a social media management SaaS for building a brand brain, conne
 
 This build keeps the existing architecture and adds the production-readiness layer requested in the final SaaS platform prompt: database-backed plans, plan-aware billing, admin plan tools, safer errors, AI routing with hosted-provider HTTP adapters, expanded Brand Brain data, composer validation services, handoff/approval services, and seed scripts.
 
+
+## v1.6 final production hardening
+
+The v1.6 production candidate completes the final application-side hardening pass: privileged-admin MFA, signed GridFS media URLs with migration support, ingestion of remote media into controlled user-selected storage, expanded deletion/privacy cleanup, Brain worker deployment wiring, and a public SEO/AI-discovery layer with canonical metadata, sitemap, structured data, crawler policy and private-route noindex boundaries.
+
+See [`docs/FINAL-PRODUCTION-AUDIT.md`](docs/FINAL-PRODUCTION-AUDIT.md), [`docs/SEO-AI-DISCOVERY.md`](docs/SEO-AI-DISCOVERY.md), and [`docs/SECURITY.md`](docs/SECURITY.md).
+
+## ChatGPT / MCP connector
+
+AutoBrand AI v1.6.0 includes a native, OAuth-protected remote MCP connector for ChatGPT and other compatible MCP clients. The connector is a thin adapter over AutoBrand's existing workspace RBAC, media storage, scheduling, provider publishing, retries, analytics and audit infrastructure. It does **not** maintain a second set of social-provider credentials or bypass normal brand permissions.
+
+The connector supports brand/account discovery, durable media ingestion, draft creation/editing, immediate publishing, scheduled publishing/cancellation, post status and analytics. Generated or uploaded creative files are ingested into AutoBrand first and referenced by durable AutoBrand media IDs, avoiding temporary third-party preview URLs.
+
+Production MCP configuration is documented in [`docs/MCP-CONNECTOR.md`](docs/MCP-CONNECTOR.md). Keep `MCP_ENABLED=false` until the public HTTPS issuer/resource URLs, dedicated OAuth secret and deployment checks are complete.
+
+
+## v1.3 social operating system
+
+AutoBrand is organized around one customer workflow: **Create → Store → Approve → Schedule/Publish → Measure → Improve**. The v1.3 dashboard reduces navigation noise around that workflow and adds:
+
+- a dedicated workspace for every supported social network, with connection health, recent posts, publishing success/failure, 30-day performance and next-step recommendations;
+- Google Drive integration using the narrow `drive.file` permission, with per-user storage preference: AutoBrand, Google Drive, or both;
+- ChatGPT/Codex as an optional AI operator through AutoBrand's OAuth-protected MCP connector;
+- durable ChatGPT media ingestion so generated/uploaded images and videos can be stored in AutoBrand, Google Drive, or both before publishing;
+- Superadmin mode with all platform features, plan limits and AutoBrand AI credit limits unlocked;
+- the US$10 **Publish** tier (database slug remains `manual-publisher` for compatibility), which includes ChatGPT connector access, Drive, scheduling, approvals and channel analytics while carrying zero included AutoBrand generative-AI credits.
+
+See [`docs/SOCIAL-OPERATING-SYSTEM.md`](docs/SOCIAL-OPERATING-SYSTEM.md), [`docs/MCP-CONNECTOR.md`](docs/MCP-CONNECTOR.md), and [`docs/INTEGRATION-SETUP.md`](docs/INTEGRATION-SETUP.md).
+
+
+## v1.4 billing and AI cost controls
+
+AutoBrand v1.4 hardens the commercial contract behind every plan. Active subscriptions now carry an immutable snapshot of the price, currency, included credits, limits, features and AI policy purchased for that access period. New catalogue edits therefore affect future purchases without silently changing an existing paid contract.
+
+Higher-price upgrades use unused-period proration and activate only after verified Pesapal payment. Lower-price and equal-price branch switches are scheduled for the current period end. Text-model calls now reserve a conservative token budget before provider execution, cap provider output, reconcile provider-reported usage afterward, and automatically expire abandoned reservations after crashes.
+
+See [`docs/BILLING-AND-TOKEN-BUDGETS.md`](docs/BILLING-AND-TOKEN-BUDGETS.md) for the exact source-of-truth and lifecycle rules.
+
 ## Requirements
 
 - Node.js 24 LTS (the project pins `24.x` for deterministic hosting builds)
@@ -89,7 +127,7 @@ Feature navigation is calculated from the signed-in user role plus the current `
 Plans are now stored in MongoDB through `SubscriptionPlan`. The default matrix includes:
 
 - Free Trial
-- Manual Publisher (US$10 for 1 month of access, zero generative-AI credits; no automatic renewal)
+- Publish (US$10 for 1 month of access; bring your own creative or connect ChatGPT/Codex; Google Drive + scheduling + approvals + analytics; zero included AutoBrand generative-AI credits; no automatic renewal)
 - AI Starter (US$10 for 1 month of access, generative AI included; no automatic renewal)
 - Growth
 - Pro
@@ -198,7 +236,7 @@ STABILITY_API_KEY=
 FAL_KEY=
 ```
 
-Generative AI routing is fail-closed. Only hosted provider adapters are valid AI providers. Missing credentials, unsupported providers, and provider failures remain failures; they are never replaced by deterministic local content. Sharp/FFmpeg template rendering belongs to the separate Manual Publisher/media toolchain and consumes no AI credits.
+Generative AI routing is fail-closed. Only hosted provider adapters are valid AI providers. Missing credentials, unsupported providers, and provider failures remain failures; they are never replaced by deterministic local content. Sharp/FFmpeg template rendering belongs to the zero-credit Publish/media toolchain and consumes no AutoBrand AI credits. The Publish plan can also use a customer-connected ChatGPT/Codex account as an external AI operator without consuming AutoBrand generation credits.
 
 ## Social platform APIs
 
@@ -380,4 +418,9 @@ In this mode, signup and normal platform use remain available. Password reset em
 
 ## Production documentation
 
-The complete architecture, onboarding/plan journey, security, Pesapal billing, workspace RBAC, Manual Publisher, publishing, analytics, workers, migration, deployment and incident runbooks live in [`docs/README.md`](docs/README.md). Treat those documents and the production checklist as part of every release.
+The complete architecture, onboarding/plan journey, security, Pesapal billing, workspace RBAC, Publish/BYO-AI workflow, publishing, analytics, workers, migration, deployment and incident runbooks live in [`docs/README.md`](docs/README.md). Treat those documents and the production checklist as part of every release.
+
+
+## ChatGPT / Codex connector
+
+AutoBrand includes a native OAuth-protected MCP connector for ChatGPT/Codex. See `docs/MCP-CONNECTOR.md`.

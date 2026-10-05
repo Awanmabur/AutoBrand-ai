@@ -3,7 +3,7 @@
 <section class="composer-hero">
   <div>
     <p class="eyebrow">post studio</p>
-    <h2><%= composerAiEnabled ? 'Create from Brand Brain' : 'Manual Publisher' %></h2>
+    <h2><%= composerAiEnabled ? 'Create from Brand Brain' : 'Publish manually' %></h2>
     <p><%= composerAiEnabled ? 'Choose the brand, then save, schedule, or publish. AutoBrand uses saved brand context for AI-assisted creation.' : 'Write your exact copy, attach your own media, then validate, schedule, publish and track it without generative AI.' %></p>
   </div>
   <div class="composer-checklist">
@@ -315,7 +315,7 @@
   </div>
 </section>
 
-<style>
+<style nonce="<%= cspNonce %>">
   .platform-multi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:.5rem; margin:.75rem 0 1rem; }
   .account-platform-group { border:1px solid var(--border-color, #d7dce5); border-radius:.9rem; padding:.85rem; margin:.75rem 0; background:#fff; }
   .output-preview { display:grid; gap:1rem; }

@@ -12,7 +12,7 @@ async function run(input) {
     body: {
       systemInstruction: { parts: [{ text: systemPrompt(input) }] },
       contents: [{ role: 'user', parts: [{ text: promptText(input) }] }],
-      generationConfig: { temperature: 0.7 }
+      generationConfig: { temperature: 0.7, maxOutputTokens: Math.max(1, Math.floor(Number(input?.metadata?.maxOutputTokens || 2000))) }
     }
   });
   const text = (raw?.candidates?.[0]?.content?.parts || []).map((part) => part.text || '').join('\n').trim();

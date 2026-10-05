@@ -23,36 +23,31 @@
       const canSeePlans = ['super_admin', 'billing_admin', 'ai_manager', 'platform_admin'].includes(userRole) || (Array.isArray(user && user.permissions) && user.permissions.some((permission) => ['*', 'plans.view'].includes(permission)));
       const navGroups = [
         {
-          label: 'Overview',
+          label: 'Main',
           links: [
             { href: '/dashboard/overview', icon: 'home', label: 'Dashboard', badge: 'Home', active: currentPath === '/dashboard' || active(['/dashboard/overview']) },
-            { href: '/dashboard/quick-create', icon: 'plus', label: 'Full Composer', badge: 'AI', active: active(['/dashboard/quick-create', '/dashboard/actions/ai']) },
+            { href: '/dashboard/quick-create', icon: 'plus', label: 'Create', badge: 'AI', active: active(['/dashboard/quick-create', '/dashboard/actions/ai']) },
+            { href: '/dashboard/calendar', icon: 'calendar', label: 'Calendar', badge: 'Plan', active: active(['/dashboard/calendar', '/dashboard/actions/calendar']) },
+            { href: '/dashboard/content-library', icon: 'edit', label: 'Library', badge: 'Drafts', active: active(['/dashboard/content-library', '/dashboard/actions/posts']) },
+            { href: '/dashboard/social', icon: 'plug', label: 'Channels', badge: 'Live', active: active(['/dashboard/social', '/dashboard/channels', '/dashboard/actions/social']) },
+            { href: '/dashboard/analytics', icon: 'chart', label: 'Analytics', badge: 'Live', active: active(['/dashboard/analytics', '/dashboard/actions/analytics']) }
+          ]
+        },
+        {
+          label: 'Tools',
+          links: [
             { href: '/dashboard/brand-brain', icon: 'brain', label: 'Brand Brain', badge: 'Data', active: active(['/dashboard/brand-brain', '/dashboard/actions/brands']) },
-            { href: '/dashboard/content-library', icon: 'edit', label: 'Content Library', badge: 'Drafts', active: active(['/dashboard/content-library', '/dashboard/actions/posts']) }
-          ]
-        },
-        {
-          label: 'Planning & Creative',
-          links: [
-            { href: '/dashboard/campaigns', icon: 'grid', label: 'Campaigns & Growth', badge: 'Flow', active: active(['/dashboard/campaigns', '/dashboard/actions/campaigns', '/dashboard/actions/growth-studio']) },
-            { href: '/dashboard/media', icon: 'image', label: 'Media & Images', badge: 'Assets', active: active(['/dashboard/media', '/dashboard/actions/media']) },
+            { href: '/dashboard/campaigns', icon: 'grid', label: 'Campaigns', badge: 'Flow', active: active(['/dashboard/campaigns', '/dashboard/actions/campaigns', '/dashboard/actions/growth-studio']) },
+            { href: '/dashboard/media', icon: 'image', label: 'Assets', badge: 'Media', active: active(['/dashboard/media', '/dashboard/actions/media']) },
             { href: '/dashboard/video-system', icon: 'play', label: 'Video Studio', badge: 'Video', active: active(['/dashboard/video-system', '/dashboard/actions/videos', '/dashboard/actions/templates']) },
-            { href: '/dashboard/avatar-video', icon: 'avatar', label: 'Avatar Video', badge: 'Pro', active: active(['/dashboard/avatar-video', '/dashboard/actions/avatars']) }
+            { href: '/dashboard/avatar-video', icon: 'avatar', label: 'Avatar Video', badge: 'Pro', active: active(['/dashboard/avatar-video', '/dashboard/actions/avatars']) },
+            { href: '/dashboard/approvals', icon: 'check', label: 'Approvals', badge: 'Review', active: active(['/dashboard/approvals', '/dashboard/actions/approvals', '/dashboard/actions/posts/handoff']) }
           ]
         },
         {
-          label: 'Publishing',
+          label: 'Workspace',
           links: [
-            { href: '/dashboard/calendar', icon: 'calendar', label: 'Calendar & Schedule', badge: 'Plan', active: active(['/dashboard/calendar', '/dashboard/actions/calendar']) },
-            { href: '/dashboard/social', icon: 'plug', label: 'Social Channels', badge: 'API', active: active(['/dashboard/social', '/dashboard/actions/social']) },
-            { href: '/dashboard/approvals', icon: 'check', label: 'Approvals & Handoff', badge: 'Review', active: active(['/dashboard/approvals', '/dashboard/actions/approvals', '/dashboard/actions/posts/handoff']) },
-            { href: '/dashboard/analytics', icon: 'chart', label: 'Analytics', badge: 'Live', active: active(['/dashboard/analytics', '/dashboard/actions/analytics']) },
-            { href: '/dashboard/notifications', icon: 'message', label: 'Notifications', badge: 'Inbox', active: active(['/dashboard/notifications', '/dashboard/actions/notifications']) }
-          ]
-        },
-        {
-          label: 'Admin',
-          links: [
+            { href: '/dashboard/notifications', icon: 'message', label: 'Notifications', badge: 'Inbox', active: active(['/dashboard/notifications', '/dashboard/actions/notifications']) },
             { href: '/dashboard/team', icon: 'users', label: 'Team & Roles', badge: 'RBAC', active: active(['/dashboard/team', '/dashboard/actions/team']) },
             { href: '/dashboard/billing', icon: 'card', label: 'Plan & Billing', badge: 'Plan', active: active(['/dashboard/billing']) },
             ...(canSeePlans ? [{ href: '/dashboard/plans', icon: 'card', label: 'Plan Management', badge: 'Plans', active: active(['/dashboard/plans', '/dashboard/actions/admin/plans']) }] : []),
@@ -125,7 +120,7 @@
                 <span><svg class="icon"><use href="#icon-<%= link.icon %>"></use></svg><%= link.label %></span>
                 <b><%= link.badge %></b>
               </a>
-              <% if (group.label === 'Admin' && link.label === 'Settings') { %>
+              <% if (group.label === 'Workspace' && link.label === 'Settings & Security') { %>
                 <form class="side-nav-logout" action="/auth/logout" method="post">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                   <button class="side-nav-button" type="submit"><span><svg class="icon"><use href="#icon-x"></use></svg>Logout</span><b>Exit</b></button>
@@ -146,11 +141,19 @@
           </div>
         </div>
 
-        <div class="upgrade-card">
-          <strong>Upgrade to Studio</strong>
-          <p>Unlock client approvals, AI video, avatar video, larger workspaces and premium exports.</p>
-          <a class="btn btn-light" href="/dashboard/billing">View plan</a>
-        </div>
+        <% if (userRole === 'super_admin') { %>
+          <div class="upgrade-card">
+            <strong>Superadmin mode</strong>
+            <p>All product features, limits, AI tools and administration controls are unlocked.</p>
+            <a class="btn btn-light" href="/dashboard/admin">Platform controls</a>
+          </div>
+        <% } else { %>
+          <div class="upgrade-card">
+            <strong>Need more capacity?</strong>
+            <p>Compare plans for larger teams, AI video, automation and agency workflows.</p>
+            <a class="btn btn-light" href="/dashboard/billing">View plans</a>
+          </div>
+        <% } %>
       </div>
     </aside>
 

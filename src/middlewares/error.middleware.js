@@ -1,5 +1,7 @@
 const { buildErrorViewModel, defaultMessage, wantsJson } = require('../utils/errorResponse');
 const { buildFeatureAccess } = require('../services/subscription/featureAccess.service');
+const env = require('../config/env');
+const safeRequestLogger = require('./safeRequestLogger');
 
 const REMOVED_ROOT_ROUTES = {
   brands: '/dashboard/brand-brain',
@@ -251,13 +253,21 @@ function errorMiddleware(error, req, res, next) {
     console.warn('[security] CSRF request rejected', {
       requestId: req.id,
       method: req.method,
-      path: req.originalUrl || req.path,
+      path: safeRequestLogger.safePath(req),
       reason: error.csrfReason || 'unknown',
       origin: req.get('origin') || '',
       refererOrigin: (() => { try { return new URL(req.get('referer') || '').origin; } catch (_error) { return ''; } })()
     });
   } else if (status >= 500) {
-    console.error(error);
+    if (env.nodeEnv === 'production') {
+      const rawMessage = String(error?.message || 'Internal server error').slice(0, 800);
+      const message = rawMessage
+        .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, 'Bearer [redacted]')
+        .replace(/(?:sk|pk|rk)-[A-Za-z0-9_-]{12,}/g, '[redacted-key]');
+      console.error('[error]', { requestId: req.id, method: req.method, path: safeRequestLogger.safePath(req), name: error?.name || 'Error', code: error?.code || '', message });
+    } else {
+      console.error(error);
+    }
   }
   return renderError(error, req, res);
 }

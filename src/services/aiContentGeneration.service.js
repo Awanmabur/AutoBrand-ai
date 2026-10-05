@@ -435,7 +435,11 @@ async function generateContentBundle(input = {}) {
   const shapeExample = buildFallbackBundle(input.brand || {}, { ...input, ...controls });
   const result = await generateJsonText({
     prompt: buildGenerationPrompt(input.brand || {}, controls, shapeExample),
-    preferredProvider: input.provider || input.aiProvider || input.preferredProvider
+    preferredProvider: input.provider || input.aiProvider || input.preferredProvider,
+    user: input.user || input.actorUser,
+    brand: input.brand,
+    taskType: ['7_day_campaign', '30_day_content_calendar', 'product_launch', 'event_promotion', 'offer_sale'].includes(controls.outputType) ? 'campaign_generation' : (controls.outputType === 'reel_script' ? 'script_generation' : 'text_generation'),
+    maxOutputTokens: controls.outputType === '30_day_content_calendar' ? 6000 : (['7_day_campaign', 'product_launch', 'event_promotion', 'offer_sale'].includes(controls.outputType) ? 4000 : 2500)
   });
   if (!result.ok) throw aiGenerationError(result);
   assertGeneratedBundleShape(result.data, controls);
