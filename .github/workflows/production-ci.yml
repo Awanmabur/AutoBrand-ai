@@ -1,0 +1,38 @@
+name: AutoBrand AI production CI
+
+on:
+  push:
+    branches: [production]
+  pull_request:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autobrand-production-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Install locked dependencies including native optional packages
+        run: npm ci --include=optional
+
+      - name: Verify release source, tests and dependency security
+        run: npm run verify:release
+
+      - name: Verify Linux native runtime
+        run: |
+          node -e "require('sharp'); console.log('Sharp runtime OK')"
+          node -e "const p=require('ffmpeg-static'); if(!p) process.exit(1); console.log('FFmpeg runtime OK')"
