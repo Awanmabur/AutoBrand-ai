@@ -169,6 +169,7 @@ function organizationSchema() {
     name: 'AutoBrand AI',
     url: absolutePublicUrl('/'),
     logo: absolutePublicUrl('/assets/autobrand-icon-512.png'),
+    contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', telephone: '+256773364680', email: 'info@classictechgroup.com' },
     parentOrganization: { '@type': 'Organization', name: 'Classic Technologies' }
   };
 }

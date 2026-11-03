@@ -55,7 +55,7 @@ function planComparisonRows(pricingPlans = []) {
 function landingSeo(options = {}, selectedPlan = null) {
   const page = options.initialPublicPage || 'homePage';
   const mappings = {
-    homePage: ['AutoBrand AI','Social operating system for Brand Brain, ChatGPT, content creation, approvals, scheduling, publishing and analytics.','/'],
+    homePage: ['AI Social Media Management & Automation','Plan and schedule social media content with Brand Brain, ChatGPT, AI content creation, team approvals, publishing workflows and analytics.','/'],
     pricingPage: ['Pricing','Affordable plans for manual publishing, bring-your-own ChatGPT, built-in AutoBrand AI and autonomous Brand Brain workflows.','/pricing'],
     planDetailPage: [selectedPlan?.name || 'Plan details', selectedPlan?.summary || `Review ${selectedPlan?.name || 'AutoBrand'} features, limits and pricing.`, selectedPlan ? `/pricing/${encodeURIComponent(selectedPlan.slug)}` : '/pricing']
   };
