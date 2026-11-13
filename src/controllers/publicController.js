@@ -88,8 +88,23 @@ function staticPage(req,res,next){
     const page = PUBLIC_PAGES[pageKey];
     if (!page) { const error = new Error('Page not found.'); error.status=404; throw error; }
     const seo = pageMeta({ title: page.title, description: page.description, path: `/${pageKey}` });
+    // Keep machine-readable facts aligned with content visible on this page.
+    const pageSchemas = [organizationSchema(), softwareSchema(), websiteSchema(),
+      { '@context': 'https://schema.org', '@type': 'WebPage', name: seo.title, description: seo.description, url: seo.canonical },
+      { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: absolutePublicUrl('/') },
+        { '@type': 'ListItem', position: 2, name: page.eyebrow, item: seo.canonical }
+      ] }
+    ];
+    if (page.faqs?.length) pageSchemas.push({
+      '@context': 'https://schema.org', '@type': 'FAQPage',
+      mainEntity: page.faqs.map(([question, answer]) => ({
+        '@type': 'Question', name: question,
+        acceptedAnswer: { '@type': 'Answer', text: answer }
+      }))
+    });
     res.setHeader('Link','</llms.txt>; rel="describedby"; type="text/markdown"');
-    return res.render('public/seoPage',{ layout:false,page,pageKey,seo,notice:req.query.sent==='1'?'Thanks — your message was received.':(req.query.subscribed==='1'?'You are subscribed to product updates.':''),structuredData:[scriptJson(organizationSchema()),scriptJson(softwareSchema()),scriptJson(websiteSchema())] });
+    return res.render('public/seoPage',{ layout:false,page,pageKey,seo,notice:req.query.sent==='1'?'Thanks — your message was received.':(req.query.subscribed==='1'?'You are subscribed to product updates.':''),structuredData:pageSchemas.map(scriptJson) });
   } catch(error){ return next(error); }
 }
 
