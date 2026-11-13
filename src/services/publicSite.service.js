@@ -147,7 +147,7 @@ const PUBLIC_PAGES = {
    limited to implemented workflows and conditional provider/plan availability. */
 const PUBLIC_PAGE_GUIDES = {
   features: {
-    title: 'AI social media management built around a complete publishing workflow',
+    title: 'AI Social Media Management & Publishing',
     description: 'Plan on-brand social content with Brand Brain, create with ChatGPT or AutoBrand AI, review drafts, schedule publishing, manage media and analyse connected channels.',
     steps: [
       ['Build your Brand Brain', 'Define brand voice, target audience, products, content pillars, tone and approval rules before producing social posts.'],
@@ -167,7 +167,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   integrations: {
-    title: 'Connect social platforms, ChatGPT and Google Drive',
+    title: 'Social Integrations, ChatGPT & Google Drive',
     description: 'Explore AutoBrand AI social media publishing integrations, Google Drive asset storage, Brand Brain workflows and secure ChatGPT/Codex connectivity.',
     steps: [
       ['Connect an authorized account', 'Sign in to the social provider using an account you have permission to manage. AutoBrand requests the available scopes required for its supported workflows.'],
@@ -188,7 +188,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   templates: {
-    title: 'Social media content templates for consistent campaigns',
+    title: 'Social Media Campaign & Content Templates',
     description: 'Organize social media campaign briefs, content pillars, channel-specific post variations, approval checklists and brand voice in AutoBrand AI.',
     steps: [
       ['Choose a campaign goal', 'Start with an announcement, launch, educational series, offer or evergreen campaign. Define the audience and the desired action.'],
@@ -207,7 +207,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   resources: {
-    title: 'Practical guides for social media scheduling and AI-assisted publishing',
+    title: 'Social Media Automation Guides & Resources',
     description: 'Learn how to set up Brand Brain, connect social accounts, prepare a content calendar, use ChatGPT with AutoBrand AI and review analytics responsibly.',
     steps: [
       ['1. Prepare your brand profile', 'Write down your audience, products, tone, promises, restricted claims, campaign goals and approval responsibilities. Enter that context in Brand Brain.'],
@@ -230,7 +230,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   about: {
-    title: 'About the AutoBrand AI social media management platform',
+    title: 'About Our Social Media Platform',
     description: 'Learn why Classic Technologies built AutoBrand AI for creators, businesses, institutions and agencies managing brand voice, publishing, AI and analytics.',
     more: [
       ['One platform, three operating approaches', 'AutoBrand AI supports manual social publishing, workflows assisted by a user’s own connected ChatGPT, and eligible built-in AutoBrand AI automation. Users can choose based on the work they need and the plan they use.'],
@@ -243,7 +243,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   help: {
-    title: 'AutoBrand AI support: accounts, connections, publishing and billing',
+    title: 'Help with Social Publishing, AI & Billing',
     description: 'Troubleshoot social media account connections, ChatGPT and Brand Brain access, Google Drive media, failed publishing, AI quotas and subscription payments.',
     steps: [
       ['Check the right workspace', 'Open the brand and social channel involved. Confirm that your user role gives you access to the action you are trying to perform.'],
@@ -263,7 +263,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   contact: {
-    title: 'Contact AutoBrand AI sales, onboarding and support',
+    title: 'Contact Sales, Onboarding & Support',
     description: 'Contact AutoBrand AI about social media management, Brand Brain setup, team onboarding, integrations, agency workflows, security and subscription support.',
     more: [
       ['Product questions and onboarding', 'Tell the team whether you manage your own brand, work with a marketing team or operate multiple clients. Explain the channels and workflow you want to support.'],
@@ -276,7 +276,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   security: {
-    title: 'How AutoBrand AI protects publishing accounts and workflows',
+    title: 'Social Publishing Security & Privacy',
     description: 'Review AutoBrand AI security controls for social account credentials, workspace access, ChatGPT MCP permissions, publishing approvals, billing and media.',
     more: [
       ['Control who can publish', 'Brand membership, roles, approval rules and subscription permissions are verified by the backend before protected actions. A public interface alone does not authorize publishing.'],
@@ -290,7 +290,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   privacy: {
-    title: 'Privacy and data handling for social media management',
+    title: 'Privacy Policy & Connected Account Data',
     description: 'Understand how AutoBrand AI handles brand information, social account tokens, Google Drive assets, ChatGPT integrations, analytics and billing data.',
     more: [
       ['Understanding connected-service data', 'Authorizing a social network or Google Drive connection gives AutoBrand access to the permissions granted through that provider. Provider-side copies and account retention remain subject to that provider’s policies.'],
@@ -303,7 +303,7 @@ const PUBLIC_PAGE_GUIDES = {
     ]
   },
   terms: {
-    title: 'Service terms for AI social media publishing and subscriptions',
+    title: 'Terms of Service & Subscription Rules',
     description: 'Read AutoBrand AI terms for authorized social media connections, content rights, AI outputs, subscriptions, publishing integrations and acceptable use.',
     more: [
       ['Use only accounts you are authorized to manage', 'Do not connect social channels, client assets, ad accounts or storage owned by others without appropriate permission. Provider terms continue to apply to connected accounts.'],
