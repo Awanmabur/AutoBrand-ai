@@ -28,68 +28,7 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="cursor-glow" id="cursorGlow"></div>
 
-    <nav class="nav" id="nav" aria-label="Primary">
-      <div class="container nav-inner">
-        <a href="/" class="brand" aria-label="AutoBrand AI home">
-          <span class="brand-mark">AB</span>
-          <span>AutoBrand AI</span>
-        </a>
-
-        <div class="nav-links" id="navLinks">
-          <a href="/" data-page-link="homePage">Home</a>
-          <a href="/features" data-page-link="featuresPage">Features</a>
-          <a href="/pricing" data-page-link="pricingPage">Pricing</a>
-          <a href="/resources" data-page-link="resourcesPage">Resources</a>
-          <a href="/help" data-page-link="helpPage">Help</a>
-          <div class="mobile-menu-cta">
-            <button
-              class="theme-toggle"
-              id="mobileThemeToggle"
-              type="button"
-              aria-label="Toggle dark mode"
-            >
-              ☾
-            </button>
-            <a href="/auth/login" class="btn btn-ghost"
-              >Login</a
-            >
-            <a
-              href="/start/free-trial"
-              class="btn btn-primary"
-              >Start free</a
-            >
-          </div>
-        </div>
-
-        <div class="nav-actions">
-          <button
-            class="theme-toggle"
-            id="themeToggle"
-            type="button"
-            aria-label="Toggle dark mode"
-          >
-            ☾
-          </button>
-          <a href="/auth/login" class="btn btn-ghost"
-            >Login</a
-          >
-          <a href="/start/free-trial" class="btn btn-primary"
-            >Start free</a
-          >
-        </div>
-
-        <button
-          class="mobile-toggle"
-          id="mobileToggle"
-          type="button"
-          aria-label="Open navigation"
-          aria-controls="navLinks"
-          aria-expanded="false"
-        >
-          ☰
-        </button>
-      </div>
-    </nav>
+    <%- include('partials/marketing-nav') %>
 
     <main id="main-content">
       <div class="page active" id="homePage">
@@ -648,74 +587,7 @@
 
     </main>
 
-    <footer>
-      <div class="container">
-        <div class="footer-grid">
-          <div class="footer-about">
-            <a
-              href="/"
-              class="brand"
-              aria-label="AutoBrand AI home"
-              data-page-link="homePage"
-            >
-              <span class="brand-mark">AB</span>
-              <span>AutoBrand AI</span>
-            </a>
-            <p>
-              AI content planning, brand memory and campaign generation for
-              creators, small businesses and marketing teams.
-            </p>
-            <div class="footer-newsletter"><a class="btn btn-primary" href="/resources">Product resources</a></div>
-          </div>
-
-          <div class="footer-col">
-            <h4>Product</h4>
-            <a href="/features" data-page-link="featuresPage">Features</a>
-            <a href="/pricing" data-page-link="pricingPage">Pricing</a>
-            <a href="/integrations" data-page-link="integrationsPage"
-              >Integrations</a
-            >
-            <a href="/templates" data-page-link="templatesPage">Templates</a>
-          </div>
-
-          <div class="footer-col">
-            <h4>Account</h4>
-            <a href="/auth/login">Login</a>
-            <a href="/start/free-trial">Sign up</a>
-            <a href="/auth/forgot-password">Forgot password</a>
-            <a href="/contact" data-page-link="contactPage">Contact sales</a>
-            <a href="/help" data-page-link="helpPage">Support</a>
-          </div>
-
-          <div class="footer-col">
-            <h4>Resources</h4>
-            <a href="/resources" data-page-link="resourcesPage">Resources</a>
-            <a href="/resources" data-page-link="blogPage">Blog</a>
-            <a href="/templates" data-page-link="templatesPage">Templates</a>
-            <a href="/help" data-page-link="helpPage">Help center</a>
-            <a href="/contact" data-page-link="contactPage">Contact</a>
-          </div>
-
-          <div class="footer-col">
-            <h4>Company</h4>
-            <a href="/about" data-page-link="aboutPage">About</a>
-            <a href="/privacy" data-page-link="privacyPage">Privacy policy</a>
-            <a href="/terms" data-page-link="termsPage">Terms of service</a>
-            <a href="/" data-page-link="homePage">Home</a>
-            <a href="/start/free-trial">Get started</a>
-          </div>
-        </div>
-
-        <div class="footer-bottom">
-          <span>© 2026 AutoBrand AI. All rights reserved.</span>
-          <div class="social-links">
-            <a href="/contact">Contact</a>
-            <a href="/security">Security</a>
-            <a href="/privacy">Privacy</a>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <%- include('partials/marketing-footer') %>
 
     <script nonce="<%= cspNonce %>">
       const savedTheme = localStorage.getItem("classicAutobrandTheme");
