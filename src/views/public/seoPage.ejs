@@ -21,8 +21,8 @@
   <meta name="twitter:title" content="<%= seo.title %>" />
   <meta name="twitter:description" content="<%= seo.description %>" />
   <meta name="twitter:image" content="<%= seo.image %>" />
-  <link rel="stylesheet" href="/css/landing.css" />
-  <link rel="stylesheet" href="/css/public-site.css" />
+  <link rel="stylesheet" href="/css/landing.css?v=marketing-20261113" />
+  <link rel="stylesheet" href="/css/public-site.css?v=marketing-20261113" />
   <% for (const item of structuredData || []) { %>
   <script type="application/ld+json" nonce="<%= cspNonce %>"><%- item %></script>
   <% } %>
@@ -184,7 +184,7 @@
     </section>
   </main>
   <%- include('partials/marketing-footer') %>
-  <script defer src="/js/marketing-pages.js"></script>
+  <script defer src="/js/marketing-pages.js?v=marketing-20261113"></script>
   <script defer src="/js/public-shell.js"></script>
 </body>
 </html>
