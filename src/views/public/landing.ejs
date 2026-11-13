@@ -22,7 +22,7 @@
     <meta name="twitter:description" content="<%= seo?.description || 'AutoBrand AI social operating system.' %>" />
     <meta name="twitter:image" content="<%= seo?.image || '/assets/autobrand-og.png' %>" />
     <% for (const item of structuredData || []) { %><script type="application/ld+json" nonce="<%= cspNonce %>"><%- item %></script><% } %>
-    <link rel="stylesheet" href="/css/landing.css" />
+    <link rel="stylesheet" href="/css/landing.css?v=marketing-20261113" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
