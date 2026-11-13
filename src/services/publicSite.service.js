@@ -142,6 +142,192 @@ const PUBLIC_PAGES = {
   }
 };
 
+
+/* Product-led content for the shared marketing pages. Claims are intentionally
+   limited to implemented workflows and conditional provider/plan availability. */
+const PUBLIC_PAGE_GUIDES = {
+  features: {
+    title: 'AI social media management built around a complete publishing workflow',
+    description: 'Plan on-brand social content with Brand Brain, create with ChatGPT or AutoBrand AI, review drafts, schedule publishing, manage media and analyse connected channels.',
+    steps: [
+      ['Build your Brand Brain', 'Define brand voice, target audience, products, content pillars, tone and approval rules before producing social posts.'],
+      ['Create and organize content', 'Draft manually, work with your connected ChatGPT, or use available AutoBrand AI generation. Keep captions, visual assets and campaign context together.'],
+      ['Review, schedule and publish', 'Apply the brand’s approval and permission rules, check media requirements and schedule supported social channels. Publishing depends on provider permissions.'],
+      ['Measure and improve', 'Review connected-account performance and use the findings to refine future creative briefs, topics and posting schedules.']
+    ],
+    more: [
+      ['Social media content approval workflow', 'Teams and agencies can separate drafting from approval and publishing. Roles, plan features and provider readiness determine who can act; a connected AI operator cannot bypass those controls.'],
+      ['Content calendar and media management', 'Organize reusable media, planned posts and campaigns across brands. Select AutoBrand storage, your Google Drive, or both where connected and enabled.'],
+      ['Publishing recovery and performance', 'Keep a visible record of publishing states and provider errors. Resolve expired permissions, rejected media or channel limitations before retrying failed publishing actions.']
+    ],
+    faqs: [
+      ['Can I use AutoBrand AI without AI-generated content?', 'Yes. The manual publishing path supports user-provided content and media; available workflows depend on the selected plan.'],
+      ['Does AutoBrand AI publish everywhere automatically?', 'No. Supported publishing actions depend on the connected provider, authorized permissions, media requirements and the selected plan.'],
+      ['Can different people draft and approve posts?', 'Team roles and approval workflows support controlled collaboration where included in the account’s plan.']
+    ]
+  },
+  integrations: {
+    title: 'Connect social platforms, ChatGPT and Google Drive',
+    description: 'Explore AutoBrand AI social media publishing integrations, Google Drive asset storage, Brand Brain workflows and secure ChatGPT/Codex connectivity.',
+    steps: [
+      ['Connect an authorized account', 'Sign in to the social provider using an account you have permission to manage. AutoBrand requests the available scopes required for its supported workflows.'],
+      ['Check provider readiness', 'Review connection health and missing permissions before scheduling or publishing. Some social networks require specific account types, media sizes or approval flows.'],
+      ['Choose how content is created', 'Use your own content, a connected ChatGPT through the AutoBrand MCP connector, or built-in AutoBrand AI on eligible plans.'],
+      ['Choose asset storage', 'Use AutoBrand media storage, your connected Google Drive, or a combination supported by your current configuration.']
+    ],
+    more: [
+      ['Facebook, Instagram and LinkedIn content operations', 'Coordinate posts and analytics for connected accounts where platform scopes and account eligibility permit. Not every network exposes identical features through its API.'],
+      ['TikTok, YouTube, X, Threads, Pinterest and Google Business Profile', 'Available publishing, media and analytics operations differ by provider, authorization and application approval status. AutoBrand checks readiness before supported actions.'],
+      ['ChatGPT / Codex MCP connector', 'ChatGPT can request allowed actions through AutoBrand’s authenticated tools; provider access tokens stay on the AutoBrand server and brand permissions remain enforced.'],
+      ['Google Drive integration', 'Store and manage selected content assets in a connected user-owned Google Drive without treating that Drive as an unrestricted workspace.']
+    ],
+    faqs: [
+      ['Do I need to give ChatGPT my social media password?', 'No. Authorized tool calls go through AutoBrand; social provider credentials are not passed to ChatGPT.'],
+      ['Why does an integration show limited publishing features?', 'Provider APIs, account types, approved scopes and plan limits differ. Check the channel’s connection status and current provider requirements.'],
+      ['Can I disconnect a social account or storage integration?', 'Connected services can be managed from their supported account/workspace controls, subject to your permissions.']
+    ]
+  },
+  templates: {
+    title: 'Social media content templates for consistent campaigns',
+    description: 'Organize social media campaign briefs, content pillars, channel-specific post variations, approval checklists and brand voice in AutoBrand AI.',
+    steps: [
+      ['Choose a campaign goal', 'Start with an announcement, launch, educational series, offer or evergreen campaign. Define the audience and the desired action.'],
+      ['Apply Brand Brain', 'Use the brand’s voice, product facts and approval rules so a reusable template does not become generic or inaccurate.'],
+      ['Adapt to each social network', 'Review caption length, creative format, calls to action and media requirements before scheduling supported channels.'],
+      ['Review and learn', 'Route drafts for approval when required, then compare performance to make the next campaign brief more useful.']
+    ],
+    more: [
+      ['Campaign briefing templates', 'Document goals, target audience, products, campaign dates, channel mix and success measures before creating posts.'],
+      ['Reusable content pillars', 'Keep education, product value, customer questions, announcements and community topics consistent across a publishing calendar.'],
+      ['Agency review checklists', 'Make client approval requirements and publishing ownership explicit rather than letting a generated caption publish without oversight.']
+    ],
+    faqs: [
+      ['Do templates replace a brand strategy?', 'No. Templates provide repeatable structure; Brand Brain supplies the brand-specific voice, audience, goals and constraints.'],
+      ['Can one brief be used across multiple channels?', 'Yes, as a starting point. Each final post should be adapted to the channel’s requirements and permissions.']
+    ]
+  },
+  resources: {
+    title: 'Practical guides for social media scheduling and AI-assisted publishing',
+    description: 'Learn how to set up Brand Brain, connect social accounts, prepare a content calendar, use ChatGPT with AutoBrand AI and review analytics responsibly.',
+    steps: [
+      ['1. Prepare your brand profile', 'Write down your audience, products, tone, promises, restricted claims, campaign goals and approval responsibilities. Enter that context in Brand Brain.'],
+      ['2. Connect and verify social channels', 'Connect accounts you are authorized to use and inspect which publishing and analytics actions the providers permit. Resolve permissions before planning automation.'],
+      ['3. Build a weekly content workflow', 'Plan relevant topics, assets, post formats, reviewers and publication times. Use manual drafting, ChatGPT or the built-in AI path available on your plan.'],
+      ['4. Review every publishing handoff', 'Check facts, links, product offers, consent and media rights. Assign approvals where needed before scheduling or publishing.'],
+      ['5. Read performance and refine', 'Review available metrics, publishing failures and the response to each content pillar. Improve the next brief using evidence, not fabricated engagement claims.']
+    ],
+    more: [
+      ['Guide: Set up a Brand Brain', 'Capture brand identity, the ideal customer, product differentiators, words to avoid, content pillars, offers and calls to action. This makes AI-assisted writing more consistent.'],
+      ['Guide: ChatGPT-powered social media workflow', 'Use AutoBrand’s connected tools for permitted brand operations; AutoBrand checks OAuth scopes, roles and plan entitlements before executing actions.'],
+      ['Guide: Social media content calendar', 'Create a balanced schedule of helpful tips, product education, customer questions and campaign announcements. Adjust each post for the intended network.'],
+      ['Guide: Google Drive media organization', 'Keep assets named, reviewed and associated with the correct brand. Select Drive storage only when the owner has connected and authorized their Google account.'],
+      ['Guide: Social media analytics', 'Compare post reach, engagement and publishing reliability where provider data is available. Distinguish observable outcomes from estimated revenue or attribution.']
+    ],
+    faqs: [
+      ['What should I configure before using AI social media automation?', 'First configure Brand Brain, authorized channels, permissions, content rules, review requirements and a plan that enables the intended workflow.'],
+      ['Can I bring my own ChatGPT instead of paying for built-in generation?', 'A bring-your-own-AI/manual workflow is available on supported plans. Compare current plan entitlements on the Pricing page.'],
+      ['Does AutoBrand AI guarantee more followers or sales?', 'No. It helps organize and execute social publishing workflows; campaign results depend on content, audience, distribution and the connected platforms.']
+    ]
+  },
+  about: {
+    title: 'About the AutoBrand AI social media management platform',
+    description: 'Learn why Classic Technologies built AutoBrand AI for creators, businesses, institutions and agencies managing brand voice, publishing, AI and analytics.',
+    more: [
+      ['One platform, three operating approaches', 'AutoBrand AI supports manual social publishing, workflows assisted by a user’s own connected ChatGPT, and eligible built-in AutoBrand AI automation. Users can choose based on the work they need and the plan they use.'],
+      ['Built around responsible control', 'Brand Brain, membership permissions, content approvals, integration readiness and usage limits are part of the product workflow. Faster content creation should not mean giving up oversight.'],
+      ['Made for growing brands and agencies', 'Keep brand identities, connected channels, media and performance context in a structured workspace as content operations become more complex.']
+    ],
+    faqs: [
+      ['Who builds AutoBrand AI?', 'AutoBrand AI is developed by Classic Technologies.'],
+      ['Is AutoBrand AI only for agencies?', 'No. It is designed for creators, businesses, marketing teams, institutions and agencies, with features governed by plan eligibility.']
+    ]
+  },
+  help: {
+    title: 'AutoBrand AI support: accounts, connections, publishing and billing',
+    description: 'Troubleshoot social media account connections, ChatGPT and Brand Brain access, Google Drive media, failed publishing, AI quotas and subscription payments.',
+    steps: [
+      ['Check the right workspace', 'Open the brand and social channel involved. Confirm that your user role gives you access to the action you are trying to perform.'],
+      ['Read the current status', 'Inspect connection permissions, publishing state, approval status, media validation or account plan limits before repeating an action.'],
+      ['Correct the underlying issue', 'Reconnect expired provider authorization, use supported media, obtain approval or select a plan with the required entitlement.'],
+      ['Request support with context', 'Include the affected feature, channel, approximate time and the visible error. Do not include passwords, tokens or private customer records.']
+    ],
+    more: [
+      ['Social publishing troubleshooting', 'A failed post can be caused by provider permissions, expired connections, missing approval, rejected media or external service limits. Do not retry blindly without checking the failure reason.'],
+      ['ChatGPT and AI access', 'Built-in AI credits, generation quotas and token budgets are checked by the server. A connected ChatGPT client cannot override brand access controls or usage limits.'],
+      ['Payment and subscription help', 'Paid access follows verified Pesapal payment status. Review the displayed billing period and payment verification before retrying a transaction.']
+    ],
+    faqs: [
+      ['Why can I not schedule or publish a post?', 'Check the selected brand, your role, the connected account, provider permissions, plan limits and any approval or media requirements.'],
+      ['What happens after a failed payment?', 'AutoBrand verifies payment provider results server-to-server. Do not assume a pending callback means the subscription has activated.'],
+      ['Where do I report a problem?', 'Use the Contact page and provide safe diagnostic details without credentials or private records.']
+    ]
+  },
+  contact: {
+    title: 'Contact AutoBrand AI sales, onboarding and support',
+    description: 'Contact AutoBrand AI about social media management, Brand Brain setup, team onboarding, integrations, agency workflows, security and subscription support.',
+    more: [
+      ['Product questions and onboarding', 'Tell the team whether you manage your own brand, work with a marketing team or operate multiple clients. Explain the channels and workflow you want to support.'],
+      ['Agency and business enquiries', 'Describe how many brands, reviewers and social accounts are involved, and whether you need manual publishing, ChatGPT integration or built-in AI workflows.'],
+      ['Help with existing accounts', 'Include the feature name, channel and a safe description of the error. Never send account passwords, payment credentials, API keys or social provider tokens through the form.']
+    ],
+    faqs: [
+      ['What should I include in my message?', 'Share your goal, the relevant feature or social network, and what you already tried. Do not include credentials or sensitive customer information.'],
+      ['Can I ask about available plans before registering?', 'Yes. Use the contact form for product and plan questions; live prices and feature entitlements are shown on the Pricing page.']
+    ]
+  },
+  security: {
+    title: 'How AutoBrand AI protects publishing accounts and workflows',
+    description: 'Review AutoBrand AI security controls for social account credentials, workspace access, ChatGPT MCP permissions, publishing approvals, billing and media.',
+    more: [
+      ['Control who can publish', 'Brand membership, roles, approval rules and subscription permissions are verified by the backend before protected actions. A public interface alone does not authorize publishing.'],
+      ['Protect social and storage tokens', 'Connected platform credentials remain protected on AutoBrand servers. Do not include access tokens in public forms, content prompts, shareable links or support messages.'],
+      ['Safer media and external requests', 'The platform validates remote media input and uses protected media delivery paths to reduce unsafe fetching and unauthorized access.'],
+      ['Financial and operational reliability', 'Payment activation relies on verified provider results, while background publishing should preserve traceable states and safe retry behavior.']
+    ],
+    faqs: [
+      ['Can a connected AI assistant access everything in my social accounts?', 'No. AutoBrand mediates allowed tools using authenticated scopes, brand roles and plan entitlements; it does not send raw provider tokens to the assistant.'],
+      ['Should I send tokens or passwords with a support request?', 'No. Never send credentials through the public contact form. Use the published security reporting channel for sensitive disclosures.']
+    ]
+  },
+  privacy: {
+    title: 'Privacy and data handling for social media management',
+    description: 'Understand how AutoBrand AI handles brand information, social account tokens, Google Drive assets, ChatGPT integrations, analytics and billing data.',
+    more: [
+      ['Understanding connected-service data', 'Authorizing a social network or Google Drive connection gives AutoBrand access to the permissions granted through that provider. Provider-side copies and account retention remain subject to that provider’s policies.'],
+      ['AI prompts and brand context', 'Brand Brain and content prompts may be processed through a configured AI provider when the user selects supported AI operations. Avoid adding unnecessary sensitive information to prompts.'],
+      ['Account and data controls', 'Use supported account controls to disconnect services, manage content and request deletion. Some audit, payment or security records may need to be retained under applicable requirements.']
+    ],
+    faqs: [
+      ['Does connecting Google Drive transfer ownership of my Drive?', 'No. Files kept only in a connected user-owned Drive remain in that user’s account, subject to provider and product behavior.'],
+      ['Does ChatGPT receive my social network access tokens?', 'No. AutoBrand keeps provider credentials server-side; the connected client uses scoped AutoBrand tools.']
+    ]
+  },
+  terms: {
+    title: 'Service terms for AI social media publishing and subscriptions',
+    description: 'Read AutoBrand AI terms for authorized social media connections, content rights, AI outputs, subscriptions, publishing integrations and acceptable use.',
+    more: [
+      ['Use only accounts you are authorized to manage', 'Do not connect social channels, client assets, ad accounts or storage owned by others without appropriate permission. Provider terms continue to apply to connected accounts.'],
+      ['Review generated content before publishing', 'Users remain responsible for accuracy, intellectual property rights, product and pricing claims, required disclosures and compliance with provider rules.'],
+      ['Understand plan and provider limitations', 'Available capabilities depend on the current plan, authorized scopes, provider availability and account status. Review the current commercial terms before making a payment.']
+    ],
+    faqs: [
+      ['Is generated content guaranteed to be accurate or compliant?', 'No. AI-generated text and media must be reviewed by the responsible user before publishing.'],
+      ['Do external social platforms have their own rules?', 'Yes. Connecting AutoBrand does not replace the policies or account requirements of a social media or storage provider.']
+    ]
+  }
+};
+for (const [key, guide] of Object.entries(PUBLIC_PAGE_GUIDES)) {
+  const page = PUBLIC_PAGES[key];
+  if (!page) throw new Error('Missing public page for marketing guide: ' + key);
+  const { title, description, steps, more, faqs } = guide;
+  if (title) page.title = title;
+  if (description) page.description = description;
+  if (steps) page.steps = steps;
+  if (faqs) page.faqs = faqs;
+  if (more) page.sections = [...page.sections, ...more];
+}
+
+
 function publicOrigin() {
   const value = env.publicAppUrl || env.appUrl;
   try { return new URL(value).origin; } catch (_error) { return ''; }
