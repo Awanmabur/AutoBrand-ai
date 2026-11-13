@@ -129,6 +129,7 @@
 .info-next .btn-ghost { background: #fff; color: #082c52 !important; }
 .info-next .btn-primary { background: #fff; color: #082c52 !important; box-shadow: none; }
 .info-next .btn-primary:hover { background: #e7f0fa; }
+.marketing-info.dark-mode .info-step-number { background: #082c52; color: #fff; }
 .marketing-info.dark-mode .info-hero-panel { background: linear-gradient(135deg,var(--surface),var(--surface-soft)); }
 .marketing-info.dark-mode .info-hero-aside,.marketing-info.dark-mode .info-next { background: #082c52; }
 .marketing-info.dark-mode .info-aside-label,.marketing-info.dark-mode .info-next .info-kicker { color: #cce5ff; }
