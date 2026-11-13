@@ -123,6 +123,25 @@
     </section>
     <% } %>
 
+    <% if (page.related && page.related.length) { %>
+    <section class="container info-related" aria-labelledby="info-related-heading">
+      <div class="info-section-intro">
+        <span class="info-kicker">Explore next</span>
+        <h2 id="info-related-heading">Related AutoBrand AI resources</h2>
+        <p>Follow these connected guides to understand the next part of your social media workflow.</p>
+      </div>
+      <div class="info-related-grid">
+        <% for (const related of page.related) { %>
+        <a class="info-related-card" href="<%= related[1] %>">
+          <strong><%= related[0] %></strong>
+          <span><%= related[2] %></span>
+          <span class="info-related-more" aria-hidden="true">Explore →</span>
+        </a>
+        <% } %>
+      </div>
+    </section>
+    <% } %>
+
     <% if (pageKey === 'contact') { %>
     <section class="container info-contact" aria-labelledby="contact-heading">
       <div class="info-contact-panel">
