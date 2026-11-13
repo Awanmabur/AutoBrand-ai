@@ -159,3 +159,21 @@
 @media (prefers-reduced-motion: reduce) {
   .marketing-info *, .marketing-info *::before, .marketing-info *::after { scroll-behavior: auto !important; }
 }
+
+
+/* Real internal navigation between product, support and policy resources. */
+.info-related { padding-block: 8px clamp(40px,6vw,72px); }
+.info-related-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.info-related-card {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 10px; min-width: 0;
+  padding: 24px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; text-decoration: none; box-shadow: var(--shadow-soft);
+  transition: transform .2s ease, border-color .2s ease;
+}
+.info-related-card:hover,.info-related-card:focus-visible { transform: translateY(-2px); border-color: var(--accent); }
+.info-related-card strong { color: var(--text); font-size: 1.08rem; }
+.info-related-card > span:not(.info-related-more) { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+.info-related-card .info-related-more { color: var(--accent); font-weight: 850; margin-top: auto; }
+@media(max-width:980px) { .info-related-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:680px) { .info-related-grid { grid-template-columns: 1fr; } }
