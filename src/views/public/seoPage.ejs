@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title><%= seo.title %></title>
   <meta name="description" content="<%= seo.description %>" />
   <meta name="robots" content="<%= seo.robots %>" />
@@ -21,22 +21,151 @@
   <meta name="twitter:title" content="<%= seo.title %>" />
   <meta name="twitter:description" content="<%= seo.description %>" />
   <meta name="twitter:image" content="<%= seo.image %>" />
+  <link rel="stylesheet" href="/css/landing.css" />
   <link rel="stylesheet" href="/css/public-site.css" />
-  <% for (const item of structuredData || []) { %><script type="application/ld+json" nonce="<%= cspNonce %>"><%- item %></script><% } %>
+  <% for (const item of structuredData || []) { %>
+  <script type="application/ld+json" nonce="<%= cspNonce %>"><%- item %></script>
+  <% } %>
 </head>
-<body>
-<a class="skip-link" href="#main">Skip to content</a>
-<nav class="site-nav" aria-label="Primary"><div class="site-shell"><a class="brand" href="/"><span class="brand-mark">AB</span><span>AutoBrand AI</span></a><div class="nav-links"><a href="/features">Features</a><a href="/integrations">Integrations</a><a href="/pricing">Pricing</a><a href="/resources">Resources</a><a href="/security">Security</a><a href="/auth/login">Login</a><a class="cta" href="/start/free-trial">Start free</a></div></div></nav>
-<main id="main">
-  <section class="hero"><div class="site-shell"><div class="eyebrow"><%= page.eyebrow %></div><h1><%= page.heading %></h1><p class="lead"><%= page.intro %></p><div class="actions"><a class="cta" href="/start/free-trial">Start free</a><a class="secondary" href="/pricing">Compare plans</a></div><% if (notice) { %><div class="notice" role="status"><%= notice %></div><% } %></div></section>
-  <section class="site-shell <%= pageKey === 'privacy' || pageKey === 'terms' ? 'legal' : '' %>"><div class="grid">
-    <% if (page.updated) { %><article class="card"><strong>Last updated: <%= page.updated %></strong><p>This public policy reflects the current AutoBrand product architecture. Local law can require additional notices or contract terms.</p></article><% } %>
-    <% for (const section of page.sections || []) { %><article class="card"><h2><%= section[0] %></h2><p><%= section[1] %></p></article><% } %>
-    <% if (pageKey === 'contact') { %>
-      <article class="card"><h2>Send a message</h2><form class="form-grid" method="post" action="/contact"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><label>Full name<input name="name" required maxlength="160" autocomplete="name" /></label><label>Email<input name="email" type="email" required maxlength="320" autocomplete="email" /></label><label>Team type<select name="teamType"><option value="Creator">Creator</option><option value="Business">Business</option><option value="Marketing team">Marketing team</option><option value="Agency">Agency</option><option value="Institution">Institution</option></select></label><label>Message<textarea name="message" required maxlength="5000"></textarea></label><button class="cta" type="submit">Send message</button></form></article>
+<body class="marketing-info">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <%- include('partials/marketing-nav') %>
+  <main id="main-content">
+    <section class="info-hero" aria-labelledby="page-heading">
+      <div class="container">
+        <nav class="info-breadcrumbs" aria-label="Breadcrumb">
+          <a href="/">Home</a><span aria-hidden="true">/</span>
+          <span aria-current="page"><%= page.eyebrow %></span>
+        </nav>
+        <div class="info-hero-panel">
+          <div class="info-hero-text">
+            <span class="info-eyebrow">AutoBrand AI <span aria-hidden="true">·</span> <%= page.eyebrow %></span>
+            <h1 id="page-heading"><%= page.heading %></h1>
+            <p class="info-lead"><%= page.intro %></p>
+            <div class="info-actions">
+              <a class="btn btn-primary" href="/start/free-trial">Start free</a>
+              <a class="btn btn-ghost" href="/pricing">Compare plans</a>
+            </div>
+          </div>
+          <aside class="info-hero-aside" aria-label="AutoBrand AI workflow overview">
+            <span class="info-aside-label">A connected social media workflow</span>
+            <h2>Plan. Create. Approve. Publish. Learn.</h2>
+            <p>Start with Brand Brain and your content. Work manually, through an authorized ChatGPT connection, or with AutoBrand AI features available on your plan.</p>
+            <div class="info-aside-tags" aria-label="Product capabilities">
+              <span>Brand Brain</span><span>Social scheduling</span>
+              <span>Approval workflows</span><span>Analytics</span>
+            </div>
+          </aside>
+        </div>
+        <% if (notice) { %>
+          <div class="info-notice" role="status"><%= notice %></div>
+        <% } %>
+      </div>
+    </section>
+
+    <section class="container info-content" aria-labelledby="info-detail-heading">
+      <div class="info-section-intro">
+        <span class="info-kicker">Explore <%= page.eyebrow %></span>
+        <h2 id="info-detail-heading">What you need to know</h2>
+        <p>Practical information about AutoBrand AI, its supported social media workflows and how the product helps you manage real brand operations.</p>
+      </div>
+      <% if (page.updated) { %>
+        <div class="info-policy-note">
+          <strong>Last updated: <%= page.updated %></strong>
+          <p>These public policy details describe the current product. Applicable laws, provider terms and your subscription agreement may require additional provisions.</p>
+        </div>
+      <% } %>
+      <div class="info-card-grid <%= pageKey === 'privacy' || pageKey === 'terms' ? 'info-policy-grid' : '' %>">
+        <% for (let i = 0; i < (page.sections || []).length; i++) { const section = page.sections[i]; %>
+        <article class="info-card">
+          <span class="info-card-index" aria-hidden="true"><%= String(i + 1).padStart(2, '0') %></span>
+          <h3><%= section[0] %></h3>
+          <p><%= section[1] %></p>
+        </article>
+        <% } %>
+      </div>
+    </section>
+
+    <% if (page.steps && page.steps.length) { %>
+    <section class="info-workflow" aria-labelledby="info-workflow-heading">
+      <div class="container">
+        <div class="info-section-intro">
+          <span class="info-kicker">Practical workflow</span>
+          <h2 id="info-workflow-heading">How to put it into practice</h2>
+          <p>Follow the steps that apply to your brand and connected services. Some actions depend on your account role, current plan and external social network permissions.</p>
+        </div>
+        <ol class="info-steps">
+          <% for (let i = 0; i < page.steps.length; i++) { const step = page.steps[i]; %>
+          <li><span class="info-step-number" aria-hidden="true"><%= String(i + 1).padStart(2, '0') %></span>
+            <div><h3><%= step[0] %></h3><p><%= step[1] %></p></div>
+          </li>
+          <% } %>
+        </ol>
+      </div>
+    </section>
     <% } %>
-  </div></section>
-</main>
-<footer class="site-footer"><div class="site-shell"><strong>AutoBrand AI</strong><div class="footer-links"><a href="/about">About</a><a href="/help">Help</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a></div><p>© 2026 AutoBrand AI. Built by Classic Technologies.</p></div></footer>
-<script defer src="/js/public-shell.js"></script>
-</body></html>
+
+    <% if (page.faqs && page.faqs.length) { %>
+    <section class="container info-faqs" aria-labelledby="info-faqs-heading">
+      <div class="info-section-intro">
+        <span class="info-kicker">Common questions</span>
+        <h2 id="info-faqs-heading">Frequently asked questions</h2>
+        <p>Clear answers about supported features, product responsibilities and the limits of connected services.</p>
+      </div>
+      <div class="info-faq-list">
+        <% for (const item of page.faqs) { %>
+        <details class="info-faq">
+          <summary><%= item[0] %></summary>
+          <p><%= item[1] %></p>
+        </details>
+        <% } %>
+      </div>
+    </section>
+    <% } %>
+
+    <% if (pageKey === 'contact') { %>
+    <section class="container info-contact" aria-labelledby="contact-heading">
+      <div class="info-contact-panel">
+        <div class="info-contact-copy">
+          <span class="info-kicker">Talk to the team</span>
+          <h2 id="contact-heading">Send AutoBrand AI a message</h2>
+          <p>Ask about onboarding, agency workflows, plan options, social account connections, AI credits or existing product support.</p>
+          <p>Do not include passwords, payment details, API keys, private customer records or social-network access tokens.</p>
+        </div>
+        <form class="info-contact-form" method="post" action="/contact">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <label>Full name <input name="name" required maxlength="160" autocomplete="name" /></label>
+          <label>Email address <input name="email" type="email" required maxlength="320" autocomplete="email" /></label>
+          <label>Team type
+            <select name="teamType">
+              <option value="Creator">Creator</option>
+              <option value="Business">Business</option>
+              <option value="Marketing team">Marketing team</option>
+              <option value="Agency">Agency</option>
+              <option value="Institution">Institution</option>
+            </select>
+          </label>
+          <label>How can we help? <textarea name="message" required maxlength="5000"></textarea></label>
+          <button class="btn btn-primary" type="submit">Send message</button>
+        </form>
+      </div>
+    </section>
+    <% } %>
+
+    <section class="container info-next" aria-labelledby="info-next-heading">
+      <div>
+        <span class="info-kicker">Next step</span>
+        <h2 id="info-next-heading">Find the workflow that fits your brand.</h2>
+        <p>Explore AutoBrand AI features, compare current plans or get support before connecting your social accounts.</p>
+      </div>
+      <div class="info-next-actions">
+        <a href="/features" class="btn btn-ghost">Explore features</a>
+        <a href="/contact" class="btn btn-primary">Contact AutoBrand AI</a>
+      </div>
+    </section>
+  </main>
+  <%- include('partials/marketing-footer') %>
+  <script defer src="/js/marketing-pages.js"></script>
+  <script defer src="/js/public-shell.js"></script>
+</body>
+</html>
