@@ -328,6 +328,37 @@ for (const [key, guide] of Object.entries(PUBLIC_PAGE_GUIDES)) {
 }
 
 
+
+const PUBLIC_PAGE_HEADINGS = {
+  features: 'AI social media management from planning to publishing.',
+  integrations: 'Connect your social platforms, ChatGPT and Google Drive.',
+  templates: 'Create consistent social media campaigns with reusable templates.',
+  resources: 'Learn social media scheduling and AI-assisted publishing.',
+  about: 'Meet AutoBrand AI, developed by Classic Technologies.',
+  help: 'Support for social publishing, connections, AI and billing.',
+  contact: 'Contact AutoBrand AI about your social media workflow.',
+  security: 'Protected social accounts, publishing and workspace access.',
+  privacy: 'How AutoBrand AI handles your connected account data.',
+  terms: 'Terms for AutoBrand AI subscriptions and social publishing.'
+};
+const PUBLIC_PAGE_RELATED = {
+  features: [['Integrations', '/integrations', 'Connect social accounts, ChatGPT and Google Drive.'], ['Templates', '/templates', 'Build reusable campaign workflows.'], ['Pricing', '/pricing', 'Compare available publishing and AI plans.']],
+  integrations: [['Features', '/features', 'Understand how connected workflows operate.'], ['Security', '/security', 'Learn how credentials and permissions are protected.'], ['Help', '/help', 'Troubleshoot connection and publishing problems.']],
+  templates: [['Resources', '/resources', 'Explore step-by-step content planning guides.'], ['Features', '/features', 'See content approvals, scheduling and Brand Brain.'], ['Pricing', '/pricing', 'Choose the plan that matches your workflow.']],
+  resources: [['Templates', '/templates', 'Structure content and campaign briefs.'], ['Integrations', '/integrations', 'Connect the services used in your workflow.'], ['Help', '/help', 'Resolve publishing and setup problems.']],
+  about: [['Features', '/features', 'Explore the social operating system.'], ['Security', '/security', 'Understand the built-in control model.'], ['Contact', '/contact', 'Speak with the team.']],
+  help: [['Integrations', '/integrations', 'Check social network and storage connections.'], ['Security', '/security', 'Learn the account safety controls.'], ['Contact', '/contact', 'Request additional product support.']],
+  contact: [['Pricing', '/pricing', 'Check current plan options.'], ['Help', '/help', 'Read support and troubleshooting guidance.'], ['Security', '/security', 'Find safe security reporting guidance.']],
+  security: [['Privacy', '/privacy', 'Understand product data handling.'], ['Terms', '/terms', 'Read user responsibilities and provider limits.'], ['Help', '/help', 'Find support for account security.']],
+  privacy: [['Security', '/security', 'Read the credential and access protections.'], ['Terms', '/terms', 'Review relevant subscription and service rules.'], ['Contact', '/contact', 'Ask about your account and data.']],
+  terms: [['Pricing', '/pricing', 'Review current prices and plan entitlements.'], ['Privacy', '/privacy', 'Understand connected-service information.'], ['Contact', '/contact', 'Send a product or billing question.']]
+};
+for (const [key, heading] of Object.entries(PUBLIC_PAGE_HEADINGS)) {
+  PUBLIC_PAGES[key].heading = heading;
+  PUBLIC_PAGES[key].related = PUBLIC_PAGE_RELATED[key];
+}
+
+
 function publicOrigin() {
   const value = env.publicAppUrl || env.appUrl;
   try { return new URL(value).origin; } catch (_error) { return ''; }
