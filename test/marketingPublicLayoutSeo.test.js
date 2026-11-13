@@ -54,9 +54,9 @@ test('every public product, company and support page renders useful SEO content 
 
     assert.equal((html.match(/class="nav" id="nav"/g) || []).length, 1, key);
     assert.equal((html.match(/<footer>/g) || []).length, 1, key);
-    assert.match(html, /href="\/css\/landing.css"/, key);
-    assert.match(html, /href="\/css\/public-site.css"/, key);
-    assert.match(html, /href="\/js\/marketing-pages.js"/, key);
+    assert.match(html, /href="\/css\/landing\.css\?v=marketing-20261113"/, key);
+    assert.match(html, /href="\/css\/public-site\.css\?v=marketing-20261113"/, key);
+    assert.match(html, /src="\/js\/marketing-pages\.js\?v=marketing-20261113"/, key);
     assert.match(html, /rel="canonical"/, key);
     assert.match(html, /name="description"/, key);
     assert.match(html, /<h1 id="page-heading">/, key);
